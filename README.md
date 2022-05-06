@@ -1,39 +1,19 @@
 # debezium
 
 #### 介绍
-{**以下是 Gitee 平台说明，您可以替换此简介**
-Gitee 是 OSCHINA 推出的基于 Git 的代码托管平台（同时支持 SVN）。专为开发者提供稳定、高效、安全的云端软件开发协作平台
-无论是个人、团队、或是企业，都能够用 Gitee 实现代码托管、项目管理、协作开发。企业项目请看 [https://gitee.com/enterprises](https://gitee.com/enterprises)}
+Debezium是一个开源项目，为捕获数据更改(change data capture,CDC)提供了一个低延迟的流式处理平台。
 
-#### 软件架构
-软件架构说明
+本仓库初始代码来源于Debezium v1.8.1.Final版本
 
+https://github.com/debezium/debezium/tree/v1.8.1.Final
 
-#### 安装教程
+本仓库构建的目的是为了借助于debezium（需要做一定的适配）和kafka开源组件，构建基于openGauss的在线迁移系统。
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+在线迁移工具详情请参考
 
-#### 使用说明
+https://gitee.com/opengauss/openGauss-tools-onlineMigration
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+更多debezium介绍和构建过程请参考
 
-#### 参与贡献
+https://gitee.com/opengauss/debezium/blob/master/README_ZH.md
 
-1.  Fork 本仓库
-2.  新建 Feat_xxx 分支
-3.  提交代码
-4.  新建 Pull Request
-
-
-#### 特技
-
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
