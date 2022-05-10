@@ -2,11 +2,13 @@
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
+ * Modified by an in 2020.5.30 for foreign key feature
  */
 package io.debezium.relational;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -38,6 +40,13 @@ public interface Table {
      * @return the immutable list of column names that make up the primary key; never null but possibly empty
      */
     List<String> primaryKeyColumnNames();
+
+    /**
+     * The list of column that make up the foreign key for this table.
+     *
+     * @return the immutable list of column that make up the foreign key; never null but possibly empty
+     */
+    List<Map<String, String>> foreignKeyColumns();
 
     /**
      * Get the columns that make up the primary key for this table.

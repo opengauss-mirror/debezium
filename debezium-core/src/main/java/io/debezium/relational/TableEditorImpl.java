@@ -2,6 +2,7 @@
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
+ * Modified by an in 2020.5.30 for foreign key feature
  */
 package io.debezium.relational;
 
@@ -10,6 +11,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -18,6 +20,7 @@ class TableEditorImpl implements TableEditor {
     private TableId id;
     private LinkedHashMap<String, Column> sortedColumns = new LinkedHashMap<>();
     private final List<String> pkColumnNames = new ArrayList<>();
+    private final List<Map<String, String>> fkColumns = new ArrayList<>();
     private boolean uniqueValues = false;
     private String defaultCharsetName;
     private String comment;
@@ -56,7 +59,11 @@ class TableEditorImpl implements TableEditor {
     }
 
     @Override
-    public TableEditor addColumns(Column... columns) {
+    public List<Map<String, String>> foreignKeyColumns() {
+        return Collections.unmodifiableList(fkColumns);
+    }
+
+    @Override public TableEditor addColumns(Column... columns) {
         for (Column column : columns) {
             add(column);
         }
@@ -102,8 +109,9 @@ class TableEditorImpl implements TableEditor {
             this.pkColumnNames.removeIf(pkColumnName -> {
                 final boolean pkColumnDoesNotExists = !hasColumnWithName(pkColumnName);
                 if (pkColumnDoesNotExists) {
-                    throw new IllegalArgumentException(
-                            "The column \"" + pkColumnName + "\" is referenced as PRIMARY KEY, but a matching column is not defined in table \"" + tableId() + "\"!");
+                    throw new IllegalArgumentException("The column \"" + pkColumnName
+                        + "\" is referenced as PRIMARY KEY, but a matching column is not defined in table \""
+                        + tableId() + "\"!");
                 }
                 return pkColumnDoesNotExists;
             });
@@ -113,6 +121,13 @@ class TableEditorImpl implements TableEditor {
     @Override
     public TableEditor setPrimaryKeyNames(String... pkColumnNames) {
         return setPrimaryKeyNames(Arrays.asList(pkColumnNames));
+    }
+
+    @Override
+    public TableEditor setForeignKeys(List<Map<String, String>> fkColumns) {
+        this.fkColumns.clear();
+        this.fkColumns.addAll(fkColumns);
+        return this;
     }
 
     @Override
@@ -264,6 +279,6 @@ class TableEditorImpl implements TableEditor {
             columns.add(column);
         });
         updatePrimaryKeys();
-        return new TableImpl(id, columns, primaryKeyColumnNames(), defaultCharsetName, comment);
+        return new TableImpl(id, columns, primaryKeyColumnNames(), foreignKeyColumns(), defaultCharsetName, comment);
     }
 }

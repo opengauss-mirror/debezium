@@ -44,6 +44,12 @@ import io.debezium.util.Strings;
 
 import oracle.jdbc.OracleTypes;
 
+/**
+ * Copyright Debezium Authors.
+ *
+ * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
+ * Modified by an in 2020.5.30 for foreign key feature
+ */
 public class OracleConnection extends JdbcConnection {
 
     private final static Logger LOGGER = LoggerFactory.getLogger(OracleConnection.class);
@@ -248,10 +254,13 @@ public class OracleConnection extends JdbcConnection {
             // First get the primary key information, which must be done for *each* table ...
             List<String> pkColumnNames = readPrimaryKeyNames(metadata, tableEntry.getKey());
 
+            // First get the foreign key information, which must be done for *each* table ...
+            List<Map<String, String>> fkColumns = readForeignKeys(metadata, tableEntry.getKey());
+
             // Then define the table ...
             List<Column> columns = tableEntry.getValue();
             Collections.sort(columns);
-            tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, null);
+            tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, fkColumns, null);
         }
 
         if (removeTablesNotFoundInJdbc) {

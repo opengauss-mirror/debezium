@@ -2,7 +2,8 @@
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
- */
+ * Modified by an in 2020.5.30 for foreign key feature
+ /
 package io.debezium.connector.oracle.antlr.listener;
 
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser;
@@ -44,6 +45,10 @@ class BaseParserListener extends PlSqlParserBaseListener {
             columnName = getTableOrColumnName(ctx.identifier().id_expression().getText());
         }
         return columnName;
+    }
+
+    String getForeignAttribute(final String foreignAttribute) {
+        return removeQuotes(foreignAttribute, false);
     }
 
     String getColumnName(final PlSqlParser.Old_column_nameContext ctx) {

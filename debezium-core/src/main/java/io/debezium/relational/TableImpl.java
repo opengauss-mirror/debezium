@@ -2,6 +2,7 @@
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
+ * Modified by an in 2020.5.30 for foreign key feature
  */
 package io.debezium.relational;
 
@@ -19,20 +20,25 @@ final class TableImpl implements Table {
     private final TableId id;
     private final List<Column> columnDefs;
     private final List<String> pkColumnNames;
+    private final List<Map<String, String>> fkColumns;
     private final Map<String, Column> columnsByLowercaseName;
     private final String defaultCharsetName;
     private final String comment;
 
     @PackagePrivate
     TableImpl(Table table) {
-        this(table.id(), table.columns(), table.primaryKeyColumnNames(), table.defaultCharsetName(), table.comment());
+        this(table.id(), table.columns(), table.primaryKeyColumnNames(), table.foreignKeyColumns(),
+            table.defaultCharsetName(), table.comment());
     }
 
     @PackagePrivate
-    TableImpl(TableId id, List<Column> sortedColumns, List<String> pkColumnNames, String defaultCharsetName, String comment) {
+    TableImpl(TableId id, List<Column> sortedColumns, List<String> pkColumnNames,
+        List<Map<String, String>> fkColumns, String defaultCharsetName, String comment) {
         this.id = id;
         this.columnDefs = Collections.unmodifiableList(sortedColumns);
-        this.pkColumnNames = pkColumnNames == null ? Collections.emptyList() : Collections.unmodifiableList(pkColumnNames);
+        this.pkColumnNames =
+            pkColumnNames == null ? Collections.emptyList() : Collections.unmodifiableList(pkColumnNames);
+        this.fkColumns = fkColumns == null ? Collections.emptyList() : Collections.unmodifiableList(fkColumns);
         Map<String, Column> defsByLowercaseName = new LinkedHashMap<>();
         for (Column def : this.columnDefs) {
             defsByLowercaseName.put(def.name().toLowerCase(), def);
@@ -50,6 +56,11 @@ final class TableImpl implements Table {
     @Override
     public List<String> primaryKeyColumnNames() {
         return pkColumnNames;
+    }
+
+    @Override
+    public List<Map<String, String>> foreignKeyColumns() {
+        return fkColumns;
     }
 
     @Override
@@ -123,9 +134,10 @@ final class TableImpl implements Table {
     @Override
     public TableEditor edit() {
         return new TableEditorImpl().tableId(id)
-                .setColumns(columnDefs)
-                .setPrimaryKeyNames(pkColumnNames)
-                .setDefaultCharsetName(defaultCharsetName)
-                .setComment(comment);
+            .setColumns(columnDefs)
+            .setPrimaryKeyNames(pkColumnNames)
+            .setForeignKeys(fkColumns)
+            .setDefaultCharsetName(defaultCharsetName)
+            .setComment(comment);
     }
 }

@@ -68,6 +68,9 @@ import io.debezium.util.Strings;
  * A utility that simplifies using a JDBC connection and executing transactions composed of multiple statements.
  *
  * @author Randall Hauch
+ *
+ * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
+ * Modified by an in 2020.5.30 for foreign key feature
  */
 @NotThreadSafe
 public class JdbcConnection implements AutoCloseable {
@@ -77,7 +80,15 @@ public class JdbcConnection implements AutoCloseable {
     private static final int STATEMENT_CACHE_CAPACITY = 10_000;
     private final static Logger LOGGER = LoggerFactory.getLogger(JdbcConnection.class);
     private static final int CONNECTION_VALID_CHECK_TIMEOUT_IN_SEC = 3;
-    private final Map<String, PreparedStatement> statementCache = new BoundedConcurrentHashMap<>(STATEMENT_CACHE_CAPACITY, 16, Eviction.LIRS,
+
+    public static final String PKTABLE_SCHEM = "pktableSchem";
+    public static final String PKTABLE_NAME = "pktableName";
+    public static final String PKCOLUMN_NAME = "pkColumnName";
+    public static final String FKCOLUMN_NAME = "fkColumnName";
+    public static final String FK_NAME = "fkName";
+
+    private final Map<String, PreparedStatement> statementCache =
+        new BoundedConcurrentHashMap<>(STATEMENT_CACHE_CAPACITY, 16, Eviction.LIRS,
             new EvictionListener<String, PreparedStatement>() {
 
                 @Override
@@ -1211,11 +1222,14 @@ public class JdbcConnection implements AutoCloseable {
             // First get the primary key information, which must be done for *each* table ...
             List<String> pkColumnNames = readPrimaryKeyOrUniqueIndexNames(metadata, tableEntry.getKey());
 
+            // First get the foreign key information, which must be done for *each* table ...
+            List<Map<String, String>> fkColumns = readForeignColumns(metadata, tableEntry.getKey());
+
             // Then define the table ...
             List<Column> columns = tableEntry.getValue();
             Collections.sort(columns);
             String defaultCharsetName = null; // JDBC does not expose character sets
-            tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, defaultCharsetName);
+            tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, fkColumns, defaultCharsetName);
         }
 
         if (removeTablesNotFoundInJdbc) {
@@ -1326,6 +1340,24 @@ public class JdbcConnection implements AutoCloseable {
         return pkColumnNames;
     }
 
+    public List<Map<String, String>> readForeignKeys(DatabaseMetaData metadata, TableId id) throws SQLException {
+        final List<Map<String, String>> fkColumns = new ArrayList<>();
+        try (ResultSet rs = metadata.getImportedKeys(id.catalog(), id.schema(), id.table())) {
+            while (rs.next()) {
+                final Map<String, String> pkColumn = new HashMap<>();
+
+                pkColumn.put(PKTABLE_SCHEM, rs.getString(2));
+                pkColumn.put(PKTABLE_NAME, rs.getString(3));
+                pkColumn.put(PKCOLUMN_NAME, rs.getString(4));
+                pkColumn.put(FKCOLUMN_NAME, rs.getString(8));
+                pkColumn.put(FK_NAME, rs.getString(12));
+
+                fkColumns.add(pkColumn);
+            }
+        }
+        return fkColumns;
+    }
+
     public List<String> readTableUniqueIndices(DatabaseMetaData metadata, TableId id) throws SQLException {
         final List<String> uniqueIndexColumnNames = new ArrayList<>();
         try (ResultSet rs = metadata.getIndexInfo(id.catalog(), id.schema(), id.table(), true, true)) {
@@ -1358,6 +1390,10 @@ public class JdbcConnection implements AutoCloseable {
     protected List<String> readPrimaryKeyOrUniqueIndexNames(DatabaseMetaData metadata, TableId id) throws SQLException {
         final List<String> pkColumnNames = readPrimaryKeyNames(metadata, id);
         return pkColumnNames.isEmpty() ? readTableUniqueIndices(metadata, id) : pkColumnNames;
+    }
+
+    protected List<Map<String, String>> readForeignColumns(DatabaseMetaData metadata, TableId id) throws SQLException {
+        return readForeignKeys(metadata, id);
     }
 
     /**
