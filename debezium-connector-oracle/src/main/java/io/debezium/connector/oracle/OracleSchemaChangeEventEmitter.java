@@ -112,6 +112,9 @@ public class OracleSchemaChangeEventEmitter implements SchemaChangeEventEmitter 
                         case TRUNCATE_TABLE:
                             truncateReceiver.processTruncateEvent();
                             break;
+                        case TRUNCATE_TABLE_CASCADE:
+                            truncateReceiver.processTruncateCascadeEvent();
+                            break;
                         default:
                             LOGGER.info("Skipped DDL event type {}: {}", event.type(), ddlText);
                             break;

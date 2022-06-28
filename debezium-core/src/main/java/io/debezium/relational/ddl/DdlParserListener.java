@@ -37,6 +37,7 @@ public interface DdlParserListener {
         ALTER_TABLE,
         DROP_TABLE,
         TRUNCATE_TABLE,
+        TRUNCATE_TABLE_CASCADE,
         CREATE_INDEX,
         DROP_INDEX,
         CREATE_DATABASE,
@@ -168,6 +169,16 @@ public interface DdlParserListener {
     public static class TableTruncatedEvent extends TableEvent {
         public TableTruncatedEvent(TableId tableId, String ddlStatement, boolean isView) {
             super(EventType.TRUNCATE_TABLE, tableId, ddlStatement, isView);
+        }
+    }
+
+    /**
+     * An event describing the truncating of a table.
+     */
+    @Immutable
+    public static class TableTruncatedCascadeEvent extends TableEvent {
+        public TableTruncatedCascadeEvent(TableId tableId, String ddlStatement, boolean isView) {
+            super(EventType.TRUNCATE_TABLE_CASCADE, tableId, ddlStatement, isView);
         }
     }
 

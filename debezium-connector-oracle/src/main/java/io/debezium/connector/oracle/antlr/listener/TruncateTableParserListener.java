@@ -27,7 +27,7 @@ public class TruncateTableParserListener extends BaseParserListener {
     @Override
     public void enterTruncate_table(final PlSqlParser.Truncate_tableContext ctx) {
         TableId tableId = new TableId(catalogName, schemaName, getTableName(ctx.tableview_name()));
-        parser.signalTruncateTable(tableId, ctx);
+        parser.signalTruncateTable(tableId, ctx, ctx.CASCADE() != null);
         super.enterTruncate_table(ctx);
     }
 }

@@ -52,6 +52,10 @@ public final class Envelope {
          */
         TRUNCATE("t"),
         /**
+         * An operation that resulted in an existing table being truncated cascade in the source.
+         */
+        TRUNCATE_CASCADE("tc"),
+        /**
          * An operation that resulted in a generic message
          */
         MESSAGE("m");
@@ -363,6 +367,14 @@ public final class Envelope {
     public Struct truncate(Struct source, Instant timestamp) {
         Struct struct = new Struct(schema);
         struct.put(FieldName.OPERATION, Operation.TRUNCATE.code());
+        struct.put(FieldName.SOURCE, source);
+        struct.put(FieldName.TIMESTAMP, timestamp.toEpochMilli());
+        return struct;
+    }
+
+    public Struct truncateCascade(Struct source, Instant timestamp) {
+        Struct struct = new Struct(schema);
+        struct.put(FieldName.OPERATION, Operation.TRUNCATE_CASCADE.code());
         struct.put(FieldName.SOURCE, source);
         struct.put(FieldName.TIMESTAMP, timestamp.toEpochMilli());
         return struct;

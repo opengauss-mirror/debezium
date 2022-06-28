@@ -15,4 +15,8 @@ public interface TruncateReceiver {
      * Notify the receiver of the truncate event
      */
     void processTruncateEvent();
+
+    default void processTruncateCascadeEvent() {
+        processTruncateEvent();
+    }
 }

@@ -172,6 +172,7 @@ public class DdlChanges implements DdlParserListener {
             case CREATE_TABLE:
             case ALTER_TABLE:
             case DROP_TABLE:
+            case TRUNCATE_TABLE_CASCADE:
             case TRUNCATE_TABLE:
                 TableEvent tableEvent = (TableEvent) event;
                 return tableEvent.tableId().catalog();
