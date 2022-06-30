@@ -392,7 +392,7 @@ public class EventDispatcher<T extends DataCollectionId> {
             LOGGER.trace("Received change record for {} operation on key {}", operation, key);
 
             // Truncate events must have null key schema as they are sent to table topics without keys
-            Schema keySchema = (key == null && operation == Operation.TRUNCATE) ? null
+            Schema keySchema = (key == null && (operation == Operation.TRUNCATE || operation == Operation.TRUNCATE_CASCADE)) ? null
                     : dataCollectionSchema.keySchema();
             String topicName = topicSelector.topicNameFor((T) dataCollectionSchema.id());
 
