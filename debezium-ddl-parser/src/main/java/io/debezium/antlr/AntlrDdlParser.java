@@ -296,7 +296,11 @@ public abstract class AntlrDdlParser<L extends Lexer, P extends Parser> extends 
      * @param ctx the start of the statement; may not be null
      */
     public void signalTruncateTable(TableId id, ParserRuleContext ctx) {
-        signalTruncateTable(id, getText(ctx));
+        signalTruncateTable(id, ctx, false);
+    }
+
+    public void signalTruncateTable(TableId id, ParserRuleContext ctx, boolean cascade) {
+        signalTruncateTable(id, getText(ctx), cascade);
     }
 
     /**

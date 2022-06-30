@@ -203,8 +203,13 @@ public abstract class AbstractDdlParser implements DdlParser {
      * @param id        the table identifier; may not be null
      * @param statement the statement; may not be null
      */
-    protected void signalTruncateTable(TableId id, String statement) {
-        signalChangeEvent(new DdlParserListener.TableTruncatedEvent(id, statement, false));
+    protected void signalTruncateTable(TableId id, String statement, boolean cascade) {
+        if (cascade) {
+            signalChangeEvent(new DdlParserListener.TableTruncatedCascadeEvent(id, statement, false));
+        }
+        else {
+            signalChangeEvent(new DdlParserListener.TableTruncatedEvent(id, statement, false));
+        }
     }
 
     /**

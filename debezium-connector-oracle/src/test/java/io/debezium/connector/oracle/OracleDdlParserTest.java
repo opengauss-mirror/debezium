@@ -341,7 +341,7 @@ public class OracleDdlParserTest {
                 .create();
         tables.overwriteTable(table);
 
-        String SQL = "ALTER TABLE \"SCOTT\".\"T_DBZ_TEST1\" DROP COLUMN T_VARCHAR2";
+        String SQL = "TRUNCATE TABLE \"SCOTT\".\"T_DBZ_TEST1\" CASCADE";
         parser.parse(SQL, tables);
 
         final DdlChanges changes = parser.getDdlChanges();
