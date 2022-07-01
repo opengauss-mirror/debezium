@@ -2,10 +2,12 @@
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
+ * Modified by an in 2020.5.30 for foreign key feature
  */
 package io.debezium.relational;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import io.debezium.annotation.NotThreadSafe;
@@ -80,6 +82,14 @@ public interface TableEditor {
      * @return the list of column names that make up the primary key; never null but possibly empty
      */
     List<String> primaryKeyColumnNames();
+
+    /**
+     * The list of column that make up the foreign key for this table. The resulting list should not be modified directly;
+     * instead, the set of foreign key should be defined with {@link #setPrimaryKeyNames(String...)}.
+     *
+     * @return the list of column that make up the foreign key; never null but possibly empty
+     */
+    List<Map<String, String>> foreignKeyColumns();
 
     /**
      * Determine whether this table has a primary key.
@@ -194,6 +204,15 @@ public interface TableEditor {
      * @throws IllegalArgumentException if a name does not correspond to an existing column
      */
     TableEditor setPrimaryKeyNames(List<String> pkColumnNames);
+
+    /**
+     * Set the columns that make up this table's primary key.
+     *
+     * @param fkColumns the names of this tables columns that make up the foreign key
+     * @return this editor so callers can chain methods together
+     * @throws IllegalArgumentException if a name does not correspond to an existing column
+     */
+    TableEditor setForeignKeys(List<Map<String, String>> fkColumns);
 
     /**
      * Sets this table's primary key to contain all columns, ensuring that all values are unique within the table.

@@ -2,9 +2,11 @@
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
+ * Modified by an in 2020.5.30 for foreign key feature
  */
 package io.debezium.relational;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -172,24 +174,26 @@ public final class Tables {
         });
     }
 
+    public Table overwriteTable(TableId tableId, List<Column> columnDefs, List<String> primaryKeyColumnNames,
+        String defaultCharsetName) {
+        return overwriteTable(tableId, columnDefs, primaryKeyColumnNames, Collections.emptyList(), defaultCharsetName);
+    }
+
     /**
      * Add or update the definition for the identified table.
      *
-     * @param tableId the identifier of the table
-     * @param columnDefs the list of column definitions; may not be null or empty
+     * @param tableId               the identifier of the table
+     * @param columnDefs            the list of column definitions; may not be null or empty
      * @param primaryKeyColumnNames the list of the column names that make up the primary key; may be null or empty
-     * @param defaultCharsetName the name of the character set that should be used by default
+     * @param defaultCharsetName    the name of the character set that should be used by default
      * @return the previous table definition, or null if there was no prior table definition
      */
     public Table overwriteTable(TableId tableId, List<Column> columnDefs, List<String> primaryKeyColumnNames,
-                                String defaultCharsetName) {
+        List<Map<String, String>> fkColumns, String defaultCharsetName) {
         return lock.write(() -> {
-            Table updated = Table.editor()
-                    .tableId(tableId)
-                    .addColumns(columnDefs)
-                    .setPrimaryKeyNames(primaryKeyColumnNames)
-                    .setDefaultCharsetName(defaultCharsetName)
-                    .create();
+            Table updated =
+                Table.editor().tableId(tableId).addColumns(columnDefs).setPrimaryKeyNames(primaryKeyColumnNames)
+                    .setForeignKeys(fkColumns).setDefaultCharsetName(defaultCharsetName).create();
 
             Table existing = tablesByTableId.get(tableId);
             if (existing == null || !existing.equals(updated)) {
@@ -250,8 +254,8 @@ public final class Tables {
                 return null;
             }
             tablesByTableId.remove(existing.id());
-            TableImpl updated = new TableImpl(newTableId, existing.columns(),
-                    existing.primaryKeyColumnNames(), existing.defaultCharsetName(), existing.comment());
+            TableImpl updated = new TableImpl(newTableId, existing.columns(), existing.primaryKeyColumnNames(),
+                existing.foreignKeyColumns(), existing.defaultCharsetName(), existing.comment());
             try {
                 return tablesByTableId.put(updated.id(), updated);
             }
@@ -275,8 +279,8 @@ public final class Tables {
             Table existing = tablesByTableId.get(tableId);
             Table updated = changer.apply(existing);
             if (updated != existing) {
-                tablesByTableId.put(tableId, new TableImpl(tableId, updated.columns(),
-                        updated.primaryKeyColumnNames(), updated.defaultCharsetName(), updated.comment()));
+                tablesByTableId.put(tableId, new TableImpl(tableId, updated.columns(), updated.primaryKeyColumnNames(),
+                    updated.foreignKeyColumns(), updated.defaultCharsetName(), updated.comment()));
             }
             changes.add(tableId);
             return existing;

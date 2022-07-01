@@ -2,6 +2,7 @@
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
+ * Modified by an in 2020.5.30 for foreign key feature
  */
 package io.debezium.relational.history;
 
@@ -10,6 +11,10 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.debezium.DebeziumException;
 import io.debezium.document.Array;
 import io.debezium.document.Array.Entry;
 import io.debezium.document.Document;
@@ -55,6 +60,14 @@ public class JsonTableChangeSerializer implements TableChanges.TableChangesSeria
 
         document.set("defaultCharsetName", table.defaultCharsetName());
         document.set("primaryKeyColumnNames", Array.create(table.primaryKeyColumnNames()));
+
+        if (table.foreignKeyColumns() != null && table.foreignKeyColumns().size() > 0) {
+            try {
+                document.set("foreignKeyColumns", new ObjectMapper().writeValueAsString(table.foreignKeyColumns()));
+            } catch (JsonProcessingException e) {
+                throw new DebeziumException("Document failed to set foreign key, JSON conversion exception.", e);
+            }
+        }
 
         List<Document> columns = table.columns()
                 .stream()
@@ -192,6 +205,15 @@ public class JsonTableChangeSerializer implements TableChanges.TableChangesSeria
                 .streamValues()
                 .map(Value::asString)
                 .collect(Collectors.toList()));
+
+        String foreignKeyColumns = document.getString("foreignKeyColumns");
+        if (foreignKeyColumns != null && foreignKeyColumns.length() > 0) {
+            try {
+                editor.setForeignKeys(new ObjectMapper().readValue(foreignKeyColumns, List.class));
+            } catch (JsonProcessingException e) {
+                throw new DebeziumException("Document failed to get foreign key, JSON readValue exception.", e);
+            }
+        }
 
         return editor.create();
     }
