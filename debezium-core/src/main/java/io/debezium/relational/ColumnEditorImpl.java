@@ -6,9 +6,14 @@
 package io.debezium.relational;
 
 import java.sql.Types;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
+/**
+* Modified by an in 2020.7.2 for constraint feature
+ */
 final class ColumnEditorImpl implements ColumnEditor {
 
     private String name;
@@ -27,6 +32,7 @@ final class ColumnEditorImpl implements ColumnEditor {
     private String defaultValueExpression = null;
     private boolean hasDefaultValue = false;
     private List<String> enumValues;
+    private List<String> modifyKeys = new ArrayList<String>();
     private String comment;
 
     protected ColumnEditorImpl() {
@@ -121,6 +127,11 @@ final class ColumnEditorImpl implements ColumnEditor {
     @Override
     public List<String> enumValues() {
         return enumValues;
+    }
+
+    @Override
+    public List<String> modifyKeys() {
+        return Collections.unmodifiableList(modifyKeys);
     }
 
     @Override
@@ -223,6 +234,13 @@ final class ColumnEditorImpl implements ColumnEditor {
     }
 
     @Override
+    public ColumnEditor modifyKeys(List<String> modifyKeys) {
+        this.modifyKeys.clear();
+        this.modifyKeys.addAll(modifyKeys);
+        return this;
+    }
+
+    @Override
     public ColumnEditor comment(String comment) {
         this.comment = comment;
         return this;
@@ -231,7 +249,7 @@ final class ColumnEditorImpl implements ColumnEditor {
     @Override
     public Column create() {
         return new ColumnImpl(name, position, jdbcType, nativeType, typeName, typeExpression, charsetName, tableCharsetName,
-                length, scale, enumValues, optional, autoIncremented, generated, defaultValueExpression, hasDefaultValue, comment);
+                length, scale, enumValues, optional, autoIncremented, generated, defaultValueExpression, hasDefaultValue, comment, modifyKeys);
     }
 
     @Override

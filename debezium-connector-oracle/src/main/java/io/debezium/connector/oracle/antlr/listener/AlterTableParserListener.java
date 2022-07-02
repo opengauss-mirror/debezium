@@ -8,7 +8,10 @@ package io.debezium.connector.oracle.antlr.listener;
 import static io.debezium.antlr.AntlrDdlParser.getText;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import org.antlr.v4.runtime.tree.ParseTreeListener;
 import org.slf4j.Logger;
@@ -16,14 +19,18 @@ import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.oracle.antlr.OracleDdlParser;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser;
+import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Constraint_nameContext;
+import io.debezium.ddl.parser.oracle.generated.PlSqlParser.ExpressionContext;
 import io.debezium.relational.Column;
 import io.debezium.relational.ColumnEditor;
 import io.debezium.relational.TableEditor;
 import io.debezium.relational.TableId;
 import io.debezium.text.ParsingException;
+import io.netty.util.internal.StringUtil;
 
 /**
  * Parser listener that is parsing Oracle ALTER TABLE statements
+ * Modified by an in 2020.7.2 for constraint feature
  */
 public class AlterTableParserListener extends BaseParserListener {
 
@@ -65,6 +72,13 @@ public class AlterTableParserListener extends BaseParserListener {
             return;
         }
         tableEditor = parser.databaseTables().editTable(tableId);
+        tableEditor.chearConstraint();
+        List<Column> columns = tableEditor.columns();
+
+        for (Column column : columns) {
+            column.clearModifyKeys();
+        }
+
         if (tableEditor == null) {
             throw new ParsingException(null, "Trying to alter table " + tableId.toString()
                     + ", which does not exist. Query: " + getText(ctx));
@@ -231,15 +245,81 @@ public class AlterTableParserListener extends BaseParserListener {
             if (ctx.ADD() != null) {
                 // ALTER TABLE ADD PRIMARY KEY
                 List<String> primaryKeyColumns = new ArrayList<>();
+                List<Map<String, String>> pkColumnChanges = new ArrayList<>();
+                List<Map<String, String>> checkColumns = new ArrayList<Map<String, String>>();
+                List<Map<String, String>> uniqueColumns = new ArrayList<Map<String, String>>();
+                List<Map<String, String>> constraintChanges = new ArrayList<Map<String, String>>();
+
                 for (PlSqlParser.Out_of_line_constraintContext constraint : ctx.out_of_line_constraint()) {
-                    if (constraint.PRIMARY() != null && constraint.KEY() != null) {
+                    if (constraint.PRIMARY() != null) {
+                        Constraint_nameContext constraint_name = constraint.constraint_name();
                         for (PlSqlParser.Column_nameContext columnNameContext : constraint.column_name()) {
+                            Map<String, String> pkChangeMap = new HashMap<>();
                             primaryKeyColumns.add(getColumnName(columnNameContext));
+
+                            pkChangeMap.put(COLUMN_NAME, getColumnName(columnNameContext));
+                            pkChangeMap.put(PRIMARY_KEY_ACTION, ctx.ADD().getText());
+                            if (constraint_name != null) {
+                                final Map<String, String> constraintColumn = new HashMap<>();
+                                pkChangeMap.put(CONSTRAINT_NAME, constraint_name.getText());
+                                constraintColumn.put(CONSTRAINT_NAME, constraint_name.getText());
+                                constraintColumn.put(TYPE_NAME, constraint.PRIMARY().getText());
+                                constraintChanges.add(constraintColumn);
+                            }
+
+                            pkColumnChanges.add(pkChangeMap);
                         }
                     }
+                    else if (constraint.UNIQUE() != null) {
+                        Constraint_nameContext constraint_name = constraint.constraint_name();
+
+                        for (PlSqlParser.Column_nameContext columnNameContext : constraint.column_name()) {
+                            final Map<String, String> uniqueColumn = new HashMap<>();
+                            if (constraint_name != null) {
+                                uniqueColumn.put(INDEX_NAME, constraint_name.getText());
+                            }
+                            else {
+                                continue;
+                            }
+                            uniqueColumn.put(COLUMN_NAME, getColumnName(columnNameContext));
+                            uniqueColumns.add(uniqueColumn);
+                        }
+
+                    }
+                    else if (constraint.CHECK() != null) {
+                        ExpressionContext expression = constraint.expression();
+                        if (expression != null) {
+                            final Map<String, String> checkColumn = new HashMap<>();
+                            Constraint_nameContext constraint_name = constraint.constraint_name();
+                            if (constraint_name != null) {
+                                checkColumn.put(INDEX_NAME, constraint_name.getText());
+                            }
+                            else {
+                                continue;
+                            }
+
+                            String condition = Logical_expression_parse(expression.logical_expression());
+                            checkColumn.put(CONDITION, condition);
+                            checkColumns.add(checkColumn);
+
+                        }
+                    }
+
                 }
                 if (!primaryKeyColumns.isEmpty()) {
                     tableEditor.setPrimaryKeyNames(primaryKeyColumns);
+                }
+                if (!pkColumnChanges.isEmpty()) {
+                    tableEditor.setPrimaryKeyChanges(pkColumnChanges);
+                }
+                if (!checkColumns.isEmpty()) {
+                    tableEditor.setCheckColumns(checkColumns);
+                }
+                if (!uniqueColumns.isEmpty()) {
+                    tableEditor.setUniqueColumns(uniqueColumns);
+                }
+                if (!constraintChanges.isEmpty()) {
+                    tableEditor.setConstraintChanges(constraintChanges);
                 }
             }
             else if (ctx.MODIFY() != null && ctx.PRIMARY() != null && ctx.KEY() != null) {
@@ -252,7 +332,52 @@ public class AlterTableParserListener extends BaseParserListener {
                     tableEditor.setPrimaryKeyNames(primaryKeyColumns);
                 }
             }
+            else if (ctx.drop_constraint_clause() != null) {
+                List<PlSqlParser.Drop_constraint_clauseContext> dropConstraintList = ctx.drop_constraint_clause();
+                List<Map<String, String>> pkColumnChanges = new ArrayList<>();
+                for (PlSqlParser.Drop_constraint_clauseContext dropConstraint : dropConstraintList) {
+                    PlSqlParser.Drop_primary_key_or_unique_or_generic_clauseContext dropPrimaryKeyOrUnique = dropConstraint
+                            .drop_primary_key_or_unique_or_generic_clause();
+
+                    if (dropConstraint.DROP() != null) {
+                        Constraint_nameContext constraint_name = dropPrimaryKeyOrUnique.constraint_name();
+
+                        List<String> primaryKeyColumnNames = tableEditor.primaryKeyColumnNames();
+
+                        for (String primaryKeyColumnName : primaryKeyColumnNames) {
+                            Map<String, String> pkChangeMap = new HashMap<>();
+                            pkChangeMap.put(COLUMN_NAME, primaryKeyColumnName);
+                            pkChangeMap.put(PRIMARY_KEY_ACTION, dropConstraint.DROP().getText());
+                            pkChangeMap.put(PRIMARY_DROP_IS_CASCADE, dropPrimaryKeyOrUnique.CASCADE() == null ? StringUtil.EMPTY_STRING : PRIMARY_DROP_IS_CASCADE);
+                            if (constraint_name != null) {
+                                String constraintName = constraint_name.getText();
+                                pkChangeMap.put(CONSTRAINT_NAME, constraintName);
+                                pkChangeMap.put(TYPE_NAME, removeConstraintAndGetType(constraintName).toString());
+                            }
+                            pkColumnChanges.add(pkChangeMap);
+                        }
+                    }
+
+                }
+                if (!pkColumnChanges.isEmpty()) {
+                    tableEditor.setPrimaryKeyChanges(pkColumnChanges);
+                }
+            }
         }, tableEditor);
         super.enterConstraint_clauses(ctx);
+    }
+
+    private Integer removeConstraintAndGetType(String constraintName) {
+        Iterator<Map<String, String>> constraintIterator = tableEditor.constraintChanges().iterator();
+
+        while (constraintIterator.hasNext()) {
+            Map<String, String> constraint = constraintIterator.next();
+            String conName = constraint.get(CONSTRAINT_NAME);
+            if (conName != null && conName.equals(constraintName)) {
+                constraintIterator.remove();
+                return 1;
+            }
+        }
+        return 0;
     }
 }

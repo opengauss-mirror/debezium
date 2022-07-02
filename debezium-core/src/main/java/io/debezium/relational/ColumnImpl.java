@@ -12,6 +12,9 @@ import java.util.Optional;
 
 import io.debezium.util.Strings;
 
+/**
+ * Modified by an in 2020.7.2 for constraint feature
+ */
 final class ColumnImpl implements Column, Comparable<Column> {
     private final String name;
     private final int position;
@@ -28,26 +31,27 @@ final class ColumnImpl implements Column, Comparable<Column> {
     private final String defaultValueExpression;
     private final boolean hasDefaultValue;
     private final List<String> enumValues;
+    private List<String> modifyKeys;
     private final String comment;
 
     protected ColumnImpl(String columnName, int position, int jdbcType, int componentType, String typeName, String typeExpression,
                          String charsetName, String defaultCharsetName, int columnLength, Integer columnScale,
                          boolean optional, boolean autoIncremented, boolean generated) {
         this(columnName, position, jdbcType, componentType, typeName, typeExpression, charsetName,
-                defaultCharsetName, columnLength, columnScale, null, optional, autoIncremented, generated, null, false, null);
+                defaultCharsetName, columnLength, columnScale, null, optional, autoIncremented, generated, null, false, null, null);
     }
 
     protected ColumnImpl(String columnName, int position, int jdbcType, int nativeType, String typeName, String typeExpression,
                          String charsetName, String defaultCharsetName, int columnLength, Integer columnScale,
                          boolean optional, boolean autoIncremented, boolean generated, String defaultValueExpression, boolean hasDefaultValue) {
         this(columnName, position, jdbcType, nativeType, typeName, typeExpression, charsetName,
-                defaultCharsetName, columnLength, columnScale, null, optional, autoIncremented, generated, defaultValueExpression, hasDefaultValue, null);
+                defaultCharsetName, columnLength, columnScale, null, optional, autoIncremented, generated, defaultValueExpression, hasDefaultValue, null, null);
     }
 
     protected ColumnImpl(String columnName, int position, int jdbcType, int nativeType, String typeName, String typeExpression,
                          String charsetName, String defaultCharsetName, int columnLength, Integer columnScale,
                          List<String> enumValues, boolean optional, boolean autoIncremented, boolean generated,
-                         String defaultValueExpression, boolean hasDefaultValue, String comment) {
+                         String defaultValueExpression, boolean hasDefaultValue, String comment, List<String> modifyKeys) {
         this.name = columnName;
         this.position = position;
         this.jdbcType = jdbcType;
@@ -68,6 +72,7 @@ final class ColumnImpl implements Column, Comparable<Column> {
         this.defaultValueExpression = defaultValueExpression;
         this.hasDefaultValue = hasDefaultValue;
         this.enumValues = enumValues == null ? new ArrayList<>() : enumValues;
+        this.modifyKeys = modifyKeys == null ? new ArrayList<>() : modifyKeys;
         this.comment = comment;
         assert this.length >= -1;
     }
@@ -148,6 +153,11 @@ final class ColumnImpl implements Column, Comparable<Column> {
     }
 
     @Override
+    public List<String> modifyKeys() {
+        return modifyKeys;
+    }
+
+    @Override
     public String comment() {
         return comment;
     }
@@ -155,6 +165,13 @@ final class ColumnImpl implements Column, Comparable<Column> {
     @Override
     public int hashCode() {
         return name.hashCode();
+    }
+
+    @Override
+    public void clearModifyKeys() {
+        if (this.modifyKeys != null) {
+            this.modifyKeys.clear();
+        }
     }
 
     @Override
@@ -232,10 +249,12 @@ final class ColumnImpl implements Column, Comparable<Column> {
                 .autoIncremented(isAutoIncremented())
                 .generated(isGenerated())
                 .enumValues(enumValues)
+                .modifyKeys(modifyKeys)
                 .comment(comment);
         if (hasDefaultValue()) {
             editor.defaultValueExpression(defaultValueExpression().orElse(null));
         }
         return editor;
     }
+
 }

@@ -2,7 +2,6 @@
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
- * Modified by an in 2020.5.30 for foreign key feature
  */
 package io.debezium.relational;
 
@@ -15,29 +14,39 @@ import java.util.stream.Collectors;
 import io.debezium.annotation.PackagePrivate;
 import io.debezium.util.Strings;
 
+/**
+ * Modified by an in 2020.7.2 for constraint feature
+ */
 final class TableImpl implements Table {
 
     private final TableId id;
     private final List<Column> columnDefs;
     private final List<String> pkColumnNames;
+    private final List<Map<String, String>> pkColumnChanges;
+    private final List<Map<String, String>> constraintChanges;
     private final List<Map<String, String>> fkColumns;
+    private final List<Map<String, String>> uniqueColumns;
+    private final List<Map<String, String>> checkColumns;
     private final Map<String, Column> columnsByLowercaseName;
     private final String defaultCharsetName;
     private final String comment;
 
     @PackagePrivate
     TableImpl(Table table) {
-        this(table.id(), table.columns(), table.primaryKeyColumnNames(), table.foreignKeyColumns(),
-            table.defaultCharsetName(), table.comment());
+        this(table.id(), table.columns(), table.primaryKeyColumnNames(), table.primaryKeyColumnChanges(), table.constraintChanges(), table.foreignKeyColumns(),
+                table.uniqueColumns(), table.checkColumns(), table.defaultCharsetName(), table.comment());
     }
 
     @PackagePrivate
-    TableImpl(TableId id, List<Column> sortedColumns, List<String> pkColumnNames,
-        List<Map<String, String>> fkColumns, String defaultCharsetName, String comment) {
+    TableImpl(TableId id, List<Column> sortedColumns, List<String> pkColumnNames, List<Map<String, String>> pkColumnChanges, List<Map<String, String>> constraintChanges,
+              List<Map<String, String>> fkColumns,
+              List<Map<String, String>> uniqueColumns, List<Map<String, String>> checkColumns, String defaultCharsetName, String comment) {
         this.id = id;
         this.columnDefs = Collections.unmodifiableList(sortedColumns);
-        this.pkColumnNames =
-            pkColumnNames == null ? Collections.emptyList() : Collections.unmodifiableList(pkColumnNames);
+        this.pkColumnNames = pkColumnNames == null ? Collections.emptyList() : Collections.unmodifiableList(pkColumnNames);
+        this.pkColumnChanges = pkColumnNames == null ? Collections.emptyList() : Collections.unmodifiableList(pkColumnChanges);
+        this.uniqueColumns = uniqueColumns == null ? Collections.emptyList() : Collections.unmodifiableList(uniqueColumns);
+        this.checkColumns = checkColumns == null ? Collections.emptyList() : Collections.unmodifiableList(checkColumns);
         this.fkColumns = fkColumns == null ? Collections.emptyList() : Collections.unmodifiableList(fkColumns);
         Map<String, Column> defsByLowercaseName = new LinkedHashMap<>();
         for (Column def : this.columnDefs) {
@@ -46,6 +55,7 @@ final class TableImpl implements Table {
         this.columnsByLowercaseName = Collections.unmodifiableMap(defsByLowercaseName);
         this.defaultCharsetName = defaultCharsetName;
         this.comment = comment;
+        this.constraintChanges = constraintChanges;
     }
 
     @Override
@@ -59,8 +69,28 @@ final class TableImpl implements Table {
     }
 
     @Override
+    public List<Map<String, String>> primaryKeyColumnChanges() {
+        return pkColumnChanges;
+    }
+
+    @Override
+    public List<Map<String, String>> constraintChanges() {
+        return constraintChanges;
+    }
+
+    @Override
     public List<Map<String, String>> foreignKeyColumns() {
         return fkColumns;
+    }
+
+    @Override
+    public List<Map<String, String>> uniqueColumns() {
+        return uniqueColumns;
+    }
+
+    @Override
+    public List<Map<String, String>> checkColumns() {
+        return checkColumns;
     }
 
     @Override
@@ -134,10 +164,15 @@ final class TableImpl implements Table {
     @Override
     public TableEditor edit() {
         return new TableEditorImpl().tableId(id)
-            .setColumns(columnDefs)
-            .setPrimaryKeyNames(pkColumnNames)
-            .setForeignKeys(fkColumns)
-            .setDefaultCharsetName(defaultCharsetName)
-            .setComment(comment);
+                .setColumns(columnDefs)
+                .setPrimaryKeyNames(pkColumnNames)
+                // .setUniqueValues()
+                .setForeignKeys(fkColumns)
+                .setPrimaryKeyChanges(pkColumnChanges)
+                .setConstraintChanges(constraintChanges)
+                .setUniqueColumns(uniqueColumns)
+                .setCheckColumns(checkColumns)
+                .setDefaultCharsetName(defaultCharsetName)
+                .setComment(comment);
     }
 }

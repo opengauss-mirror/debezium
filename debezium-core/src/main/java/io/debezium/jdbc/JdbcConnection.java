@@ -70,7 +70,7 @@ import io.debezium.util.Strings;
  * @author Randall Hauch
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
- * Modified by an in 2020.5.30 for foreign key feature
+ * Modified by an in 2020.7.2 for constraint feature
  */
 @NotThreadSafe
 public class JdbcConnection implements AutoCloseable {
@@ -87,8 +87,12 @@ public class JdbcConnection implements AutoCloseable {
     public static final String FKCOLUMN_NAME = "fkColumnName";
     public static final String FK_NAME = "fkName";
 
-    private final Map<String, PreparedStatement> statementCache =
-        new BoundedConcurrentHashMap<>(STATEMENT_CACHE_CAPACITY, 16, Eviction.LIRS,
+    public static final String INDEX_NAME = "indexName";
+    public static final String COLUMN_NAME = "columnName";
+
+    public static final String CONDITION = "condition";
+
+    private final Map<String, PreparedStatement> statementCache = new BoundedConcurrentHashMap<>(STATEMENT_CACHE_CAPACITY, 16, Eviction.LIRS,
             new EvictionListener<String, PreparedStatement>() {
 
                 @Override
@@ -1225,11 +1229,18 @@ public class JdbcConnection implements AutoCloseable {
             // First get the foreign key information, which must be done for *each* table ...
             List<Map<String, String>> fkColumns = readForeignColumns(metadata, tableEntry.getKey());
 
+            // First get the unique index information, which must be done for *each* table ...
+            List<Map<String, String>> uniqueColumns = readUniqueColumns(metadata, tableEntry.getKey(), pkColumnNames);
+
+            // First get the check information, which must be done for *each* table ...
+            List<Map<String, String>> checkColumns = readCheckColumns(metadata, tableEntry.getKey());
+
             // Then define the table ...
             List<Column> columns = tableEntry.getValue();
             Collections.sort(columns);
             String defaultCharsetName = null; // JDBC does not expose character sets
-            tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, fkColumns, defaultCharsetName);
+            tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, Collections.emptyList(),
+                    fkColumns, uniqueColumns, checkColumns, defaultCharsetName);
         }
 
         if (removeTablesNotFoundInJdbc) {
@@ -1358,6 +1369,47 @@ public class JdbcConnection implements AutoCloseable {
         return fkColumns;
     }
 
+    public List<Map<String, String>> readCheck(DatabaseMetaData metadata, TableId id) throws SQLException {
+        final List<Map<String, String>> checkColumns = new ArrayList<>();
+        final String sql = "SELECT CONSTRAINT_NAME,SEARCH_CONDITION from ALL_CONSTRAINTS " +
+                "WHERE TABLE_NAME = ? AND OWNER = ? AND CONSTRAINT_TYPE = 'C' and GENERATED = 'USER NAME' ";
+        PreparedStatement prepareStatement = connection().prepareStatement(sql);
+        prepareStatement.setString(1, id.table().toString());
+        prepareStatement.setString(2, id.schema().toString());
+        try (ResultSet rs = prepareStatement.executeQuery()) {
+            while (rs.next()) {
+                final Map<String, String> checkColumn = new HashMap<>();
+
+                checkColumn.put(INDEX_NAME, rs.getString(1));
+                checkColumn.put(CONDITION, rs.getString(2));
+
+                checkColumns.add(checkColumn);
+            }
+        }
+        return checkColumns;
+    }
+
+    public List<Map<String, String>> readUniqueIndex(DatabaseMetaData metadata, TableId id, List<String> pkColumnNames) throws SQLException {
+        final List<Map<String, String>> uniqueColumns = new ArrayList<>();
+        try (ResultSet rs = metadata.getIndexInfo(id.catalog(), id.schema(), id.table(), true, false)) {
+            while (rs.next()) {
+                final Map<String, String> uniqueColumn = new HashMap<>();
+                final String indexName = rs.getString(6);
+                final String columnName = rs.getString(9);
+
+                if (indexName == null || pkColumnNames.contains(columnName)) {
+                    continue;
+                }
+
+                uniqueColumn.put(INDEX_NAME, indexName);
+                uniqueColumn.put(COLUMN_NAME, columnName);
+
+                uniqueColumns.add(uniqueColumn);
+            }
+        }
+        return uniqueColumns;
+    }
+
     public List<String> readTableUniqueIndices(DatabaseMetaData metadata, TableId id) throws SQLException {
         final List<String> uniqueIndexColumnNames = new ArrayList<>();
         try (ResultSet rs = metadata.getIndexInfo(id.catalog(), id.schema(), id.table(), true, true)) {
@@ -1394,6 +1446,14 @@ public class JdbcConnection implements AutoCloseable {
 
     protected List<Map<String, String>> readForeignColumns(DatabaseMetaData metadata, TableId id) throws SQLException {
         return readForeignKeys(metadata, id);
+    }
+
+    protected List<Map<String, String>> readUniqueColumns(DatabaseMetaData metadata, TableId id, List<String> pkColumnNames) throws SQLException {
+        return readUniqueIndex(metadata, id, pkColumnNames);
+    }
+
+    protected List<Map<String, String>> readCheckColumns(DatabaseMetaData metadata, TableId id) throws SQLException {
+        return readCheck(metadata, id);
     }
 
     /**
