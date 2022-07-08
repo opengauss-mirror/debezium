@@ -13,7 +13,7 @@ import io.debezium.annotation.Immutable;
 
 /**
  * An immutable definition of a column.
- *
+ * Modified by an in 2020.7.2 for constraint feature
  * @author Randall Hauch
  * @see Table
  */
@@ -154,6 +154,18 @@ public interface Column extends Comparable<Column> {
      * @return the column comment; may be null if not set
      */
     String comment();
+
+    /**
+    * get the modify of the column editor keys
+    * @return this editor so callers can chain methods together
+    */
+    List<String> modifyKeys();
+
+    /**
+    * clear the modify of the column editor keys
+    * @return this editor so callers can chain methods together
+    */
+    void clearModifyKeys();
 
     @Override
     default int compareTo(Column that) {

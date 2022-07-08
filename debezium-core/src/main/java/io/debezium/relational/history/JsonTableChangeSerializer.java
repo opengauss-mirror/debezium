@@ -2,7 +2,6 @@
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
- * Modified by an in 2020.5.30 for foreign key feature
  */
 package io.debezium.relational.history;
 
@@ -12,6 +11,7 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.debezium.DebeziumException;
@@ -32,6 +32,7 @@ import io.debezium.relational.history.TableChanges.TableChangeType;
  *
  * @author Jiri Pechanec
  *
+ * Modified by an in 2020.7.2 for constraint feature
  */
 public class JsonTableChangeSerializer implements TableChanges.TableChangesSerializer<Array> {
 
@@ -64,8 +65,9 @@ public class JsonTableChangeSerializer implements TableChanges.TableChangesSeria
         if (table.foreignKeyColumns() != null && table.foreignKeyColumns().size() > 0) {
             try {
                 document.set("foreignKeyColumns", new ObjectMapper().writeValueAsString(table.foreignKeyColumns()));
-            } catch (JsonProcessingException e) {
-                throw new DebeziumException("Document failed to set foreign key, JSON conversion exception.", e);
+            }
+            catch (JsonProcessingException e) {
+            	throw new DebeziumException("Document failed to set foreign key, JSON conversion exception.", e);
             }
         }
 
@@ -111,6 +113,10 @@ public class JsonTableChangeSerializer implements TableChanges.TableChangesSeria
         Optional.ofNullable(column.enumValues())
                 .map(List::toArray)
                 .ifPresent(enums -> document.setArray("enumValues", enums));
+
+        Optional.ofNullable(column.modifyKeys())
+                .map(List::toArray)
+                .ifPresent(modify -> document.setArray("modifyKeys", modify));
 
         return document;
     }
@@ -192,6 +198,14 @@ public class JsonTableChangeSerializer implements TableChanges.TableChangesSeria
                         columnEditor.enumValues(enumValueList);
                     }
 
+                    Array modifyKeys = v.getArray("modifyKeys");
+                    if (modifyKeys != null && !modifyKeys.isEmpty()) {
+                        List<String> modifyKeyList = modifyKeys.streamValues()
+                                .map(Value::asString)
+                                .collect(Collectors.toList());
+                        columnEditor.enumValues(modifyKeyList);
+                    }
+
                     columnEditor.position(v.getInteger("position"))
                             .optional(v.getBoolean("optional"))
                             .autoIncremented(v.getBoolean("autoIncremented"))
@@ -210,8 +224,12 @@ public class JsonTableChangeSerializer implements TableChanges.TableChangesSeria
         if (foreignKeyColumns != null && foreignKeyColumns.length() > 0) {
             try {
                 editor.setForeignKeys(new ObjectMapper().readValue(foreignKeyColumns, List.class));
-            } catch (JsonProcessingException e) {
-                throw new DebeziumException("Document failed to get foreign key, JSON readValue exception.", e);
+            }
+            catch (JsonMappingException e) {
+                throw new DebeziumException("Document failed to get foreign key, JsonMapping exception.", e);
+            }
+            catch (JsonProcessingException e) {
+                throw new DebeziumException("Document failed to get foreign key, JSON Processing exception.", e);
             }
         }
 

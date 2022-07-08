@@ -2,7 +2,6 @@
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
- * Modified by an in 2020.5.30 for foreign key feature
  */
 package io.debezium.relational;
 
@@ -11,6 +10,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Modified by an in 2020.7.2 for constraint feature
+ */
 final class NoOpTableEditorImpl implements TableEditor {
 
     private TableId id;
@@ -145,7 +147,9 @@ final class NoOpTableEditorImpl implements TableEditor {
             throw new IllegalStateException("Unable to create a table from an editor that has no table ID");
         }
         List<Column> columns = new ArrayList<>();
-        return new TableImpl(id, columns, primaryKeyColumnNames(), foreignKeyColumns(), defaultCharsetName, comment);
+        return new TableImpl(id, columns, primaryKeyColumnNames(), primaryKeyColumnChanges(), constraintChanges(), foreignKeyColumns(), uniqueColumns(), checkColumns(),
+                defaultCharsetName,
+                comment);
     }
 
     @Override
@@ -155,6 +159,51 @@ final class NoOpTableEditorImpl implements TableEditor {
 
     @Override
     public TableEditor setForeignKeys(List<Map<String, String>> fkColumns) {
+        return this;
+    }
+
+    @Override
+    public List<Map<String, String>> uniqueColumns() {
+        return Collections.emptyList();
+    }
+
+    @Override
+    public List<Map<String, String>> checkColumns() {
+        return Collections.emptyList();
+    }
+
+    @Override
+    public TableEditor setUniqueColumns(List<Map<String, String>> uniqueColumns) {
+        return this;
+    }
+
+    @Override
+    public TableEditor setCheckColumns(List<Map<String, String>> checkColumns) {
+        return this;
+    }
+
+    @Override
+    public List<Map<String, String>> primaryKeyColumnChanges() {
+        return Collections.emptyList();
+    }
+
+    @Override
+    public TableEditor setPrimaryKeyChanges(List<Map<String, String>> pkColumnChanges) {
+        return this;
+    }
+
+    @Override
+    public boolean chearConstraint() {
+        return false;
+    }
+
+    @Override
+    public List<Map<String, String>> constraintChanges() {
+        return Collections.emptyList();
+    }
+
+    @Override
+    public TableEditor setConstraintChanges(List<Map<String, String>> constraintChanges) {
         return this;
     }
 }

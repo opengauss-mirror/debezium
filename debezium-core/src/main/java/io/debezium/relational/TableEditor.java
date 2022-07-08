@@ -2,7 +2,6 @@
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
- * Modified by an in 2020.5.30 for foreign key feature
  */
 package io.debezium.relational;
 
@@ -16,6 +15,8 @@ import io.debezium.annotation.NotThreadSafe;
  * An editor for {@link Table} instances, normally obtained from a {@link Tables} instance.
  *
  * @author Randall Hauch
+ *
+ * Modified by an in 2020.7.2 for constraint feature
  */
 @NotThreadSafe
 public interface TableEditor {
@@ -84,12 +85,44 @@ public interface TableEditor {
     List<String> primaryKeyColumnNames();
 
     /**
+     * The list of column changes that make up the primary key for this table. The resulting list should not be modified directly;
+     * instead, the set of primary key changes should be defined with {@link #setPrimaryKeyNames(String...)}.
+     *
+     * @return the list of column changes that make up the primary key; never null but possibly empty
+     */
+    List<Map<String, String>> primaryKeyColumnChanges();
+
+    /**
+     * The list of column changes that make up the constraint for this table. The resulting list should not be modified directly;
+     * instead, the set of primary key changes should be defined with {@link #setConstraintChanges(String...)}.
+     *
+     * @return the list of column changes that make up the constraint; never null but possibly empty
+     */
+    public List<Map<String, String>> constraintChanges();
+
+    /**
      * The list of column that make up the foreign key for this table. The resulting list should not be modified directly;
      * instead, the set of foreign key should be defined with {@link #setPrimaryKeyNames(String...)}.
      *
      * @return the list of column that make up the foreign key; never null but possibly empty
      */
     List<Map<String, String>> foreignKeyColumns();
+
+    /**
+      * The list of column that make up the unique index for this table. The resulting list should not be modified directly;
+     * instead, the set of unique index should be defined with {@link #setPrimaryKeyNames(String...)}.
+     *
+     * @return the list of column that make up the unique index; never null but possibly empty
+       */
+    List<Map<String, String>> uniqueColumns();
+
+    /**
+     * The list of column that make up the check for this table. The resulting list should not be modified directly;
+     * instead, the set of check should be defined with {@link #setPrimaryKeyNames(String...)}.
+     *
+     * @return the list of column that make up the check; never null but possibly empty
+       */
+    List<Map<String, String>> checkColumns();
 
     /**
      * Determine whether this table has a primary key.
@@ -206,6 +239,42 @@ public interface TableEditor {
     TableEditor setPrimaryKeyNames(List<String> pkColumnNames);
 
     /**
+     * Set the columns change that make up this table's constraint.
+     *
+     * @param pkColumnNames the names of this tables columns change that make up the constraint
+     * @return this editor so callers can chain methods together
+     * @throws IllegalArgumentException if a name does not correspond to an existing column
+     */
+    TableEditor setConstraintChanges(List<Map<String, String>> constraintChanges);
+
+    /**
+     * Set the columns change that make up this table's primary key.
+     *
+     * @param pkColumnNames the names of this tables columns change that make up the primary key
+     * @return this editor so callers can chain methods together
+     * @throws IllegalArgumentException if a name does not correspond to an existing column
+     */
+    TableEditor setPrimaryKeyChanges(List<Map<String, String>> pkColumnChanges);
+
+    /**
+     * Set the columns that make up this table's unique index.
+     *
+     * @param uniqueColumns the names of this tables columns that make up the unique index
+     * @return this editor so callers can chain methods together
+     * @throws IllegalArgumentException if a name does not correspond to an existing column
+     */
+    TableEditor setUniqueColumns(List<Map<String, String>> uniqueColumns);
+
+    /**
+     * Set the columns that make up this table's check.
+     *
+     * @param checkColumns the names of this tables columns that make up the check
+     * @return this editor so callers can chain methods together
+     * @throws IllegalArgumentException if a name does not correspond to an existing column
+     */
+    TableEditor setCheckColumns(List<Map<String, String>> checkColumns);
+
+    /**
      * Set the columns that make up this table's primary key.
      *
      * @param fkColumns the names of this tables columns that make up the foreign key
@@ -257,6 +326,13 @@ public interface TableEditor {
      * @return {@code true} if {@link #setUniqueValues()} was last called on this table, or {@code false} otherwise
      */
     boolean hasUniqueValues();
+
+    /**
+     * Determine whether this table's constraint contains all columns (via {@link #chearConstraint()}) such that all rows
+     * clear all constraint.
+     * @return {@code true} if {@link #chearConstraint()} was last called on this table, or {@code false} otherwise
+     */
+    boolean chearConstraint();
 
     /**
      * Obtain an immutable table definition representing the current state of this editor. This editor can be reused

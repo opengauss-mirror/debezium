@@ -2,7 +2,6 @@
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
- * Modified by an in 2020.5.30 for foreign key feature
  */
 package io.debezium.relational;
 
@@ -31,6 +30,8 @@ import io.debezium.util.FunctionalReadWriteLock;
  * Structural definitions for a set of tables in a JDBC database.
  *
  * @author Randall Hauch
+ *
+ * Modified by an in 2020.7.2 for constraint feature
  */
 @ThreadSafe
 public final class Tables {
@@ -175,25 +176,35 @@ public final class Tables {
     }
 
     public Table overwriteTable(TableId tableId, List<Column> columnDefs, List<String> primaryKeyColumnNames,
-        String defaultCharsetName) {
-        return overwriteTable(tableId, columnDefs, primaryKeyColumnNames, Collections.emptyList(), defaultCharsetName);
+                                List<Map<String, String>> constraintChanges, String defaultCharsetName) {
+        return overwriteTable(tableId, columnDefs, primaryKeyColumnNames, constraintChanges, Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(), defaultCharsetName);
     }
 
     /**
      * Add or update the definition for the identified table.
      *
-     * @param tableId               the identifier of the table
-     * @param columnDefs            the list of column definitions; may not be null or empty
+     * @param tableId the identifier of the table
+     * @param columnDefs the list of column definitions; may not be null or empty
      * @param primaryKeyColumnNames the list of the column names that make up the primary key; may be null or empty
-     * @param defaultCharsetName    the name of the character set that should be used by default
+     * @param defaultCharsetName the name of the character set that should be used by default
      * @return the previous table definition, or null if there was no prior table definition
      */
     public Table overwriteTable(TableId tableId, List<Column> columnDefs, List<String> primaryKeyColumnNames,
-        List<Map<String, String>> fkColumns, String defaultCharsetName) {
+                                List<Map<String, String>> constraintChanges,
+                                List<Map<String, String>> fkColumns, List<Map<String, String>> uniqueColumns,
+                                List<Map<String, String>> checkColumns, String defaultCharsetName) {
         return lock.write(() -> {
-            Table updated =
-                Table.editor().tableId(tableId).addColumns(columnDefs).setPrimaryKeyNames(primaryKeyColumnNames)
-                    .setForeignKeys(fkColumns).setDefaultCharsetName(defaultCharsetName).create();
+            Table updated = Table.editor()
+                    .tableId(tableId)
+                    .addColumns(columnDefs)
+                    .setPrimaryKeyNames(primaryKeyColumnNames)
+                    .setConstraintChanges(constraintChanges)
+                    .setForeignKeys(fkColumns)
+                    .setUniqueColumns(uniqueColumns)
+                    .setCheckColumns(checkColumns)
+                    .setDefaultCharsetName(defaultCharsetName)
+                    .create();
 
             Table existing = tablesByTableId.get(tableId);
             if (existing == null || !existing.equals(updated)) {
@@ -255,7 +266,9 @@ public final class Tables {
             }
             tablesByTableId.remove(existing.id());
             TableImpl updated = new TableImpl(newTableId, existing.columns(), existing.primaryKeyColumnNames(),
-                existing.foreignKeyColumns(), existing.defaultCharsetName(), existing.comment());
+                    existing.primaryKeyColumnChanges(), existing.constraintChanges(), existing.foreignKeyColumns(),
+                    existing.uniqueColumns(), existing.checkColumns(),
+                    existing.defaultCharsetName(), existing.comment());
             try {
                 return tablesByTableId.put(updated.id(), updated);
             }
@@ -280,7 +293,9 @@ public final class Tables {
             Table updated = changer.apply(existing);
             if (updated != existing) {
                 tablesByTableId.put(tableId, new TableImpl(tableId, updated.columns(), updated.primaryKeyColumnNames(),
-                    updated.foreignKeyColumns(), updated.defaultCharsetName(), updated.comment()));
+                        updated.primaryKeyColumnChanges(), updated.constraintChanges(), updated.foreignKeyColumns(),
+                        updated.uniqueColumns(), updated.checkColumns(),
+                        updated.defaultCharsetName(), updated.comment()));
             }
             changes.add(tableId);
             return existing;

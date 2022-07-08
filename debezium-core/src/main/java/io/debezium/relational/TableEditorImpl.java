@@ -2,7 +2,6 @@
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
- * Modified by an in 2020.5.30 for foreign key feature
  */
 package io.debezium.relational;
 
@@ -15,12 +14,19 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+/**
+ * Modified by an in 2020.7.2 for constraint feature
+ */
 class TableEditorImpl implements TableEditor {
 
     private TableId id;
     private LinkedHashMap<String, Column> sortedColumns = new LinkedHashMap<>();
     private final List<String> pkColumnNames = new ArrayList<>();
+    private final List<Map<String, String>> pkColumnChanges = new ArrayList<>();
+    private final List<Map<String, String>> constraintChanges = new ArrayList<>();
     private final List<Map<String, String>> fkColumns = new ArrayList<>();
+    private final List<Map<String, String>> uniqueColumns = new ArrayList<>();
+    private final List<Map<String, String>> checkColumns = new ArrayList<>();
     private boolean uniqueValues = false;
     private String defaultCharsetName;
     private String comment;
@@ -59,11 +65,32 @@ class TableEditorImpl implements TableEditor {
     }
 
     @Override
+    public List<Map<String, String>> constraintChanges() {
+        return constraintChanges;
+    }
+
+    @Override
+    public List<Map<String, String>> primaryKeyColumnChanges() {
+        return Collections.unmodifiableList(pkColumnChanges);
+    }
+
+    @Override
     public List<Map<String, String>> foreignKeyColumns() {
         return Collections.unmodifiableList(fkColumns);
     }
 
-    @Override public TableEditor addColumns(Column... columns) {
+    @Override
+    public List<Map<String, String>> uniqueColumns() {
+        return Collections.unmodifiableList(uniqueColumns);
+    }
+
+    @Override
+    public List<Map<String, String>> checkColumns() {
+        return Collections.unmodifiableList(checkColumns);
+    }
+
+    @Override
+    public TableEditor addColumns(Column... columns) {
         for (Column column : columns) {
             add(column);
         }
@@ -109,9 +136,8 @@ class TableEditorImpl implements TableEditor {
             this.pkColumnNames.removeIf(pkColumnName -> {
                 final boolean pkColumnDoesNotExists = !hasColumnWithName(pkColumnName);
                 if (pkColumnDoesNotExists) {
-                    throw new IllegalArgumentException("The column \"" + pkColumnName
-                        + "\" is referenced as PRIMARY KEY, but a matching column is not defined in table \""
-                        + tableId() + "\"!");
+                    throw new IllegalArgumentException(
+                            "The column \"" + pkColumnName + "\" is referenced as PRIMARY KEY, but a matching column is not defined in table \"" + tableId() + "\"!");
                 }
                 return pkColumnDoesNotExists;
             });
@@ -124,9 +150,33 @@ class TableEditorImpl implements TableEditor {
     }
 
     @Override
+    public TableEditor setPrimaryKeyChanges(List<Map<String, String>> pkColumnChanges) {
+        this.pkColumnChanges.clear();
+        this.pkColumnChanges.addAll(pkColumnChanges);
+        return this;
+    }
+
+    @Override
+    public TableEditor setConstraintChanges(List<Map<String, String>> constraintChanges) {
+        this.constraintChanges.addAll(constraintChanges);
+        return this;
+    }
+
+    @Override
     public TableEditor setForeignKeys(List<Map<String, String>> fkColumns) {
-        this.fkColumns.clear();
         this.fkColumns.addAll(fkColumns);
+        return this;
+    }
+
+    @Override
+    public TableEditor setUniqueColumns(List<Map<String, String>> uniqueColumns) {
+        this.uniqueColumns.addAll(uniqueColumns);
+        return this;
+    }
+
+    @Override
+    public TableEditor setCheckColumns(List<Map<String, String>> checkColumns) {
+        this.checkColumns.addAll(checkColumns);
         return this;
     }
 
@@ -269,6 +319,15 @@ class TableEditorImpl implements TableEditor {
     }
 
     @Override
+    public boolean chearConstraint() {
+        this.pkColumnChanges.clear();
+        this.checkColumns.clear();
+        this.uniqueColumns.clear();
+        this.fkColumns.clear();
+        return Boolean.TRUE;
+    }
+
+    @Override
     public Table create() {
         if (id == null) {
             throw new IllegalStateException("Unable to create a table from an editor that has no table ID");
@@ -279,6 +338,7 @@ class TableEditorImpl implements TableEditor {
             columns.add(column);
         });
         updatePrimaryKeys();
-        return new TableImpl(id, columns, primaryKeyColumnNames(), foreignKeyColumns(), defaultCharsetName, comment);
+        return new TableImpl(id, columns, primaryKeyColumnNames(), primaryKeyColumnChanges(), constraintChanges(), foreignKeyColumns(),
+                uniqueColumns, checkColumns, defaultCharsetName, comment);
     }
 }

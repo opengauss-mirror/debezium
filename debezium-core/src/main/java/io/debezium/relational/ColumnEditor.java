@@ -15,6 +15,8 @@ import io.debezium.annotation.NotThreadSafe;
  * An editor for {@link Column} instances.
  *
  * @author Randall Hauch
+ *
+ * Modified by an in 2020.7.2 for constraint feature
  */
 @NotThreadSafe
 public interface ColumnEditor {
@@ -287,4 +289,17 @@ public interface ColumnEditor {
      * @return the immutable column definition; never null
      */
     Column create();
+
+    /**
+     * Set the modify of the column editor keys
+     * @param  column Edit keys
+     * @return this editor so callers can chain methods together
+     */
+    ColumnEditor modifyKeys(List<String> modifyKeys);
+
+    /**
+    * get the modify of the column editor keys
+    * @return this editor so callers can chain methods together
+    */
+    List<String> modifyKeys();
 }

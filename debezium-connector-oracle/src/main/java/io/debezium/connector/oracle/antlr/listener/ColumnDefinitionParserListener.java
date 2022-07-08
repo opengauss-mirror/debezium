@@ -10,14 +10,19 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.antlr.v4.runtime.tree.ParseTreeListener;
 
 import io.debezium.antlr.DataTypeResolver;
 import io.debezium.connector.oracle.antlr.OracleDdlParser;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser;
+import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Check_constraintContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Column_nameContext;
+import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Constraint_nameContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Foreign_key_clauseContext;
+import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Inline_constraintContext;
+import io.debezium.ddl.parser.oracle.generated.PlSqlParser.References_clauseContext;
 import io.debezium.relational.Column;
 import io.debezium.relational.ColumnEditor;
 import io.debezium.relational.TableEditor;
@@ -30,7 +35,7 @@ import oracle.jdbc.OracleTypes;
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
- * Modified by an in 2020.5.30 for foreign key feature
+ * Modified by an in 2020.7.2 for constraint feature
  */
 public class ColumnDefinitionParserListener extends BaseParserListener {
 
@@ -39,14 +44,6 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
     private final TableEditor tableEditor;
     private final List<ParseTreeListener> listeners;
     private ColumnEditor columnEditor;
-
-    public static final String PKTABLE_SCHEM = "pktableSchem";
-    public static final String PKTABLE_NAME = "pktableName";
-    public static final String PKCOLUMN_NAME = "pkColumnName";
-    public static final String FKCOLUMN_NAME = "fkColumnName";
-    public static final String FK_NAME = "fkName";
-
-    public static final String DOT = "\\.";
 
     ColumnDefinitionParserListener(final TableEditor tableEditor, final ColumnEditor columnEditor, OracleDdlParser parser,
                                    List<ParseTreeListener> listeners) {
@@ -71,6 +68,16 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
         if (ctx.DEFAULT() != null) {
             columnEditor.defaultValueExpression(ctx.column_default_value().getText());
         }
+
+        List<Inline_constraintContext> inline_constraint = ctx.inline_constraint();
+        if (inline_constraint != null && inline_constraint.size() > 0) {
+
+            String indexName = ctx.type_name() != null ? ctx.type_name().getText() : "CHECK_" + ctx.column_name().getText().replace("_", "").toUpperCase();
+
+            String columnName = ctx.column_name().getText();
+
+            inline_constraint.forEach(inlineConstraint -> enterInline_constraint(inlineConstraint, indexName, columnName));
+        }
         super.enterColumn_definition(ctx);
     }
 
@@ -86,13 +93,156 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
 
     @Override
     public void enterOut_of_line_constraint(PlSqlParser.Out_of_line_constraintContext ctx) {
+        // unique index set
+        if (ctx.UNIQUE() != null) {
+
+            List<Map<String, String>> uniqueColumns = new ArrayList<Map<String, String>>();
+
+            final Map<String, String> uniqueColumn = new HashMap<>();
+            uniqueColumn.put(INDEX_NAME, ctx.constraint_name().getText());
+            ctx.column_name().forEach(columnName -> uniqueColumn.put(COLUMN_NAME, getAttribute(columnName.getText())));
+
+            uniqueColumns.add(uniqueColumn);
+
+            tableEditor.setUniqueColumns(uniqueColumns);
+        }
+
+        if (ctx.PRIMARY() != null) {
+            List<Map<String, String>> constraintChanges = new ArrayList<Map<String, String>>();
+            List<Map<String, String>> pkColumnChanges = new ArrayList<Map<String, String>>();
+            ctx.column_name().forEach(columnName -> {
+                final Map<String, String> pkColumn = new HashMap<>();
+                pkColumn.put(COLUMN_NAME, getAttribute(columnName.getText()));
+                pkColumn.put(PRIMARY_KEY_ACTION, PRIMARY_KEY_ADD);
+                Constraint_nameContext constraint_name = ctx.constraint_name();
+                if (constraint_name != null) {
+                    pkColumn.put(CONSTRAINT_NAME, constraint_name.getText());
+                    final Map<String, String> constraintColumn = new HashMap<>();
+                    constraintColumn.put(CONSTRAINT_NAME, constraint_name.getText());
+                    constraintColumn.put(TYPE_NAME, ctx.PRIMARY().getText());
+                    constraintChanges.add(constraintColumn);
+                }
+                pkColumnChanges.add(pkColumn);
+            });
+            tableEditor.setConstraintChanges(constraintChanges);
+            tableEditor.setPrimaryKeyChanges(pkColumnChanges);
+        }
+
+        // foreign_key set
         Foreign_key_clauseContext foreign_key_clause = ctx.foreign_key_clause();
 
         if (foreign_key_clause != null) {
-            enterForeign_key_clause(foreign_key_clause, ctx.constraint_name().getText());
+            Constraint_nameContext constraint_name = ctx.constraint_name();
+            enterForeign_key_clause(foreign_key_clause, constraint_name == null ? null : constraint_name.getText());
         }
 
         super.enterOut_of_line_constraint(ctx);
+    }
+
+    private void enterInline_constraint(PlSqlParser.Inline_constraintContext ctx, String indexName, String columnName) {
+
+        Check_constraintContext check_constraint = ctx.check_constraint();
+        References_clauseContext references_clause = ctx.references_clause();
+
+        if (ctx.check_constraint() != null) {
+            List<Map<String, String>> checkColumns = new ArrayList<Map<String, String>>();
+
+            final Map<String, String> checkColumn = new HashMap<>();
+            checkColumn.put(INDEX_NAME, indexName);
+
+            String condition = enterCheck_constraint_condition(check_constraint);
+            checkColumn.put(CONDITION, condition);
+
+            checkColumns.add(checkColumn);
+
+            tableEditor.setCheckColumns(checkColumns);
+
+        }
+
+        if (references_clause != null) {
+
+            enterInline_ref_constraint(references_clause, columnName);
+
+        }
+
+        if (!StringUtil.isNullOrEmpty(ctx.getText()) && ctx.getText().equals(UNIQUE_NAME)) {
+            List<Map<String, String>> uniqueColumns = new ArrayList<>();
+            uniqueColumns.addAll(tableEditor.uniqueColumns());
+
+            Map<String, String> uniqueColumn = new HashMap<>();
+            uniqueColumn.put(INDEX_NAME, UNIQUE_NAME + "_" + columnName + "_key");
+            uniqueColumn.put(COLUMN_NAME, columnName);
+            uniqueColumns.add(uniqueColumn);
+
+            tableEditor.setUniqueColumns(uniqueColumns);
+        }
+
+        if (ctx.PRIMARY() != null) {
+            List<Map<String, String>> pkColumnChanges = new ArrayList<Map<String, String>>();
+            List<Map<String, String>> constraintChanges = new ArrayList<Map<String, String>>();
+            final Map<String, String> pkColumn = new HashMap<>();
+            pkColumn.put(COLUMN_NAME, columnName);
+            pkColumn.put(PRIMARY_KEY_ACTION, PRIMARY_KEY_ADD);
+            Constraint_nameContext constraint_name = ctx.constraint_name();
+            if (constraint_name != null) {
+                pkColumn.put(CONSTRAINT_NAME, constraint_name.getText());
+                final Map<String, String> constraintColumn = new HashMap<>();
+                constraintColumn.put(CONSTRAINT_NAME, constraint_name.getText());
+                constraintColumn.put(TYPE_NAME, ctx.PRIMARY().getText());
+                constraintChanges.add(constraintColumn);
+            }
+            pkColumnChanges.add(pkColumn);
+            tableEditor.setConstraintChanges(constraintChanges);
+            tableEditor.setPrimaryKeyChanges(pkColumnChanges);
+        }
+
+        super.enterInline_constraint(ctx);
+    }
+
+    private String enterCheck_constraint_condition(PlSqlParser.Check_constraintContext ctx) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(Logical_expression_parse(ctx.condition().expression().logical_expression()));
+
+        return sb.toString();
+    }
+
+    public void enterInline_ref_constraint(PlSqlParser.References_clauseContext ctx, String columnName) {
+
+        List<Map<String, String>> fkColumns = new ArrayList<Map<String, String>>();
+
+        final Map<String, String> pkColumn = new HashMap<>();
+
+        List<Column_nameContext> references = ctx.paren_column_list()
+                .column_list().column_name();
+
+        String[] tableId = ctx.tableview_name().getText().split(DOT);
+
+        String schema = tableEditor.tableId().schema();
+
+        pkColumn.put(PKTABLE_SCHEM, getAttribute(tableId.length > 1 ? tableId[0] : schema));
+        pkColumn.put(PKTABLE_NAME, getAttribute(tableId.length > 1 ? tableId[1] : tableId[0]));
+
+        for (int i = 0; i < references.size(); i++) {
+            pkColumn.put(PKCOLUMN_NAME, getAttribute(references.get(i).getText()));
+            pkColumn.put(FKCOLUMN_NAME, getAttribute(columnName));
+            fkColumns.add(pkColumn);
+        }
+
+        pkColumn.put(FK_NAME, buildInlineFkName(pkColumn.get(PKTABLE_SCHEM),
+                pkColumn.get(PKTABLE_NAME), columnName, pkColumn.get(PKCOLUMN_NAME)));
+
+        tableEditor.setForeignKeys(fkColumns);
+    }
+
+    private String buildInlineFkName(String pkScheme, String pkTableName, String pkColumnName, String fkColumnName) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("SYS_FK_");
+        sb.append(pkScheme == null ? StringUtil.EMPTY_STRING : pkScheme.replaceAll("#", "_"));
+        sb.append("_").append(pkTableName);
+        sb.append("_").append(pkColumnName.replaceAll(String.valueOf(StringUtil.COMMA), "_"));
+        sb.append("_").append(fkColumnName.replaceAll(String.valueOf(StringUtil.COMMA), "_"));
+        return sb.toString();
+
     }
 
     public void enterForeign_key_clause(PlSqlParser.Foreign_key_clauseContext ctx, String fkName) {
@@ -105,28 +255,68 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
 
         List<Column_nameContext> references = ctx.references_clause().paren_column_list()
                 .column_list().column_name();
-        
-        String[] tableId = ctx.references_clause().tableview_name().getText().split(DOT);
-        
-        pkColumn.put(PKTABLE_SCHEM, getForeignAttribute(tableId.length > 1 ? tableId[0] : StringUtil.EMPTY_STRING));
-        pkColumn.put(PKTABLE_NAME, getForeignAttribute(tableId.length > 1 ? tableId[1] : tableId[0]));
-        pkColumn.put(FK_NAME, getForeignAttribute(fkName));
 
-        for (int i = 0; i < references.size(); i++) {
-            pkColumn.put(PKCOLUMN_NAME, getForeignAttribute(references.get(i).getText()));
-            pkColumn.put(FKCOLUMN_NAME, getForeignAttribute(parens.get(i).getText()));
-            fkColumns.add(pkColumn);
+        String[] tableId = ctx.references_clause().tableview_name().getText().split(DOT);
+
+        String schema = tableEditor.tableId().schema();
+
+        pkColumn.put(PKTABLE_SCHEM, getAttribute(tableId.length > 1 ? tableId[0] : schema));
+        pkColumn.put(PKTABLE_NAME, getAttribute(tableId.length > 1 ? tableId[1] : tableId[0]));
+
+        List<String> pkColumnList = references.stream().map(reference -> getAttribute(reference.getText())).collect(Collectors.toList());
+        List<String> fkColumnList = parens.stream().map(paren -> getAttribute(paren.getText())).collect(Collectors.toList());
+
+        pkColumn.put(PKCOLUMN_NAME, StringUtil.join(String.valueOf(StringUtil.COMMA), pkColumnList).toString());
+        pkColumn.put(FKCOLUMN_NAME, StringUtil.join(String.valueOf(StringUtil.COMMA), fkColumnList).toString());
+
+        pkColumn.put(FK_NAME, fkName != null ? fkName
+                : buildInlineFkName(pkColumn.get(PKTABLE_SCHEM), pkColumn.get(PKTABLE_NAME),
+                        pkColumn.get(FKCOLUMN_NAME), pkColumn.get(PKCOLUMN_NAME)));
+
+        if (ctx.on_delete_clause() != null) {
+            pkColumn.put(FK_DROP_IS_CASCADE, on_delete_clause(ctx.on_delete_clause()));
         }
+
+        fkColumns.add(pkColumn);
 
         tableEditor.setForeignKeys(fkColumns);
     }
 
+    private String on_delete_clause(PlSqlParser.On_delete_clauseContext ctx) {
+        StringBuilder sb = new StringBuilder();
+        if (ctx.ON() != null) {
+            sb.append(ctx.ON().getText()).append(SPACE);
+        }
+
+        if (ctx.DELETE() != null) {
+            sb.append(ctx.DELETE().getText()).append(SPACE);
+        }
+
+        if (ctx.CASCADE() != null) {
+            sb.append(ctx.CASCADE().getText()).append(SPACE);
+        }
+
+        if (ctx.SET() != null) {
+            sb.append(ctx.SET().getText()).append(SPACE);
+        }
+        if (ctx.NULL_() != null) {
+            sb.append(ctx.NULL_().getText()).append(SPACE);
+        }
+        return sb.toString();
+    }
+
     @Override
     public void enterModify_col_properties(PlSqlParser.Modify_col_propertiesContext ctx) {
-        resolveColumnDataType(ctx);
+        String resolveColumnDataType = resolveColumnDataType(ctx);
+        List<String> modifyKeys = new ArrayList<>();
         if (ctx.DEFAULT() != null) {
             columnEditor.defaultValueExpression(ctx.column_default_value().getText());
+            modifyKeys.add(DEFAULT_VALUE_KEY);
         }
+        if (resolveColumnDataType.equals(OPTIONAL_KEY)) {
+            modifyKeys.add(resolveColumnDataType);
+        }
+        columnEditor.modifyKeys(modifyKeys);
         super.enterModify_col_properties(ctx);
     }
 
@@ -147,19 +337,25 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
         }
     }
 
-    private void resolveColumnDataType(PlSqlParser.Modify_col_propertiesContext ctx) {
+    private String resolveColumnDataType(PlSqlParser.Modify_col_propertiesContext ctx) {
         columnEditor.name(getColumnName(ctx.column_name()));
 
-        resolveColumnDataType(ctx.datatype());
+        if (ctx.datatype() != null) {
+            resolveColumnDataType(ctx.datatype());
+        }
 
         boolean hasNullConstraint = ctx.inline_constraint().stream().anyMatch(c -> c.NULL_() != null);
         boolean hasNotNullConstraint = ctx.inline_constraint().stream().anyMatch(c -> c.NOT() != null);
         if (hasNotNullConstraint && columnEditor.isOptional()) {
             columnEditor.optional(false);
+            return OPTIONAL_KEY;
         }
         else if (hasNullConstraint && !columnEditor.isOptional()) {
             columnEditor.optional(true);
+            return OPTIONAL_KEY;
         }
+
+        return StringUtil.EMPTY_STRING;
     }
 
     private void resolveColumnDataType(PlSqlParser.DatatypeContext ctx) {

@@ -48,7 +48,8 @@ import oracle.jdbc.OracleTypes;
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
- * Modified by an in 2020.5.30 for foreign key feature
+ * 
+ * Modified by an in 2020.7.2 for constraint feature
  */
 public class OracleConnection extends JdbcConnection {
 
@@ -257,10 +258,16 @@ public class OracleConnection extends JdbcConnection {
             // First get the foreign key information, which must be done for *each* table ...
             List<Map<String, String>> fkColumns = readForeignKeys(metadata, tableEntry.getKey());
 
+            // First get the unique index information, which must be done for *each* table ...
+            List<Map<String, String>> uniqueColumns = readUniqueColumns(metadata, tableEntry.getKey(), pkColumnNames);
+
+            // First get the check information, which must be done for *each* table ...
+            List<Map<String, String>> checkColumns = readCheckColumns(metadata, tableEntry.getKey());
+
             // Then define the table ...
             List<Column> columns = tableEntry.getValue();
             Collections.sort(columns);
-            tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, fkColumns, null);
+            tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, Collections.EMPTY_LIST, fkColumns, uniqueColumns, checkColumns, null);
         }
 
         if (removeTablesNotFoundInJdbc) {
