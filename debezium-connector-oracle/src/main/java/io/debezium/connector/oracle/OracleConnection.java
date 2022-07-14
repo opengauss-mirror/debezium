@@ -5,6 +5,23 @@
  */
 package io.debezium.connector.oracle;
 
+import io.debezium.DebeziumException;
+import io.debezium.config.Configuration;
+import io.debezium.config.Field;
+import io.debezium.connector.oracle.OracleConnectorConfig.ConnectorAdapter;
+import io.debezium.jdbc.JdbcConnection;
+import io.debezium.relational.Column;
+import io.debezium.relational.ColumnEditor;
+import io.debezium.relational.TableId;
+import io.debezium.relational.Tables;
+import io.debezium.relational.Tables.ColumnNameFilter;
+import io.debezium.util.Clock;
+import io.debezium.util.Metronome;
+import io.debezium.util.Strings;
+import oracle.jdbc.OracleTypes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.sql.Clob;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -24,25 +41,6 @@ import java.util.Set;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import io.debezium.DebeziumException;
-import io.debezium.config.Configuration;
-import io.debezium.config.Field;
-import io.debezium.connector.oracle.OracleConnectorConfig.ConnectorAdapter;
-import io.debezium.jdbc.JdbcConnection;
-import io.debezium.relational.Column;
-import io.debezium.relational.ColumnEditor;
-import io.debezium.relational.TableId;
-import io.debezium.relational.Tables;
-import io.debezium.relational.Tables.ColumnNameFilter;
-import io.debezium.util.Clock;
-import io.debezium.util.Metronome;
-import io.debezium.util.Strings;
-
-import oracle.jdbc.OracleTypes;
 
 /**
  * Copyright Debezium Authors.
@@ -267,7 +265,15 @@ public class OracleConnection extends JdbcConnection {
             // Then define the table ...
             List<Column> columns = tableEntry.getValue();
             Collections.sort(columns);
-            tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, Collections.EMPTY_LIST, fkColumns, uniqueColumns, checkColumns, null);
+            tables.overwriteTable(tableEntry.getKey(),
+                    columns,
+                    pkColumnNames,
+                    Collections.emptyList(),
+                    fkColumns,
+                    uniqueColumns,
+                    checkColumns,
+                    readTableIndex(metadata, tableEntry.getKey()),
+                    null);
         }
 
         if (removeTablesNotFoundInJdbc) {
@@ -546,5 +552,19 @@ public class OracleConnection extends JdbcConnection {
             column.scale().filter(s -> s == ORACLE_UNSET_SCALE).ifPresent(s -> column.scale(null));
         }
         return column;
+    }
+
+    @Override
+    protected Set<String> readTableIndex(DatabaseMetaData metadata, TableId tableId) throws SQLException {
+        Set<String> indexSet = new HashSet<>();
+        try (ResultSet indexInfo = metadata.getIndexInfo(tableId.catalog(), tableId.schema(), tableId.table(), false, false)) {
+            while (indexInfo.next()) {
+                String indexName = indexInfo.getString("INDEX_NAME");
+                if (!Strings.isNullOrEmpty(indexName)) {
+                    indexSet.add(indexName);
+                }
+            }
+        }
+        return indexSet;
     }
 }

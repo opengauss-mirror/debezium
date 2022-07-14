@@ -5,24 +5,11 @@
  */
 package io.debezium.connector.oracle.logminer.processor;
 
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.function.Supplier;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.debezium.DebeziumException;
 import io.debezium.connector.oracle.OracleConnection;
 import io.debezium.connector.oracle.OracleConnectorConfig;
 import io.debezium.connector.oracle.OracleDatabaseSchema;
+import io.debezium.connector.oracle.OracleIndexChangeEventEmitter;
 import io.debezium.connector.oracle.OracleOffsetContext;
 import io.debezium.connector.oracle.OraclePartition;
 import io.debezium.connector.oracle.OracleSchemaChangeEventEmitter;
@@ -50,6 +37,19 @@ import io.debezium.pipeline.source.spi.ChangeEventSource.ChangeEventSourceContex
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
 import io.debezium.util.Clock;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * An abstract implementation of {@link LogMinerEventProcessor} that all processors should extend.
@@ -586,6 +586,30 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
                                 }
                             }));
         }
+        else if (isIndexChange(row)) {
+            LOGGER.info("PROCESS INDEX CHANGE EVENT");
+            // WHEN CREATE INDEX OR DROP INDEX row.getTableName() will be null, but row.getSegName() will not be null;
+            // Using OracleIndexChangeEventEmitter
+            OracleIndexChangeEventEmitter oracleIndexChangeEventEmitter = new OracleIndexChangeEventEmitter(
+                    partition,
+                    offsetContext,
+                    row.getCatalogName(),
+                    row.getTablespaceName(),
+                    row.getRedoSql(),
+                    getSchema(),
+                    row.getChangeTime(),
+                    metrics);
+            if (oracleIndexChangeEventEmitter.getTableId() != null) {
+                dispatcher.dispatchSchemaChangeEvent(oracleIndexChangeEventEmitter.getTableId(), oracleIndexChangeEventEmitter);
+            }
+            else {
+                LOGGER.info("NO TABLE_ID SKIP PROCESS INDEX CHANGE EVENT");
+            }
+        }
+    }
+
+    private boolean isIndexChange(LogMinerEventRow row) {
+        return row.getSegName() != null && row.getSegTypeName().equals("INDEX");
     }
 
     private void processTruncateEvent(LogMinerEventRow row) {

@@ -8,6 +8,7 @@ package io.debezium.relational;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -41,6 +42,10 @@ public interface Table {
      */
     List<String> primaryKeyColumnNames();
 
+    default List<String> primaryConstraintName() {
+        return null;
+    }
+
     /**
      * The list of column that make up the foreign key for this table.
      *
@@ -73,6 +78,20 @@ public interface Table {
      * @return the immutable list of column that make up the check; never null but possibly empty
      */
     List<Map<String, String>> checkColumns();
+
+    /**
+     * This map marked which column has change, include key in (add,drop,modify) value is list of column name
+     * @return
+     */
+    Map<String, List<String>> changeColumn();
+
+    /**
+     * set of index name on table
+     * @return
+     */
+    default Set<String> indexes() {
+        return null;
+    }
 
     /**
      * Get the columns that make up the primary key for this table.
@@ -187,4 +206,8 @@ public interface Table {
      * @return the editor; never null
      */
     TableEditor edit();
+
+    default Index indexChanges() {
+        return null;
+    }
 }

@@ -5,6 +5,7 @@
  */
 package io.debezium.relational.history;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -17,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.relational.Column;
+import io.debezium.relational.Index;
 import io.debezium.relational.Table;
 import io.debezium.relational.history.TableChanges.TableChange;
 import io.debezium.util.SchemaNameAdjuster;
@@ -37,6 +39,8 @@ public class ConnectTableChangeSerializer implements TableChanges.TableChangesSe
     public static final String TABLE_KEY = "table";
     public static final String DEFAULT_CHARSET_NAME_KEY = "defaultCharsetName";
     public static final String PRIMARY_KEY_COLUMN_NAMES_KEY = "primaryKeyColumnNames";
+
+    public static final String PRIMARY_CONSTRAINT_NAME_KEY = "primaryConstraintName";
     public static final String PRIMARY_KEY_COLUMN_CHENGES_KEY = "primaryKeyColumnChanges";
     public static final String FOREIGN_KEY_COLUMN_KEY = "foreignKeyColumns";
     public static final String UNIQUE_COLUMN_KEY = "uniqueColumns";
@@ -57,6 +61,23 @@ public class ConnectTableChangeSerializer implements TableChanges.TableChangesSe
     public static final String GENERATED_KEY = "generated";
     public static final String COMMENT_KEY = "comment";
     public static final String MODIFY_KEYS_KEY = "modifyKeys";
+    public static final String CHANGE_COLUMN = "changeColumns";
+    public static final String COLUMN_EXPR = "columnExpr";
+
+    public static final String DESC = "desc";
+    public static final String INCLUDE_COLUMN = "includeColumn";
+    public static final String INDEX_ID = "indexId";
+    public static final String INDEX_NAME = "indexName";
+    public static final String TABLE_ID = "tableId";
+
+    public static final String TABLE_NAME = "tableName";
+
+    public static final String SCHEMA_NAME = "schemaName";
+    public static final String INDEX_COLUMN_EXPR_KEY = "indexColumnExpr";
+    public static final String INDEX_CHANGES = "indexChanges";
+    public static final String INDEXES_KEY = "indexes";
+
+    public static final String INDEX_UNIQUE_KEY = "unique";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ConnectTableChangeSerializer.class);
     private static final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
@@ -79,11 +100,32 @@ public class ConnectTableChangeSerializer implements TableChanges.TableChangesSe
             .field(COMMENT_KEY, Schema.OPTIONAL_STRING_SCHEMA)
             .field(MODIFY_KEYS_KEY, SchemaBuilder.array(Schema.STRING_SCHEMA).optional().build())
             .build();
+    private static final Schema INDEX_COLUMN_EXPR = SchemaBuilder.struct()
+            .field(COLUMN_EXPR, Schema.OPTIONAL_STRING_SCHEMA)
+            .field(DESC, Schema.OPTIONAL_BOOLEAN_SCHEMA)
+            .field(INCLUDE_COLUMN,
+                    SchemaBuilder.array(Schema.OPTIONAL_STRING_SCHEMA).optional().build())
+            .build();
+
+    /**
+     * index schema builder
+     */
+    private static final Schema INDEX_SCHEMA = SchemaBuilder.struct()
+            .field(INDEX_ID, Schema.OPTIONAL_STRING_SCHEMA)
+            .field(INDEX_NAME, Schema.OPTIONAL_STRING_SCHEMA)
+            .field(TABLE_ID, Schema.OPTIONAL_STRING_SCHEMA)
+            .field(TABLE_NAME, Schema.OPTIONAL_STRING_SCHEMA)
+            .field(SCHEMA_NAME, Schema.OPTIONAL_STRING_SCHEMA)
+            .field(INDEX_UNIQUE_KEY, Schema.OPTIONAL_BOOLEAN_SCHEMA)
+            .field(INDEX_COLUMN_EXPR_KEY, SchemaBuilder.array(INDEX_COLUMN_EXPR).optional().build())
+            .optional()
+            .build();
 
     private static final Schema TABLE_SCHEMA = SchemaBuilder.struct()
             .name(schemaNameAdjuster.adjust("io.debezium.connector.schema.Table"))
             .field(DEFAULT_CHARSET_NAME_KEY, Schema.OPTIONAL_STRING_SCHEMA)
             .field(PRIMARY_KEY_COLUMN_NAMES_KEY, SchemaBuilder.array(Schema.STRING_SCHEMA).optional().build())
+            .field(PRIMARY_CONSTRAINT_NAME_KEY, SchemaBuilder.array(Schema.STRING_SCHEMA).optional().build())
             .field(PRIMARY_KEY_COLUMN_CHENGES_KEY, SchemaBuilder
                     .array(SchemaBuilder.map(Schema.OPTIONAL_STRING_SCHEMA, Schema.OPTIONAL_STRING_SCHEMA).optional().build())
                     .optional().build())
@@ -98,6 +140,9 @@ public class ConnectTableChangeSerializer implements TableChanges.TableChangesSe
                     .optional().build())
             .field(COLUMNS_KEY, SchemaBuilder.array(COLUMN_SCHEMA).build())
             .field(COMMENT_KEY, Schema.OPTIONAL_STRING_SCHEMA)
+            .field(CHANGE_COLUMN, SchemaBuilder.map(Schema.STRING_SCHEMA, SchemaBuilder.array(Schema.OPTIONAL_STRING_SCHEMA)).optional().build())
+            .field(INDEXES_KEY, SchemaBuilder.array(Schema.OPTIONAL_STRING_SCHEMA).optional().build())
+            .field(INDEX_CHANGES, INDEX_SCHEMA)
             .build();
 
     public static final Schema CHANGE_SCHEMA = SchemaBuilder.struct()
@@ -128,9 +173,23 @@ public class ConnectTableChangeSerializer implements TableChanges.TableChangesSe
 
         struct.put(DEFAULT_CHARSET_NAME_KEY, table.defaultCharsetName());
         struct.put(PRIMARY_KEY_COLUMN_NAMES_KEY, table.primaryKeyColumnNames());
+        struct.put(PRIMARY_CONSTRAINT_NAME_KEY, table.primaryConstraintName());
         struct.put(FOREIGN_KEY_COLUMN_KEY, table.foreignKeyColumns());
         struct.put(UNIQUE_COLUMN_KEY, table.uniqueColumns());
         struct.put(CHECK_COLUMN_KEY, table.checkColumns());
+        if (!table.changeColumn().isEmpty()) {
+            struct.put(CHANGE_COLUMN, table.changeColumn());
+        }
+        else {
+            LOGGER.info("change column is empty");
+        }
+        if (null != table.indexes()) {
+            struct.put(INDEXES_KEY, new ArrayList<>(table.indexes()));
+        }
+
+        if (null != table.indexChanges() && table.indexChanges().getIndexName() != null) {
+            struct.put(INDEX_CHANGES, toStruct(table.indexChanges()));
+        }
 
         List<Map<String, String>> primaryKeyColumnChanges = table.primaryKeyColumnChanges();
         if (primaryKeyColumnChanges != null && primaryKeyColumnChanges.size() > 0) {
@@ -144,6 +203,28 @@ public class ConnectTableChangeSerializer implements TableChanges.TableChangesSe
 
         struct.put(COLUMNS_KEY, columns);
         struct.put(COMMENT_KEY, table.comment());
+        return struct;
+    }
+
+    private Struct toStruct(Index index) {
+        final Struct struct = new Struct(INDEX_SCHEMA);
+        struct.put(INDEX_ID, index.getIndexId());
+        struct.put(INDEX_NAME, index.getIndexName());
+        struct.put(TABLE_ID, index.getTableId());
+        struct.put(SCHEMA_NAME, index.getSchemaName());
+        struct.put(TABLE_NAME, index.getTableName());
+        struct.put(INDEX_UNIQUE_KEY, index.getUnique());
+        if (index.getIndexColumnExpr() != null) {
+            struct.put(INDEX_COLUMN_EXPR_KEY, index.getIndexColumnExpr().stream().map(this::toStruct).collect(Collectors.toList()));
+        }
+        return struct;
+    }
+
+    private Struct toStruct(Index.IndexColumnExpr indexColumnExpr) {
+        final Struct struct = new Struct(INDEX_COLUMN_EXPR);
+        struct.put(COLUMN_EXPR, indexColumnExpr.getColumnExpr());
+        struct.put(DESC, indexColumnExpr.isDesc());
+        struct.put(INCLUDE_COLUMN, indexColumnExpr.getIncludeColumn());
         return struct;
     }
 

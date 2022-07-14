@@ -22,6 +22,7 @@ import io.debezium.connector.oracle.antlr.OracleDdlParser;
 import io.debezium.connector.oracle.util.TestHelper;
 import io.debezium.doc.FixFor;
 import io.debezium.relational.Column;
+import io.debezium.relational.Index;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
 import io.debezium.relational.Tables;
@@ -260,7 +261,9 @@ public class OracleDdlParserTest {
         changes.getEventsByDatabase((String dbName, List<DdlParserListener.Event> events) -> {
             events.forEach(event -> eventTypes.add(event.type()));
         });
-        assertThat(eventTypes).containsExactly(DdlParserListener.EventType.CREATE_TABLE, DdlParserListener.EventType.ALTER_TABLE);
+        assertThat(eventTypes).containsExactly(DdlParserListener.EventType.CREATE_TABLE,
+                DdlParserListener.EventType.CREATE_INDEX,
+                DdlParserListener.EventType.ALTER_TABLE);
 
         Table table = tables.forTable(new TableId(PDB_NAME, "IDENTITYDB", "CHANGE_NUMBERS"));
         List<String> columnNames = table.retrieveColumnNames();
@@ -398,9 +401,30 @@ public class OracleDdlParserTest {
         return eventTypes;
     }
 
-    private void testColumn(@NotNull Table table, @NotNull String name, boolean isOptional,
-                            Integer jdbcType, String typeName, Integer length, Integer scale,
-                            Boolean hasDefault, Object defaultValue) {
+    @Test
+    public void shouldParseIndex() {
+        parser.setCurrentDatabase(PDB_NAME);
+        parser.setCurrentSchema("SCOTT");
+        // create table before create index
+        Table table = Table.editor()
+                .tableId(new TableId(PDB_NAME, "SCOTT", "T_DBZ_TEST1"))
+                .addColumn(Column.editor().name("ID").create())
+                .addColumn(Column.editor().name("T_VARCHAR2").type("VARCHAR2").length(10).create())
+                .create();
+        tables.overwriteTable(table);
+        String sql = "create index IDX_TAB_1 on SCOTT.T_DBZ_TEST1 (COL_1 asc,COL_2 desc);";
+        DdlChanges changes = parser.getDdlChanges();
+        changes.reset();
+        parser.parse(sql, tables);
+        List<DdlParserListener.EventType> eventTypes = getEventTypesFromChanges(changes);
+        assertThat(eventTypes).containsExactly(DdlParserListener.EventType.CREATE_INDEX);
+        table = tables.forTable(new TableId(PDB_NAME, "SCOTT", "T_DBZ_TEST1"));
+        Index index = table.indexChanges();
+        assertThat(index.getIndexColumnExpr().size()).isEqualTo(2);
+    }
+
+    private void testColumn(@NotNull Table table, @NotNull String name, boolean isOptional, Integer jdbcType, String typeName, Integer length,
+                            Integer scale, Boolean hasDefault, Object defaultValue) {
         Column column = table.columnWithName(name);
         assertThat(column.isOptional()).isEqualTo(isOptional);
         assertThat(column.jdbcType()).isEqualTo(jdbcType);
@@ -416,14 +440,15 @@ public class OracleDdlParserTest {
         }
     }
 
-
     @Test
     @FixFor("DBZ-5390")
     public void shouldParseCheckConstraint() throws Exception {
         parser.setCurrentDatabase(PDB_NAME);
         parser.setCurrentSchema("SCOTT");
 
-        String SQL = "CREATE TABLE \"SCOTT\".\"ASTERISK_TEST\" ( \"PID\" int, \"DEPT\" varchar(50), constraint \"CK_DEPT\" check(\"DEPT\" IN('IT','sales','manager')))";
+        String SQL = "CREATE TABLE SCOTT.ASTERISK_TEST\n" + "(\n" + "    COL_1 NUMBER,\n" + "    COL_2 NUMBER NOT NULL,\n" +
+                "    CONSTRAINT TEST_1_UNIQUE\n" + "        UNIQUE (COL_1, COL_2),\n" + "    CONSTRAINT CK_NAME\n" +
+                "        CHECK (COL_2 IN (7, 8, 9))\n" + ");";
         parser.parse(SQL, tables);
 
         DdlChanges changes = parser.getDdlChanges();
@@ -432,6 +457,67 @@ public class OracleDdlParserTest {
 
         Table table = tables.forTable(new TableId(PDB_NAME, "SCOTT", "ASTERISK_TEST"));
         assertThat(table.columns().size()).isEqualTo(2);
+    }
+
+    @Test
+    public void shouldParseInLineConstraintAndOutLineConstraint() throws Exception {
+        parser.setCurrentDatabase(PDB_NAME);
+        parser.setCurrentSchema("SCOTT");
+
+        String SQL = "create table ASTERISK_TEST\n" + "(\n" + "    col_1 varchar2(10) unique,\n" + "    col_2 varchar2(10),\n" + "    col_3 varchar2(20),\n" +
+                "    constraint uk_col_2 unique (col_2, col_3)\n" + ");";
+        parser.parse(SQL, tables);
+
+        DdlChanges changes = parser.getDdlChanges();
+        List<DdlParserListener.EventType> eventTypes = getEventTypesFromChanges(changes);
+        assertThat(eventTypes).containsExactly(DdlParserListener.EventType.CREATE_TABLE);
+
+        Table table = tables.forTable(new TableId(PDB_NAME, "SCOTT", "ASTERISK_TEST"));
+        assertThat(table.columns().size()).isEqualTo(3);
+        assertThat(table.uniqueColumns().size()).isEqualTo(3);
+    }
+
+    @Test
+    public void shouldParseCheckConstraintAndAddColumnInOneDDL() throws Exception {
+        parser.setCurrentDatabase(PDB_NAME);
+        parser.setCurrentSchema("SCOTT");
+        Table table = Table.editor()
+                .tableId(new TableId(PDB_NAME, "SCOTT", "T_DBZ_TEST1"))
+                .addColumns(Column.editor().name("COL_0").type("VARCHAR2").length(32).create())
+                .addColumn(Column.editor().name("COL_1").create())
+                .addColumn(Column.editor().name("COL_3").type("NUMBER").length(1).create())
+                .addColumn(Column.editor().name("COL_2").type("VARCHAR2").length(10).create())
+                .create();
+        tables.overwriteTable(table);
+        String sql = "alter table SCOTT.T_DBZ_TEST1\n" + "    modify (col_3 varchar2(32) default 'aaa' not null constraint uk_col_3 unique)\n" +
+                "    modify (col_0 varchar2(32) default 'abc' null)\n" + "    add col_5 varchar(64)\n" +
+                "    add col_6 number(5) default 1 not null\n" + "    add constraint tab_1_pk primary key (col_6)\n" +
+                "    add constraint tab_1_uk_1 unique (col_2,col_1)\n" + "    add constraint TAB_1_CK\n" + "        check (col_6 in (10, 20, 30));";
+        DdlChanges changes = parser.getDdlChanges();
+        changes.reset();
+        parser.parse(sql, tables);
+        List<DdlParserListener.EventType> eventTypes = getEventTypesFromChanges(changes);
+        assertThat(eventTypes).containsExactly(DdlParserListener.EventType.ALTER_TABLE);
+        table = tables.forTable(new TableId(PDB_NAME, "SCOTT", "T_DBZ_TEST1"));
+        assertThat(table.columnWithName("COL_6").length()).isEqualTo(5);
+    }
+
+    @Test
+    public void shouldParseDropConstraintByName() throws Exception {
+        parser.setCurrentDatabase(PDB_NAME);
+        parser.setCurrentSchema("SCOTT");
+        Table table = Table.editor().tableId(new TableId(PDB_NAME, "SCOTT", "TAB_1"))
+                .addColumn(Column.editor().name("COL_1").type("VARCHAR2").length(32).create())
+                .create();
+        tables.overwriteTable(table);
+        String sql = "ALTER TABLE SCOTT.TAB_1 DROP CONSTRAINT UK_COL_2;";
+        DdlChanges changes = parser.getDdlChanges();
+        changes.reset();
+        parser.parse(sql, tables);
+        List<DdlParserListener.EventType> eventTypes = getEventTypesFromChanges(changes);
+        assertThat(eventTypes).containsExactly(DdlParserListener.EventType.ALTER_TABLE);
+        table = tables.forTable(new TableId(PDB_NAME, "SCOTT", "TAB_1"));
+        assertThat(table.columnWithName("COL_1").length()).isEqualTo(32);
     }
 
 }

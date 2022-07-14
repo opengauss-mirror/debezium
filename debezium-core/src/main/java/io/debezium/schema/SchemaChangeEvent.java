@@ -63,6 +63,12 @@ public class SchemaChangeEvent {
             case DROP:
                 tables.forEach(tableChanges::drop);
                 break;
+            case CREATE_INDEX:
+                tables.forEach(tableChanges::createIndex);
+                break;
+            case DROP_INDEX:
+                tables.forEach(tableChanges::dropIndex);
+                break;
             case DATABASE:
                 break;
         }
@@ -120,6 +126,8 @@ public class SchemaChangeEvent {
      * DATABASE - an event common to the database, like CREATE/DROP DATABASE or SET...
      */
     public static enum SchemaChangeEventType {
+        CREATE_INDEX,
+        DROP_INDEX,
         CREATE,
         ALTER,
         DROP,

@@ -29,9 +29,10 @@ public class OracleDdlParserListener extends PlSqlParserBaseListener implements 
     private final List<ParseTreeListener> listeners = new CopyOnWriteArrayList<>();
     private final Collection<ParsingException> errors = new ArrayList<>();
 
-    public OracleDdlParserListener(final String catalogName, final String schemaName,
-                                   final OracleDdlParser parser) {
+    public OracleDdlParserListener(final String catalogName, final String schemaName, final OracleDdlParser parser) {
         listeners.add(new CreateTableParserListener(catalogName, schemaName, parser, listeners));
+        listeners.add(new CreateIndexParserListener(catalogName, schemaName, parser));
+        listeners.add(new DropIndexParserListener(catalogName, schemaName, parser));
         listeners.add(new AlterTableParserListener(catalogName, schemaName, parser, listeners));
         listeners.add(new DropTableParserListener(catalogName, schemaName, parser));
         listeners.add(new CommentParserListener(catalogName, schemaName, parser));

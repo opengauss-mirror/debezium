@@ -6,10 +6,14 @@
 package io.debezium.relational;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
+
+import com.google.common.collect.Maps;
 
 import io.debezium.annotation.PackagePrivate;
 import io.debezium.util.Strings;
@@ -22,6 +26,7 @@ final class TableImpl implements Table {
     private final TableId id;
     private final List<Column> columnDefs;
     private final List<String> pkColumnNames;
+    private final List<String> primaryConstraintName;
     private final List<Map<String, String>> pkColumnChanges;
     private final List<Map<String, String>> constraintChanges;
     private final List<Map<String, String>> fkColumns;
@@ -30,17 +35,43 @@ final class TableImpl implements Table {
     private final Map<String, Column> columnsByLowercaseName;
     private final String defaultCharsetName;
     private final String comment;
+    private Map<String, List<String>> changeColumn = Maps.newHashMap();
+
+    private Index indexChange;
+
+    private Set<String> indexes = new HashSet<>();
 
     @PackagePrivate
     TableImpl(Table table) {
-        this(table.id(), table.columns(), table.primaryKeyColumnNames(), table.primaryKeyColumnChanges(), table.constraintChanges(), table.foreignKeyColumns(),
-                table.uniqueColumns(), table.checkColumns(), table.defaultCharsetName(), table.comment());
+        this(table.id(),
+                table.columns(),
+                table.primaryKeyColumnNames(),
+                table.primaryConstraintName(),
+                table.primaryKeyColumnChanges(),
+                table.constraintChanges(),
+                table.foreignKeyColumns(),
+                table.uniqueColumns(),
+                table.checkColumns(),
+                table.changeColumn(),
+                table.indexChanges(),
+                table.indexes(),
+                table.defaultCharsetName(),
+                table.comment());
     }
 
     @PackagePrivate
-    TableImpl(TableId id, List<Column> sortedColumns, List<String> pkColumnNames, List<Map<String, String>> pkColumnChanges, List<Map<String, String>> constraintChanges,
+    TableImpl(TableId id, List<Column> sortedColumns,
+              List<String> pkColumnNames,
+              List<String> primaryConstraintName,
+              List<Map<String, String>> pkColumnChanges,
+              List<Map<String, String>> constraintChanges,
               List<Map<String, String>> fkColumns,
-              List<Map<String, String>> uniqueColumns, List<Map<String, String>> checkColumns, String defaultCharsetName, String comment) {
+              List<Map<String, String>> uniqueColumns,
+              List<Map<String, String>> checkColumns,
+              Map<String, List<String>> changeColumn,
+              Index indexChange,
+              Set<String> indexes,
+              String defaultCharsetName, String comment) {
         this.id = id;
         this.columnDefs = Collections.unmodifiableList(sortedColumns);
         this.pkColumnNames = pkColumnNames == null ? Collections.emptyList() : Collections.unmodifiableList(pkColumnNames);
@@ -55,7 +86,11 @@ final class TableImpl implements Table {
         this.columnsByLowercaseName = Collections.unmodifiableMap(defsByLowercaseName);
         this.defaultCharsetName = defaultCharsetName;
         this.comment = comment;
-        this.constraintChanges = constraintChanges;
+        this.constraintChanges = constraintChanges == null ? Collections.emptyList() : Collections.unmodifiableList(constraintChanges);
+        this.indexes = indexes == null ? Collections.emptySet() : Collections.unmodifiableSet(indexes);
+        this.indexChange = indexChange;
+        this.changeColumn = changeColumn == null ? Collections.emptyMap() : Collections.unmodifiableMap(changeColumn);
+        this.primaryConstraintName = primaryConstraintName == null ? Collections.emptyList() : Collections.unmodifiableList(primaryConstraintName);
     }
 
     @Override
@@ -66,6 +101,11 @@ final class TableImpl implements Table {
     @Override
     public List<String> primaryKeyColumnNames() {
         return pkColumnNames;
+    }
+
+    @Override
+    public List<String> primaryConstraintName() {
+        return primaryConstraintName;
     }
 
     @Override
@@ -159,6 +199,7 @@ final class TableImpl implements Table {
         sb.append(prefix).append("primary key: ").append(primaryKeyColumnNames()).append(System.lineSeparator());
         sb.append(prefix).append("default charset: ").append(defaultCharsetName()).append(System.lineSeparator());
         sb.append(prefix).append("comment: ").append(comment()).append(System.lineSeparator());
+        sb.append(prefix).append("rel indexes: ").append(indexes()).append(System.lineSeparator());
     }
 
     @Override
@@ -168,11 +209,29 @@ final class TableImpl implements Table {
                 .setPrimaryKeyNames(pkColumnNames)
                 // .setUniqueValues()
                 .setForeignKeys(fkColumns)
+                .setPrimaryConstraintName(primaryConstraintName)
                 .setPrimaryKeyChanges(pkColumnChanges)
                 .setConstraintChanges(constraintChanges)
                 .setUniqueColumns(uniqueColumns)
                 .setCheckColumns(checkColumns)
                 .setDefaultCharsetName(defaultCharsetName)
-                .setComment(comment);
+                .setComment(comment)
+                .setIndexes(indexes)
+                .setChangeColumn(changeColumn);
+    }
+
+    @Override
+    public Map<String, List<String>> changeColumn() {
+        return changeColumn;
+    }
+
+    @Override
+    public Index indexChanges() {
+        return this.indexChange;
+    }
+
+    @Override
+    public Set<String> indexes() {
+        return this.indexes;
     }
 }

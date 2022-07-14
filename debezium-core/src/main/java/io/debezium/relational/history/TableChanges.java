@@ -43,6 +43,16 @@ public class TableChanges implements Iterable<TableChange> {
         return this;
     }
 
+    public TableChanges createIndex(Table table) {
+        changes.add(new TableChange(TableChangeType.CREATE_INDEX, table));
+        return this;
+    }
+
+    public TableChanges dropIndex(Table table) {
+        changes.add(new TableChange(TableChangeType.DROP_INDEX, table));
+        return this;
+    }
+
     @Override
     public Iterator<TableChange> iterator() {
         return changes.iterator();
@@ -168,6 +178,8 @@ public class TableChanges implements Iterable<TableChange> {
 
     public enum TableChangeType {
         CREATE,
+        CREATE_INDEX,
+        DROP_INDEX,
         ALTER,
         DROP;
     }

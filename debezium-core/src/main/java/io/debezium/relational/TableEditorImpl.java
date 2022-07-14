@@ -8,20 +8,32 @@ package io.debezium.relational;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.collect.Sets;
 
 /**
  * Modified by an in 2020.7.2 for constraint feature
  */
+
 class TableEditorImpl implements TableEditor {
+
+    private static final Logger logger = LoggerFactory.getLogger(TableEditorImpl.class);
 
     private TableId id;
     private LinkedHashMap<String, Column> sortedColumns = new LinkedHashMap<>();
     private final List<String> pkColumnNames = new ArrayList<>();
+    private final List<String> primaryConstraintName = new ArrayList<>();
     private final List<Map<String, String>> pkColumnChanges = new ArrayList<>();
     private final List<Map<String, String>> constraintChanges = new ArrayList<>();
     private final List<Map<String, String>> fkColumns = new ArrayList<>();
@@ -30,6 +42,10 @@ class TableEditorImpl implements TableEditor {
     private boolean uniqueValues = false;
     private String defaultCharsetName;
     private String comment;
+    private Map<String, List<String>> changeColumn = new HashMap<>();
+
+    private Index indexChange;
+    private Set<String> index = Sets.newHashSet();
 
     protected TableEditorImpl() {
     }
@@ -65,6 +81,11 @@ class TableEditorImpl implements TableEditor {
     }
 
     @Override
+    public List<String> primaryConstraintName() {
+        return Collections.unmodifiableList(primaryConstraintName);
+    }
+
+    @Override
     public List<Map<String, String>> constraintChanges() {
         return constraintChanges;
     }
@@ -87,6 +108,21 @@ class TableEditorImpl implements TableEditor {
     @Override
     public List<Map<String, String>> checkColumns() {
         return Collections.unmodifiableList(checkColumns);
+    }
+
+    @Override
+    public Map<String, List<String>> getChangeColumn() {
+        return Collections.unmodifiableMap(changeColumn);
+    }
+
+    @Override
+    public Set<String> getIndexes() {
+        return index;
+    }
+
+    @Override
+    public Index getChangeIndex() {
+        return new Index(indexChange);
     }
 
     @Override
@@ -170,6 +206,7 @@ class TableEditorImpl implements TableEditor {
 
     @Override
     public TableEditor setUniqueColumns(List<Map<String, String>> uniqueColumns) {
+        this.uniqueColumns.clear();
         this.uniqueColumns.addAll(uniqueColumns);
         return this;
     }
@@ -185,6 +222,13 @@ class TableEditorImpl implements TableEditor {
         this.pkColumnNames.clear();
         this.pkColumnNames.addAll(pkColumnNames);
         uniqueValues = false;
+        return this;
+    }
+
+    @Override
+    public TableEditor setPrimaryConstraintName(List<String> primaryConstraintName) {
+        this.primaryConstraintName.clear();
+        this.primaryConstraintName.addAll(primaryConstraintName);
         return this;
     }
 
@@ -209,6 +253,42 @@ class TableEditorImpl implements TableEditor {
     @Override
     public TableEditor setComment(String comment) {
         this.comment = comment;
+        return this;
+    }
+
+    @Override
+    public TableEditor setChangeColumn(Map<String, List<String>> changeColumn) {
+        this.changeColumn.clear();
+        this.changeColumn.putAll(changeColumn);
+        return this;
+    }
+
+    @Override
+    public TableEditor setChangeIndex(Index index) {
+        this.indexChange = index;
+        return this;
+    }
+
+    @Override
+    public TableEditor setIndexes(Set<String> index) {
+        this.index.addAll(index);
+        return this;
+    }
+
+    @Override
+    public TableEditor addIndex(String indexName) {
+        if (this.index == null) {
+            this.index = new HashSet<>();
+        }
+        this.index.add(indexName);
+        return this;
+    }
+
+    @Override
+    public TableEditor removeIndex(String indexName) {
+        if (this.index != null && this.index.size() > 0) {
+            this.index = this.index.stream().filter(item -> !item.equals(indexName)).collect(Collectors.toSet());
+        }
         return this;
     }
 
@@ -319,7 +399,7 @@ class TableEditorImpl implements TableEditor {
     }
 
     @Override
-    public boolean chearConstraint() {
+    public boolean clearConstraint() {
         this.pkColumnChanges.clear();
         this.checkColumns.clear();
         this.uniqueColumns.clear();
@@ -338,7 +418,24 @@ class TableEditorImpl implements TableEditor {
             columns.add(column);
         });
         updatePrimaryKeys();
-        return new TableImpl(id, columns, primaryKeyColumnNames(), primaryKeyColumnChanges(), constraintChanges(), foreignKeyColumns(),
-                uniqueColumns, checkColumns, defaultCharsetName, comment);
+        return new TableImpl(id,
+                columns,
+                primaryKeyColumnNames(),
+                primaryConstraintName(),
+                primaryKeyColumnChanges(),
+                constraintChanges(),
+                foreignKeyColumns(),
+                uniqueColumns(),
+                checkColumns(),
+                getChangeColumn(),
+                getChangeIndex(),
+                getIndexes(),
+                defaultCharsetName,
+                comment);
+    }
+
+    @Override
+    public void clearColumnChange() {
+        this.changeColumn.clear();
     }
 }
