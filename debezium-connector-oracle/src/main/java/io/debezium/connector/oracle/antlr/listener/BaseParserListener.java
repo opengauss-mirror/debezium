@@ -102,7 +102,7 @@ class BaseParserListener extends PlSqlParserBaseListener {
     }
 
     String getAttribute(final String attribute) {
-        return removeQuotes(attribute, false);
+        return removeQuotes(attribute, true);
     }
 
     String getColumnName(final PlSqlParser.Old_column_nameContext ctx) {
@@ -126,7 +126,7 @@ class BaseParserListener extends PlSqlParserBaseListener {
      * @return parsed table or column name from the supplied name argument
      */
     private static String getTableOrColumnName(String name) {
-        return removeQuotes(name, false);
+        return removeQuotes(name, true);
     }
 
     /**
@@ -167,7 +167,7 @@ class BaseParserListener extends PlSqlParserBaseListener {
         sb.append(QUO)
                 .append(str)
                 .append(QUO);
-        return sb.toString();
+        return sb.toString().toUpperCase();
     }
 
     protected String Logical_expression_parse(Logical_expressionContext logical_expression) {
