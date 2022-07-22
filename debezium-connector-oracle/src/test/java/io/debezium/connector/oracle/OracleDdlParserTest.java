@@ -415,4 +415,23 @@ public class OracleDdlParserTest {
             assertThat(defaultValue.equals(column.defaultValueExpression().get()));
         }
     }
+
+
+    @Test
+    @FixFor("DBZ-5390")
+    public void shouldParseCheckConstraint() throws Exception {
+        parser.setCurrentDatabase(PDB_NAME);
+        parser.setCurrentSchema("SCOTT");
+
+        String SQL = "CREATE TABLE \"SCOTT\".\"ASTERISK_TEST\" ( \"PID\" int, \"DEPT\" varchar(50), constraint \"CK_DEPT\" check(\"DEPT\" IN('IT','sales','manager')))";
+        parser.parse(SQL, tables);
+
+        DdlChanges changes = parser.getDdlChanges();
+        List<DdlParserListener.EventType> eventTypes = getEventTypesFromChanges(changes);
+        assertThat(eventTypes).containsExactly(DdlParserListener.EventType.CREATE_TABLE);
+
+        Table table = tables.forTable(new TableId(PDB_NAME, "SCOTT", "ASTERISK_TEST"));
+        assertThat(table.columns().size()).isEqualTo(2);
+    }
+
 }

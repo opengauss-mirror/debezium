@@ -84,6 +84,10 @@ public class CreateTableParserListener extends BaseParserListener {
     @Override
     public void enterColumn_definition(PlSqlParser.Column_definitionContext ctx) {
         parser.runIfNotNull(() -> {
+            if (ctx.column_name() == null) {
+                return;
+            }
+            
             String columnName = getColumnName(ctx.column_name());
             ColumnEditor columnEditor = Column.editor().name(columnName);
             if (columnDefinitionParserListener == null) {

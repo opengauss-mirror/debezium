@@ -2973,7 +2973,8 @@ end_time_column
     ;
 
 column_definition
-    : column_name (datatype | type_name)
+    : out_of_line_ref_constraint | out_of_line_constraint
+     |column_name (datatype | type_name)
          SORT?
          (VISIBLE | INVISIBLE)?
          (DEFAULT column_default_value | identity_clause)?
