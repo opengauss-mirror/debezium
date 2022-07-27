@@ -6,9 +6,12 @@
 package io.debezium.connector.oracle.antlr.listener;
 
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.util.Map;
+import java.util.HashMap;
 
 import org.antlr.v4.runtime.tree.TerminalNode;
 
@@ -29,6 +32,8 @@ import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Type_specContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Unary_expressionContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Unary_logical_expressionContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParserBaseListener;
+import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Constraint_nameContext;
+import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Column_nameContext;
 import io.netty.util.internal.StringUtil;
 
 /**
@@ -431,5 +436,45 @@ class BaseParserListener extends PlSqlParserBaseListener {
                 type_spec.PERCENT_ROWTYPE(),
                 type_spec.PERCENT_TYPE())
                 .stream().filter(node -> node != null).findFirst();
+    }
+
+
+
+
+    protected List<Map<String, String>> enterInline_ref_constraint(PlSqlParser.References_clauseContext ctx, String schema, String columnName, Constraint_nameContext constraint_name) {
+
+        List<Map<String, String>> fkColumns = new ArrayList<Map<String, String>>();
+
+        final Map<String, String> pkColumn = new HashMap<>();
+
+        List<Column_nameContext> references = ctx.paren_column_list()
+            .column_list().column_name();
+
+        String[] tableId = ctx.tableview_name().getText().split(DOT);
+
+        pkColumn.put(PKTABLE_SCHEM, getAttribute(tableId.length > 1 ? tableId[0] : schema));
+        pkColumn.put(PKTABLE_NAME, getAttribute(tableId.length > 1 ? tableId[1] : tableId[0]));
+
+        for (int i = 0; i < references.size(); i++) {
+            pkColumn.put(PKCOLUMN_NAME, getAttribute(references.get(i).getText()));
+            pkColumn.put(FKCOLUMN_NAME, getAttribute(columnName));
+            fkColumns.add(pkColumn);
+        }
+
+        pkColumn.put(FK_NAME, constraint_name == null? buildInlineFkName(pkColumn.get(PKTABLE_SCHEM),
+            pkColumn.get(PKTABLE_NAME), columnName, pkColumn.get(PKCOLUMN_NAME)) : constraint_name.getText());
+
+        return fkColumns;
+    }
+
+    protected String buildInlineFkName(String pkScheme, String pkTableName, String pkColumnName, String fkColumnName) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("SYS_FK_");
+        sb.append(pkScheme == null ? StringUtil.EMPTY_STRING : pkScheme.replaceAll("#", "_"));
+        sb.append("_").append(pkTableName);
+        sb.append("_").append(pkColumnName.replaceAll(String.valueOf(StringUtil.COMMA), "_"));
+        sb.append("_").append(fkColumnName.replaceAll(String.valueOf(StringUtil.COMMA), "_"));
+        return sb.toString();
+
     }
 }

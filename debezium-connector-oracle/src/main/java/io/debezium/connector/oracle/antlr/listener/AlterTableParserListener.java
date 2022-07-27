@@ -149,6 +149,8 @@ public class AlterTableParserListener extends BaseParserListener {
                     throw new ParsingException(null, "trying to change column " + columnName + " in " +
                             tableEditor.tableId().toString() + " table, which does not exist.  Query: " + getText(ctx));
                 }
+
+                modify_column_clauses(column, columnName);
             }
             columnDefinitionParserListener = new ColumnDefinitionParserListener(tableEditor, columnEditors.get(0), parser, listeners);
             listeners.add(columnDefinitionParserListener);
@@ -379,5 +381,81 @@ public class AlterTableParserListener extends BaseParserListener {
             }
         }
         return 0;
+    }
+
+
+    private void modify_column_clauses(PlSqlParser.Modify_col_propertiesContext column, String columnName) {
+        // ALTER TABLE Modify constraint
+        List<String> primaryKeyColumns = new ArrayList<>();
+        List<Map<String, String>> pkColumnChanges = new ArrayList<>();
+        List<Map<String, String>> checkColumns = new ArrayList<Map<String, String>>();
+        List<Map<String, String>> uniqueColumns = new ArrayList<Map<String, String>>();
+        List<Map<String, String>> constraintChanges = new ArrayList<Map<String, String>>();
+
+        for(PlSqlParser.Inline_constraintContext constraint : column.inline_constraint()) {
+            if (constraint.PRIMARY() != null) {
+                Constraint_nameContext constraint_name = constraint.constraint_name();
+                Map<String, String> pkChangeMap = new HashMap<>();
+                primaryKeyColumns.add(columnName);
+
+                pkChangeMap.put(COLUMN_NAME, columnName);
+                pkChangeMap.put(PRIMARY_KEY_ACTION, PRIMARY_KEY_ADD);
+                if (constraint_name != null) {
+                    final Map<String, String> constraintColumn = new HashMap<>();
+                    pkChangeMap.put(CONSTRAINT_NAME, constraint_name.getText());
+                    constraintColumn.put(CONSTRAINT_NAME, constraint_name.getText());
+                    constraintColumn.put(TYPE_NAME, constraint.PRIMARY().getText());
+                    constraintChanges.add(constraintColumn);
+                }
+
+                pkColumnChanges.add(pkChangeMap);
+            }
+            else if (constraint.UNIQUE() != null) {
+                Constraint_nameContext constraint_name = constraint.constraint_name();
+
+                final Map<String, String> uniqueColumn = new HashMap<>();
+                if (constraint_name != null) {
+                    uniqueColumn.put(INDEX_NAME, constraint_name.getText());
+                }
+                uniqueColumn.put(COLUMN_NAME, columnName);
+                uniqueColumns.add(uniqueColumn);
+
+            }
+            else if (constraint.check_constraint() != null) {
+                ExpressionContext expression = constraint.check_constraint().condition().expression();
+                if (expression != null) {
+                    final Map<String, String> checkColumn = new HashMap<>();
+                    Constraint_nameContext constraint_name = constraint.constraint_name();
+                    if (constraint_name != null) {
+                        checkColumn.put(INDEX_NAME, constraint_name.getText());
+                    }
+
+                    String condition = Logical_expression_parse(expression.logical_expression());
+                    checkColumn.put(CONDITION, condition);
+                    checkColumns.add(checkColumn);
+
+                }
+            } else if (constraint.references_clause() != null) {
+                List<Map<String, String>> fkColumns = enterInline_ref_constraint(constraint.references_clause(),
+                    tableEditor.tableId().schema(), columnName, constraint.constraint_name());
+                tableEditor.setForeignKeys(fkColumns);
+
+            }
+        }
+        if (!primaryKeyColumns.isEmpty()) {
+            tableEditor.setPrimaryKeyNames(primaryKeyColumns);
+        }
+        if (!pkColumnChanges.isEmpty()) {
+            tableEditor.setPrimaryKeyChanges(pkColumnChanges);
+        }
+        if (!checkColumns.isEmpty()) {
+            tableEditor.setCheckColumns(checkColumns);
+        }
+        if (!uniqueColumns.isEmpty()) {
+            tableEditor.setUniqueColumns(uniqueColumns);
+        }
+        if (!constraintChanges.isEmpty()) {
+            tableEditor.setConstraintChanges(constraintChanges);
+        }
     }
 }
