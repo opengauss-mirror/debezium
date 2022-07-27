@@ -19,6 +19,7 @@ import io.debezium.connector.oracle.antlr.OracleDdlParser;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Check_constraintContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Column_nameContext;
+import io.debezium.ddl.parser.oracle.generated.PlSqlParser.ExpressionContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Constraint_nameContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Foreign_key_clauseContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Inline_constraintContext;
@@ -134,6 +135,24 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
         if (foreign_key_clause != null) {
             Constraint_nameContext constraint_name = ctx.constraint_name();
             enterForeign_key_clause(foreign_key_clause, constraint_name == null ? null : constraint_name.getText());
+        }
+
+        //check
+        if (ctx.CHECK() != null) {
+            String constraintName = ctx.constraint_name().getText();
+            ExpressionContext expression = ctx.expression();
+
+            List<Map<String, String>> checkColumns = new ArrayList<Map<String, String>>();
+
+            final Map<String, String> checkColumn = new HashMap<>();
+            checkColumn.put(INDEX_NAME, constraintName);
+
+            String condition = Logical_expression_parse(expression.logical_expression());
+            checkColumn.put(CONDITION, condition);
+
+            checkColumns.add(checkColumn);
+
+            tableEditor.setCheckColumns(checkColumns);
         }
 
         super.enterOut_of_line_constraint(ctx);
@@ -322,6 +341,10 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
 
     // todo use dataTypeResolver instead
     private void resolveColumnDataType(PlSqlParser.Column_definitionContext ctx) {
+        if (ctx.column_name() == null) {
+            return;
+        }
+
         columnEditor.name(getColumnName(ctx.column_name()));
 
         boolean hasNotNullConstraint = ctx.inline_constraint().stream().anyMatch(c -> c.NOT() != null);
