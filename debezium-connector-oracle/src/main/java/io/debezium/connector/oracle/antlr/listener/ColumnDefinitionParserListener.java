@@ -180,7 +180,9 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
 
         if (references_clause != null) {
 
-            enterInline_ref_constraint(references_clause, columnName);
+            List<Map<String, String>> fkColumns = enterInline_ref_constraint(references_clause,
+                tableEditor.tableId().schema(), columnName, null);
+            tableEditor.setForeignKeys(fkColumns);
 
         }
 
@@ -223,45 +225,6 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
         sb.append(Logical_expression_parse(ctx.condition().expression().logical_expression()));
 
         return sb.toString();
-    }
-
-    public void enterInline_ref_constraint(PlSqlParser.References_clauseContext ctx, String columnName) {
-
-        List<Map<String, String>> fkColumns = new ArrayList<Map<String, String>>();
-
-        final Map<String, String> pkColumn = new HashMap<>();
-
-        List<Column_nameContext> references = ctx.paren_column_list()
-                .column_list().column_name();
-
-        String[] tableId = ctx.tableview_name().getText().split(DOT);
-
-        String schema = tableEditor.tableId().schema();
-
-        pkColumn.put(PKTABLE_SCHEM, getAttribute(tableId.length > 1 ? tableId[0] : schema));
-        pkColumn.put(PKTABLE_NAME, getAttribute(tableId.length > 1 ? tableId[1] : tableId[0]));
-
-        for (int i = 0; i < references.size(); i++) {
-            pkColumn.put(PKCOLUMN_NAME, getAttribute(references.get(i).getText()));
-            pkColumn.put(FKCOLUMN_NAME, getAttribute(columnName));
-            fkColumns.add(pkColumn);
-        }
-
-        pkColumn.put(FK_NAME, buildInlineFkName(pkColumn.get(PKTABLE_SCHEM),
-                pkColumn.get(PKTABLE_NAME), columnName, pkColumn.get(PKCOLUMN_NAME)));
-
-        tableEditor.setForeignKeys(fkColumns);
-    }
-
-    private String buildInlineFkName(String pkScheme, String pkTableName, String pkColumnName, String fkColumnName) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("SYS_FK_");
-        sb.append(pkScheme == null ? StringUtil.EMPTY_STRING : pkScheme.replaceAll("#", "_"));
-        sb.append("_").append(pkTableName);
-        sb.append("_").append(pkColumnName.replaceAll(String.valueOf(StringUtil.COMMA), "_"));
-        sb.append("_").append(fkColumnName.replaceAll(String.valueOf(StringUtil.COMMA), "_"));
-        return sb.toString();
-
     }
 
     public void enterForeign_key_clause(PlSqlParser.Foreign_key_clauseContext ctx, String fkName) {
