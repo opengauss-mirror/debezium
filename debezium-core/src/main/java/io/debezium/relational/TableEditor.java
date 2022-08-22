@@ -5,8 +5,10 @@
  */
 package io.debezium.relational;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import io.debezium.annotation.NotThreadSafe;
@@ -84,6 +86,10 @@ public interface TableEditor {
      */
     List<String> primaryKeyColumnNames();
 
+    default List<String> primaryConstraintName() {
+        return Collections.emptyList();
+    }
+
     /**
      * The list of column changes that make up the primary key for this table. The resulting list should not be modified directly;
      * instead, the set of primary key changes should be defined with {@link #setPrimaryKeyNames(String...)}.
@@ -123,6 +129,20 @@ public interface TableEditor {
      * @return the list of column that make up the check; never null but possibly empty
        */
     List<Map<String, String>> checkColumns();
+
+    /**
+     * map which column has changed in alter table sql
+     * @return
+     */
+    Map<String, List<String>> getChangeColumn();
+
+    default Set<String> getIndexes() {
+        return null;
+    }
+
+    default Index getChangeIndex() {
+        return null;
+    }
 
     /**
      * Determine whether this table has a primary key.
@@ -238,6 +258,10 @@ public interface TableEditor {
      */
     TableEditor setPrimaryKeyNames(List<String> pkColumnNames);
 
+    default TableEditor setPrimaryConstraintName(List<String> primaryConstraintName) {
+        return this;
+    }
+
     /**
      * Set the columns change that make up this table's constraint.
      *
@@ -308,6 +332,24 @@ public interface TableEditor {
      */
     TableEditor setComment(String comment);
 
+    TableEditor setChangeColumn(Map<String, List<String>> changeColumn);
+
+    default TableEditor setChangeIndex(Index index) {
+        return this;
+    }
+
+    default TableEditor setIndexes(Set<String> index) {
+        return this;
+    }
+
+    default TableEditor addIndex(String indexName) {
+        return this;
+    }
+
+    default TableEditor removeIndex(String indexName) {
+        return this;
+    }
+
     /**
      * Determine if a {@link #setDefaultCharsetName(String) default character set} has been set on this table.
      * @return {@code true} if this has a default character set, or {@code false} if one has not yet been set
@@ -328,11 +370,11 @@ public interface TableEditor {
     boolean hasUniqueValues();
 
     /**
-     * Determine whether this table's constraint contains all columns (via {@link #chearConstraint()}) such that all rows
+     * Determine whether this table's constraint contains all columns (via {@link #clearConstraint()}) such that all rows
      * clear all constraint.
-     * @return {@code true} if {@link #chearConstraint()} was last called on this table, or {@code false} otherwise
+     * @return {@code true} if {@link #clearConstraint()} was last called on this table, or {@code false} otherwise
      */
-    boolean chearConstraint();
+    boolean clearConstraint();
 
     /**
      * Obtain an immutable table definition representing the current state of this editor. This editor can be reused
@@ -341,4 +383,9 @@ public interface TableEditor {
      * @return the immutable table definition; never null
      */
     Table create();
+
+    default void clearColumnChange() {
+
+    }
+
 }

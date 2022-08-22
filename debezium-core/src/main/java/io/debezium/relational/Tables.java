@@ -18,6 +18,8 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 import org.apache.kafka.connect.data.Schema;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.debezium.annotation.ThreadSafe;
 import io.debezium.function.Predicates;
@@ -35,6 +37,7 @@ import io.debezium.util.FunctionalReadWriteLock;
  */
 @ThreadSafe
 public final class Tables {
+    private static final Logger LOGGER = LoggerFactory.getLogger(Tables.class);
 
     /**
      * A filter for tables.
@@ -121,6 +124,7 @@ public final class Tables {
     private final FunctionalReadWriteLock lock = FunctionalReadWriteLock.reentrant();
     private final TablesById tablesByTableId;
     private final TableIds changes;
+    private final IndexWithTable indexWithTable;
     private final boolean tableIdCaseInsensitive;
 
     /**
@@ -132,10 +136,11 @@ public final class Tables {
         this.tableIdCaseInsensitive = tableIdCaseInsensitive;
         this.tablesByTableId = new TablesById(tableIdCaseInsensitive);
         this.changes = new TableIds(tableIdCaseInsensitive);
+        this.indexWithTable = new IndexWithTable();
     }
 
     /**
-     * Create case sensitive empty set of definitions.
+     * Create case-sensitive empty set of definitions.
      */
     public Tables() {
         this(false);
@@ -177,8 +182,15 @@ public final class Tables {
 
     public Table overwriteTable(TableId tableId, List<Column> columnDefs, List<String> primaryKeyColumnNames,
                                 List<Map<String, String>> constraintChanges, String defaultCharsetName) {
-        return overwriteTable(tableId, columnDefs, primaryKeyColumnNames, constraintChanges, Collections.emptyList(),
-                Collections.emptyList(), Collections.emptyList(), defaultCharsetName);
+        return overwriteTable(tableId,
+                columnDefs,
+                primaryKeyColumnNames,
+                constraintChanges,
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                null,
+                defaultCharsetName);
     }
 
     /**
@@ -193,7 +205,7 @@ public final class Tables {
     public Table overwriteTable(TableId tableId, List<Column> columnDefs, List<String> primaryKeyColumnNames,
                                 List<Map<String, String>> constraintChanges,
                                 List<Map<String, String>> fkColumns, List<Map<String, String>> uniqueColumns,
-                                List<Map<String, String>> checkColumns, String defaultCharsetName) {
+                                List<Map<String, String>> checkColumns, Set<String> index, String defaultCharsetName) {
         return lock.write(() -> {
             Table updated = Table.editor()
                     .tableId(tableId)
@@ -204,16 +216,38 @@ public final class Tables {
                     .setUniqueColumns(uniqueColumns)
                     .setCheckColumns(checkColumns)
                     .setDefaultCharsetName(defaultCharsetName)
+                    .setIndexes(index)
                     .create();
-
             Table existing = tablesByTableId.get(tableId);
             if (existing == null || !existing.equals(updated)) {
                 // Our understanding of the table has changed ...
                 changes.add(tableId);
                 tablesByTableId.put(tableId, updated);
             }
+            if (updated.indexes() != null) {
+                LOGGER.debug("bind table and index rel");
+                updated.indexes().forEach(each -> {
+                    indexWithTable.bindIndexAndTableRel(each, updated.id());
+                });
+            }
             return tablesByTableId.get(tableId);
         });
+    }
+
+    public void bindTableIndex(String indexName, TableId tableId) {
+        lock.write(() -> {
+            indexWithTable.bindIndexAndTableRel(indexName, tableId);
+        });
+    }
+
+    public void unbindTableIndex(String indexName, TableId tableId) {
+        lock.write(() -> {
+            indexWithTable.unBindIndexAndTableRel(indexName, tableId);
+        });
+    }
+
+    public TableId getTaleIdByIndex(String index) {
+        return lock.read(() -> indexWithTable.getTableIdByIndexName(index));
     }
 
     /**
@@ -226,7 +260,13 @@ public final class Tables {
         return lock.write(() -> {
             TableImpl updated = new TableImpl(table);
             try {
-                return tablesByTableId.put(updated.id(), updated);
+                Table put = tablesByTableId.put(updated.id(), updated);
+                if (updated.indexes() != null && updated.indexes().size() > 0) {
+                    updated.indexes().forEach(each -> {
+                        indexWithTable.bindIndexAndTableRel(each, updated.id());
+                    });
+                }
+                return put;
             }
             finally {
                 changes.add(updated.id());
@@ -265,10 +305,20 @@ public final class Tables {
                 return null;
             }
             tablesByTableId.remove(existing.id());
-            TableImpl updated = new TableImpl(newTableId, existing.columns(), existing.primaryKeyColumnNames(),
-                    existing.primaryKeyColumnChanges(), existing.constraintChanges(), existing.foreignKeyColumns(),
-                    existing.uniqueColumns(), existing.checkColumns(),
-                    existing.defaultCharsetName(), existing.comment());
+            TableImpl updated = new TableImpl(newTableId,
+                    existing.columns(),
+                    existing.primaryKeyColumnNames(),
+                    existing.primaryConstraintName(),
+                    existing.primaryKeyColumnChanges(),
+                    existing.constraintChanges(),
+                    existing.foreignKeyColumns(),
+                    existing.uniqueColumns(),
+                    existing.checkColumns(),
+                    existing.changeColumn(),
+                    existing.indexChanges(),
+                    existing.indexes(),
+                    existing.defaultCharsetName(),
+                    existing.comment());
             try {
                 return tablesByTableId.put(updated.id(), updated);
             }
@@ -292,10 +342,21 @@ public final class Tables {
             Table existing = tablesByTableId.get(tableId);
             Table updated = changer.apply(existing);
             if (updated != existing) {
-                tablesByTableId.put(tableId, new TableImpl(tableId, updated.columns(), updated.primaryKeyColumnNames(),
-                        updated.primaryKeyColumnChanges(), updated.constraintChanges(), updated.foreignKeyColumns(),
-                        updated.uniqueColumns(), updated.checkColumns(),
-                        updated.defaultCharsetName(), updated.comment()));
+                tablesByTableId.put(tableId,
+                        new TableImpl(tableId,
+                                updated.columns(),
+                                updated.primaryKeyColumnNames(),
+                                updated.primaryConstraintName(),
+                                updated.primaryKeyColumnChanges(),
+                                updated.constraintChanges(),
+                                updated.foreignKeyColumns(),
+                                updated.uniqueColumns(),
+                                updated.checkColumns(),
+                                updated.changeColumn(),
+                                updated.indexChanges(),
+                                updated.indexes(),
+                                updated.defaultCharsetName(),
+                                updated.comment()));
             }
             changes.add(tableId);
             return existing;
@@ -427,6 +488,32 @@ public final class Tables {
             sb.append("}");
             return sb.toString();
         });
+    }
+
+    /**
+     * A map of index - tableId relational.
+     */
+    private static class IndexWithTable {
+        private static final Logger LOGGER = LoggerFactory.getLogger(IndexWithTable.class);
+        private final ConcurrentMap<String, TableId> values = new ConcurrentHashMap<>();
+
+        boolean isEmpty() {
+            return values.isEmpty();
+        }
+
+        public void bindIndexAndTableRel(String indexName, TableId tableId) {
+            LOGGER.info("bind index {} to table: {}", indexName, tableId.identifier());
+            values.put(indexName, tableId);
+        }
+
+        public TableId getTableIdByIndexName(String index) {
+            return values.getOrDefault(index, null);
+        }
+
+        public void unBindIndexAndTableRel(String indexName, TableId tableId) {
+            LOGGER.info("unBind index {} to table: {}", indexName, tableId.identifier());
+            values.remove(indexName, tableId);
+        }
     }
 
     /**

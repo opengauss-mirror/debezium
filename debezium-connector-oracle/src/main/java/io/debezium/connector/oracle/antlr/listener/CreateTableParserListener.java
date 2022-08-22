@@ -31,6 +31,7 @@ public class CreateTableParserListener extends BaseParserListener {
     private String schemaName;
     private OracleDdlParser parser;
     private ColumnDefinitionParserListener columnDefinitionParserListener;
+    private OutOfLineConstraintParserListener outOfLineConstraintParserListener;
     private String inlinePrimaryKey;
 
     CreateTableParserListener(final String catalogName, final String schemaName, final OracleDdlParser parser,
@@ -50,6 +51,10 @@ public class CreateTableParserListener extends BaseParserListener {
         if (parser.getTableFilter().isIncluded(tableId)) {
             if (parser.databaseTables().forTable(tableId) == null) {
                 tableEditor = parser.databaseTables().editOrCreateTable(tableId);
+                if (outOfLineConstraintParserListener == null) {
+                    outOfLineConstraintParserListener = new OutOfLineConstraintParserListener(parser, tableEditor, listeners);
+                    listeners.add(outOfLineConstraintParserListener);
+                }
                 super.enterCreate_table(ctx);
             }
         }
@@ -72,7 +77,9 @@ public class CreateTableParserListener extends BaseParserListener {
             assert table != null;
             parser.runIfNotNull(() -> {
                 listeners.remove(columnDefinitionParserListener);
+                listeners.remove(outOfLineConstraintParserListener);
                 columnDefinitionParserListener = null;
+                outOfLineConstraintParserListener = null;
                 parser.databaseTables().overwriteTable(table);
                 parser.signalCreateTable(tableEditor.tableId(), ctx);
             }, table);
@@ -87,7 +94,7 @@ public class CreateTableParserListener extends BaseParserListener {
             if (ctx.column_name() == null) {
                 return;
             }
-            
+
             String columnName = getColumnName(ctx.column_name());
             ColumnEditor columnEditor = Column.editor().name(columnName);
             if (columnDefinitionParserListener == null) {
@@ -107,6 +114,13 @@ public class CreateTableParserListener extends BaseParserListener {
         parser.runIfNotNull(() -> tableEditor.addColumn(columnDefinitionParserListener.getColumn()),
                 tableEditor, columnDefinitionParserListener);
         super.exitColumn_definition(ctx);
+    }
+
+    @Override
+    public void enterOut_of_line_constraint(PlSqlParser.Out_of_line_constraintContext ctx) {
+        parser.runIfNotNull(() -> {
+        }, tableEditor);
+        super.enterOut_of_line_constraint(ctx);
     }
 
     @Override

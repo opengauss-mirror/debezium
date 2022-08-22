@@ -54,6 +54,11 @@ final class NoOpTableEditorImpl implements TableEditor {
     }
 
     @Override
+    public Map<String, List<String>> getChangeColumn() {
+        return null;
+    }
+
+    @Override
     public TableEditor addColumns(Column... columns) {
         return this;
     }
@@ -107,6 +112,11 @@ final class NoOpTableEditorImpl implements TableEditor {
     }
 
     @Override
+    public TableEditor setChangeColumn(Map<String, List<String>> changeColumn) {
+        return this;
+    }
+
+    @Override
     public boolean hasDefaultCharsetName() {
         return this.defaultCharsetName != null && !this.defaultCharsetName.trim().isEmpty();
     }
@@ -147,7 +157,18 @@ final class NoOpTableEditorImpl implements TableEditor {
             throw new IllegalStateException("Unable to create a table from an editor that has no table ID");
         }
         List<Column> columns = new ArrayList<>();
-        return new TableImpl(id, columns, primaryKeyColumnNames(), primaryKeyColumnChanges(), constraintChanges(), foreignKeyColumns(), uniqueColumns(), checkColumns(),
+        return new TableImpl(id,
+                columns,
+                primaryKeyColumnNames(),
+                primaryConstraintName(),
+                primaryKeyColumnChanges(),
+                constraintChanges(),
+                foreignKeyColumns(),
+                uniqueColumns(),
+                checkColumns(),
+                getChangeColumn(),
+                getChangeIndex(),
+                getIndexes(),
                 defaultCharsetName,
                 comment);
     }
@@ -193,7 +214,7 @@ final class NoOpTableEditorImpl implements TableEditor {
     }
 
     @Override
-    public boolean chearConstraint() {
+    public boolean clearConstraint() {
         return false;
     }
 

@@ -597,8 +597,11 @@ cluster_name
     ;
 
 table_index_clause
-    : tableview_name table_alias? '(' index_expr (ASC | DESC)?  (',' index_expr (ASC | DESC)? )* ')'
+    : tableview_name table_alias? '(' index_column_expr?  (',' index_column_expr? )* ')'
           index_properties?
+    ;
+index_column_expr
+    : index_expr (ASC? | DESC)
     ;
 bitmap_join_index_clause
     : tableview_name '(' (tableview_name | table_alias)? column_name (ASC | DESC)?  (',' (tableview_name | table_alias)? column_name (ASC | DESC)? )* ')'
@@ -1849,12 +1852,12 @@ relational_table
     ;
 
 relational_property
-    : (column_definition
-        | virtual_column_definition
-        | out_of_line_constraint
-        | out_of_line_ref_constraint
-        | supplemental_logging_props
-        )
+      : ( out_of_line_constraint
+          | out_of_line_ref_constraint
+          | column_definition
+          | virtual_column_definition
+          | supplemental_logging_props
+          )
     ;
 
 table_partitioning_clauses
@@ -2818,7 +2821,8 @@ new_column_name
     ;
 
 add_modify_drop_column_clauses
-    : (add_column_clause
+    : (constraint_clauses
+      |add_column_clause
       |modify_column_clauses
       |drop_column_clause
       )+
@@ -2973,8 +2977,7 @@ end_time_column
     ;
 
 column_definition
-    : out_of_line_ref_constraint | out_of_line_constraint
-     |column_name (datatype | type_name)
+    : column_name (datatype | type_name)
          SORT?
          (VISIBLE | INVISIBLE)?
          (DEFAULT column_default_value | identity_clause)?

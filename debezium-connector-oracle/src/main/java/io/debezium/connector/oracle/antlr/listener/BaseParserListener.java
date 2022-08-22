@@ -5,21 +5,23 @@
  */
 package io.debezium.connector.oracle.antlr.listener;
 
-import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import java.util.Map;
-import java.util.HashMap;
 
 import org.antlr.v4.runtime.tree.TerminalNode;
 
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.AtomContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Between_elementsContext;
+import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Column_nameContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Compound_expressionContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.ConcatenationContext;
+import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Constraint_nameContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.ExpressionsContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.In_elementsContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Logical_expressionContext;
@@ -32,8 +34,6 @@ import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Type_specContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Unary_expressionContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Unary_logical_expressionContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParserBaseListener;
-import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Constraint_nameContext;
-import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Column_nameContext;
 import io.netty.util.internal.StringUtil;
 
 /**
@@ -44,6 +44,9 @@ class BaseParserListener extends PlSqlParserBaseListener {
 
     public static final String SPACE = " ";
     public static final char QUO = '\"';
+    public static final String MODIFY_COLUMN = "modifyColumn";
+    public static final String ADD_COLUMN = "addColumn";
+    public static final String DROP_COLUMN = "dropColumn";
 
     public static Boolean IS_COLUMN = true;
 
@@ -130,7 +133,7 @@ class BaseParserListener extends PlSqlParserBaseListener {
      * @param name table or column name
      * @return parsed table or column name from the supplied name argument
      */
-    private static String getTableOrColumnName(String name) {
+    protected static String getTableOrColumnName(String name) {
         return removeQuotes(name, true);
     }
 
@@ -438,17 +441,15 @@ class BaseParserListener extends PlSqlParserBaseListener {
                 .stream().filter(node -> node != null).findFirst();
     }
 
-
-
-
-    protected List<Map<String, String>> enterInline_ref_constraint(PlSqlParser.References_clauseContext ctx, String schema, String columnName, Constraint_nameContext constraint_name) {
+    protected List<Map<String, String>> enterInline_ref_constraint(PlSqlParser.References_clauseContext ctx, String schema, String columnName,
+                                                                   Constraint_nameContext constraint_name) {
 
         List<Map<String, String>> fkColumns = new ArrayList<Map<String, String>>();
 
         final Map<String, String> pkColumn = new HashMap<>();
 
         List<Column_nameContext> references = ctx.paren_column_list()
-            .column_list().column_name();
+                .column_list().column_name();
 
         String[] tableId = ctx.tableview_name().getText().split(DOT);
 
@@ -461,8 +462,8 @@ class BaseParserListener extends PlSqlParserBaseListener {
             fkColumns.add(pkColumn);
         }
 
-        pkColumn.put(FK_NAME, constraint_name == null? buildInlineFkName(pkColumn.get(PKTABLE_SCHEM),
-            pkColumn.get(PKTABLE_NAME), columnName, pkColumn.get(PKCOLUMN_NAME)) : constraint_name.getText());
+        pkColumn.put(FK_NAME, constraint_name == null ? buildInlineFkName(pkColumn.get(PKTABLE_SCHEM),
+                pkColumn.get(PKTABLE_NAME), columnName, pkColumn.get(PKCOLUMN_NAME)) : constraint_name.getText());
 
         return fkColumns;
     }

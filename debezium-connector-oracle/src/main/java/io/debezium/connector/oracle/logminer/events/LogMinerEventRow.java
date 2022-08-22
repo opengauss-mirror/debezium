@@ -45,6 +45,8 @@ public class LogMinerEventRow {
     private static final int ROW_ID = 11;
     private static final int ROLLBACK_FLAG = 12;
     private static final int RS_ID = 13;
+    private static final String SEG_NAME = "SEG_NAME";
+    private static final String SEG_TYPE_NAME = "SEG_TYPE_NAME";
 
     private Scn scn;
     private TableId tableId;
@@ -59,6 +61,9 @@ public class LogMinerEventRow {
     private boolean rollbackFlag;
     private String rsId;
     private String redoSql;
+    private String segName;
+    private String segTypeName;
+    private String catalogName;
 
     public Scn getScn() {
         return scn;
@@ -112,6 +117,18 @@ public class LogMinerEventRow {
         return redoSql;
     }
 
+    public String getSegName() {
+        return segName;
+    }
+
+    public String getSegTypeName() {
+        return segTypeName;
+    }
+
+    public String getCatalogName() {
+        return catalogName;
+    }
+
     /**
      * Returns a {@link LogMinerEventRow} instance based on the current row of the JDBC {@link ResultSet}.
      *
@@ -153,6 +170,9 @@ public class LogMinerEventRow {
         this.rollbackFlag = resultSet.getInt(ROLLBACK_FLAG) == 1;
         this.rsId = resultSet.getString(RS_ID);
         this.redoSql = getSqlRedo(resultSet);
+        this.segName = resultSet.getString(SEG_NAME);
+        this.segTypeName = resultSet.getString(SEG_TYPE_NAME);
+        this.catalogName = catalogName;
         if (this.tableName != null) {
             this.tableId = new TableId(catalogName, tablespaceName, tableName);
         }
@@ -221,6 +241,8 @@ public class LogMinerEventRow {
                 ", rollbackFlag=" + rollbackFlag +
                 ", rsId=" + rsId +
                 ", redoSql='" + redoSql + '\'' +
+                ", segName='" + segName + '\'' +
+                ", segType='" + segTypeName + '\'' +
                 '}';
     }
 }

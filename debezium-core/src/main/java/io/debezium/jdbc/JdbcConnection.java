@@ -1235,12 +1235,22 @@ public class JdbcConnection implements AutoCloseable {
             // First get the check information, which must be done for *each* table ...
             List<Map<String, String>> checkColumns = readCheckColumns(metadata, tableEntry.getKey());
 
+            // First get indexes on table
+            Set<String> tableIndexes = readTableIndex(metadata, tableEntry.getKey());
             // Then define the table ...
             List<Column> columns = tableEntry.getValue();
             Collections.sort(columns);
             String defaultCharsetName = null; // JDBC does not expose character sets
-            tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, Collections.emptyList(),
-                    fkColumns, uniqueColumns, checkColumns, defaultCharsetName);
+            tables.overwriteTable(tableEntry.getKey(),
+                    columns,
+                    pkColumnNames,
+                    Collections.emptyList(),
+                    fkColumns,
+                    uniqueColumns,
+                    checkColumns,
+                    tableIndexes,
+                    defaultCharsetName);
+
         }
 
         if (removeTablesNotFoundInJdbc) {
@@ -1248,6 +1258,10 @@ public class JdbcConnection implements AutoCloseable {
             tableIdsBefore.removeAll(columnsByTable.keySet());
             tableIdsBefore.forEach(tables::removeTable);
         }
+    }
+
+    protected Set<String> readTableIndex(DatabaseMetaData metadata, TableId key) throws SQLException {
+        return null;
     }
 
     protected String resolveCatalogName(String catalogName) {
