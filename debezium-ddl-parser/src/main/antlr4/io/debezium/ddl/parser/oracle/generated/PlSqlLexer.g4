@@ -1514,6 +1514,9 @@ SCRUB:                        'SCRUB';
 SD_ALL:                       'SD_ALL';
 SD_INHIBIT:                   'SD_INHIBIT';
 SDO_GEOM_MBR:                 'SDO_GEOM_MBR';
+URITYPE:                      'URITYPE';
+HTTPURITYPE:                  'HTTPURITYPE';
+XDBURITYPE:                   'XDBURITYPE';
 SDO_GEOMETRY:                 'SDO_GEOMETRY';
 SD_SHOW:                      'SD_SHOW';
 SEARCH:                       'SEARCH';
@@ -2251,6 +2254,8 @@ VARIANCE:                     'VARIANCE';
 LEAST:                        'LEAST';
 GREATEST:                     'GREATEST';
 TO_DATE:                      'TO_DATE';
+SDO_TOPO_GEOMETRY:            'SDO_TOPO_GEOMETRY';
+SDO_LIST_TYPE:                'SDO_LIST_TYPE';
 
 // Rule #358 <NATIONAL_CHAR_STRING_LIT> - subtoken typecast in <REGULAR_ID>, it also incorporates <character_representation>
 //  Lowercase 'n' is a usual addition to the standard

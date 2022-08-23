@@ -4661,6 +4661,11 @@ native_datatype_element
     | MINUTE
     | SECOND
     | SDO_GEOMETRY
+    | SDO_TOPO_GEOMETRY
+    | SDO_LIST_TYPE
+    | URITYPE
+    | HTTPURITYPE
+    | XDBURITYPE
     | TIMEZONE_HOUR
     | TIMEZONE_MINUTE
     | TIMEZONE_REGION
@@ -4676,6 +4681,7 @@ native_datatype_element
     | CLOB
     | NCLOB
     | MLSLABEL
+    | XMLTYPE
     ;
 
 bind_variable

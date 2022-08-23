@@ -5,10 +5,7 @@
  */
 package io.debezium.relational;
 
-import java.util.Objects;
-
 import org.apache.kafka.connect.data.Struct;
-import org.apache.kafka.connect.header.ConnectHeaders;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -105,26 +102,8 @@ public abstract class RelationalChangeRecordEmitter extends AbstractChangeRecord
             LOGGER.warn("no new values found for table '{}' from update message at '{}'; skipping record", tableSchema, getOffset().getSourceInfo());
             return;
         }
-        // some configurations does not provide old values in case of updates
-        // in this case we handle all updates as regular ones
-        if (oldKey == null || Objects.equals(oldKey, newKey)) {
-            Struct envelope = tableSchema.getEnvelopeSchema().update(oldValue, newValue, getOffset().getSourceInfo(), getClock().currentTimeAsInstant());
-            receiver.changeRecord(getPartition(), tableSchema, Operation.UPDATE, newKey, envelope, getOffset(), null);
-        }
-        // PK update -> emit as delete and re-insert with new key
-        else {
-            ConnectHeaders headers = new ConnectHeaders();
-            headers.add(PK_UPDATE_NEWKEY_FIELD, newKey, tableSchema.keySchema());
-
-            Struct envelope = tableSchema.getEnvelopeSchema().delete(oldValue, getOffset().getSourceInfo(), getClock().currentTimeAsInstant());
-            receiver.changeRecord(getPartition(), tableSchema, Operation.DELETE, oldKey, envelope, getOffset(), headers);
-
-            headers = new ConnectHeaders();
-            headers.add(PK_UPDATE_OLDKEY_FIELD, oldKey, tableSchema.keySchema());
-
-            envelope = tableSchema.getEnvelopeSchema().create(newValue, getOffset().getSourceInfo(), getClock().currentTimeAsInstant());
-            receiver.changeRecord(getPartition(), tableSchema, Operation.CREATE, newKey, envelope, getOffset(), headers);
-        }
+        Struct envelope = tableSchema.getEnvelopeSchema().update(oldValue, newValue, getOffset().getSourceInfo(), getClock().currentTimeAsInstant());
+        receiver.changeRecord(getPartition(), tableSchema, Operation.UPDATE, newKey, envelope, getOffset(), null);
     }
 
     @Override
