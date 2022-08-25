@@ -13,8 +13,6 @@ import java.util.stream.Collectors;
 
 import org.antlr.v4.runtime.tree.ParseTreeListener;
 import org.antlr.v4.runtime.tree.TerminalNode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import io.debezium.antlr.DataTypeResolver;
 import io.debezium.connector.oracle.antlr.OracleDdlParser;
@@ -26,7 +24,6 @@ import io.netty.util.internal.StringUtil;
  * @author saxisuer
  */
 public class OutOfLineConstraintParserListener extends BaseParserListener {
-    private static final Logger LOGGER = LoggerFactory.getLogger(OutOfLineConstraintParserListener.class);
     private final OracleDdlParser parser;
     private final DataTypeResolver dataTypeResolver;
     private final TableEditor tableEditor;

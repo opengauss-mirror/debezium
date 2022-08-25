@@ -520,4 +520,28 @@ public class OracleDdlParserTest {
         assertThat(table.columnWithName("COL_1").length()).isEqualTo(32);
     }
 
+    @Test
+    public void shouldParseConstraintUsingIndex() throws Exception {
+        parser.setCurrentDatabase(PDB_NAME);
+        parser.setCurrentSchema("SCOTT");
+
+        String SQL = "CREATE TABLE \"SCOTT\".\"DBZ4976\"" + "(\n" +
+                "    COL_1 VARCHAR2(10) UNIQUE USING INDEX (CREATE UNIQUE INDEX UID_TEST_UID ON DBZ4976 (COL_1))\n" + ");";
+        parser.parse(SQL, tables);
+        DdlChanges changes = parser.getDdlChanges();
+        changes.reset();
+
+        SQL = "alter table \"SCOTT\".\"DBZ4976\"\n" + "    add col_2 varchar(32)\n" + "    add COL_3 varchar2(32)\n" +
+                "        constraint uk_3 unique using index (create unique index idx_tab2_col3 on DBZ4976 (COL_3))\n" +
+                "    add constraint uk_2 unique (COL_2) using index (create index idx_tab_col2 on DBZ4976 (col_2))\n";
+        parser.parse(SQL, tables);
+
+        changes = parser.getDdlChanges();
+        List<DdlParserListener.EventType> eventTypes = getEventTypesFromChanges(changes);
+        assertThat(eventTypes).containsExactly(DdlParserListener.EventType.CREATE_INDEX, DdlParserListener.EventType.CREATE_INDEX,
+                DdlParserListener.EventType.ALTER_TABLE);
+
+        Table table = tables.forTable(new TableId(PDB_NAME, "SCOTT", "DBZ4976"));
+        assertThat(table.columnWithName("COL_1").length()).isEqualTo(10);
+    }
 }

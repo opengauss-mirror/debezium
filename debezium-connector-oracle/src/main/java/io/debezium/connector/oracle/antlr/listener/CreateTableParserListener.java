@@ -9,8 +9,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import org.antlr.v4.runtime.tree.ParseTreeListener;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.oracle.antlr.OracleDdlParser;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser;
@@ -23,8 +21,6 @@ import io.debezium.text.ParsingException;
 
 public class CreateTableParserListener extends BaseParserListener {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(CreateTableParserListener.class);
-
     private final List<ParseTreeListener> listeners;
     private TableEditor tableEditor;
     private String catalogName;
@@ -32,6 +28,7 @@ public class CreateTableParserListener extends BaseParserListener {
     private OracleDdlParser parser;
     private ColumnDefinitionParserListener columnDefinitionParserListener;
     private OutOfLineConstraintParserListener outOfLineConstraintParserListener;
+    private ConstraintStateParserListener constraintStateParserListener;
     private String inlinePrimaryKey;
 
     CreateTableParserListener(final String catalogName, final String schemaName, final OracleDdlParser parser,
@@ -54,6 +51,10 @@ public class CreateTableParserListener extends BaseParserListener {
                 if (outOfLineConstraintParserListener == null) {
                     outOfLineConstraintParserListener = new OutOfLineConstraintParserListener(parser, tableEditor, listeners);
                     listeners.add(outOfLineConstraintParserListener);
+                }
+                if (constraintStateParserListener == null) {
+                    constraintStateParserListener = new ConstraintStateParserListener(parser, tableEditor, listeners);
+                    listeners.add(constraintStateParserListener);
                 }
                 super.enterCreate_table(ctx);
             }
@@ -78,8 +79,10 @@ public class CreateTableParserListener extends BaseParserListener {
             parser.runIfNotNull(() -> {
                 listeners.remove(columnDefinitionParserListener);
                 listeners.remove(outOfLineConstraintParserListener);
+                listeners.remove(constraintStateParserListener);
                 columnDefinitionParserListener = null;
                 outOfLineConstraintParserListener = null;
+                constraintStateParserListener = null;
                 parser.databaseTables().overwriteTable(table);
                 parser.signalCreateTable(tableEditor.tableId(), ctx);
             }, table);

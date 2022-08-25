@@ -14,6 +14,8 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.antlr.v4.runtime.tree.TerminalNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.AtomContext;
@@ -41,6 +43,8 @@ import io.netty.util.internal.StringUtil;
  * Modified by an in 2020.7.2 for constraint feature
  */
 class BaseParserListener extends PlSqlParserBaseListener {
+
+    protected final Logger LOGGER = LoggerFactory.getLogger(getClass().getName());
 
     public static final String SPACE = " ";
     public static final char QUO = '\"';
@@ -476,6 +480,5 @@ class BaseParserListener extends PlSqlParserBaseListener {
         sb.append("_").append(pkColumnName.replaceAll(String.valueOf(StringUtil.COMMA), "_"));
         sb.append("_").append(fkColumnName.replaceAll(String.valueOf(StringUtil.COMMA), "_"));
         return sb.toString();
-
     }
 }

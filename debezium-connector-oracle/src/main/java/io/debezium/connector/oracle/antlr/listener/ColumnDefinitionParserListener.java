@@ -12,8 +12,6 @@ import java.util.List;
 import java.util.Map;
 
 import org.antlr.v4.runtime.tree.ParseTreeListener;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import io.debezium.antlr.DataTypeResolver;
 import io.debezium.connector.oracle.antlr.OracleDdlParser;
@@ -37,7 +35,6 @@ import oracle.jdbc.OracleTypes;
  * Modified by an in 2020.7.2 for constraint feature
  */
 public class ColumnDefinitionParserListener extends BaseParserListener {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ColumnDefinitionParserListener.class);
 
     private final OracleDdlParser parser;
     private final DataTypeResolver dataTypeResolver;
@@ -71,11 +68,8 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
 
         List<Inline_constraintContext> inline_constraint = ctx.inline_constraint();
         if (inline_constraint != null && inline_constraint.size() > 0) {
-
             String indexName = ctx.type_name() != null ? ctx.type_name().getText() : "CHECK_" + ctx.column_name().getText().replace("_", "").toUpperCase();
-
             String columnName = getColumnName(ctx.column_name());
-
             inline_constraint.forEach(inlineConstraint -> enterInline_constraint(inlineConstraint, indexName, columnName));
         }
         super.enterColumn_definition(ctx);
@@ -132,8 +126,8 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
         }
 
         if (ctx.PRIMARY() != null) {
-            List<Map<String, String>> pkColumnChanges = new ArrayList<Map<String, String>>();
-            List<Map<String, String>> constraintChanges = new ArrayList<Map<String, String>>();
+            List<Map<String, String>> pkColumnChanges = new ArrayList<>();
+            List<Map<String, String>> constraintChanges = new ArrayList<>();
             final Map<String, String> pkColumn = new HashMap<>();
             pkColumn.put(COLUMN_NAME, columnName);
             pkColumn.put(PRIMARY_KEY_ACTION, PRIMARY_KEY_ADD);
@@ -154,10 +148,7 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
     }
 
     private String enterCheck_constraint_condition(PlSqlParser.Check_constraintContext ctx) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(Logical_expression_parse(ctx.condition().expression().logical_expression()));
-
-        return sb.toString();
+        return Logical_expression_parse(ctx.condition().expression().logical_expression());
     }
 
     @Override
@@ -199,9 +190,7 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
     private String resolveColumnDataType(PlSqlParser.Modify_col_propertiesContext ctx) {
         columnEditor.name(getColumnName(ctx.column_name()));
 
-        if (ctx.datatype() != null) {
-            resolveColumnDataType(ctx.datatype());
-        }
+        resolveColumnDataType(ctx.datatype());
 
         boolean hasNullConstraint = ctx.inline_constraint().stream().anyMatch(c -> c.NULL_() != null);
         boolean hasNotNullConstraint = ctx.inline_constraint().stream().anyMatch(c -> c.NOT() != null);
@@ -218,12 +207,13 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
     }
 
     private void resolveColumnDataType(PlSqlParser.DatatypeContext ctx) {
-        PlSqlParser.Precision_partContext precisionPart = null;
-        if (ctx != null) {
-            precisionPart = ctx.precision_part();
+        // If the context is null, there is nothing this method can resolve and it is safe to return
+        if (ctx == null) {
+            return;
         }
 
-        if (ctx != null && ctx.native_datatype_element() != null) {
+        if (ctx.native_datatype_element() != null) {
+            PlSqlParser.Precision_partContext precisionPart = ctx.precision_part();
             if (ctx.native_datatype_element().INT() != null || ctx.native_datatype_element().INTEGER() != null ||
                     ctx.native_datatype_element().SMALLINT() != null || ctx.native_datatype_element().NUMERIC() != null ||
                     ctx.native_datatype_element().DECIMAL() != null) {

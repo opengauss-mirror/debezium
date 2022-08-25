@@ -5,26 +5,22 @@
  */
 package io.debezium.connector.oracle.antlr.listener;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
-import java.util.stream.Collectors;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.debezium.connector.oracle.antlr.OracleDdlParser;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser;
 import io.debezium.relational.Index;
 import io.debezium.relational.TableEditor;
 import io.debezium.relational.TableId;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
 /**
  * @author saxisuer
  */
 public class CreateIndexParserListener extends BaseParserListener {
-    private static final Logger LOGGER = LoggerFactory.getLogger(CreateIndexParserListener.class);
 
     private TableEditor tableEditor;
     private String catalogName;
@@ -37,6 +33,14 @@ public class CreateIndexParserListener extends BaseParserListener {
         this.catalogName = catalogName;
         this.schemaName = schemaName;
         this.parser = parser;
+    }
+
+    /**
+     * set table editor
+     * @param tableEditor
+     */
+    void setTableEditor(TableEditor tableEditor) {
+        this.tableEditor = tableEditor;
     }
 
     /**
@@ -55,13 +59,18 @@ public class CreateIndexParserListener extends BaseParserListener {
         }
         String tableName = getTableName(ctx.table_index_clause().tableview_name());
         TableId tableId = new TableId(catalogName, schemaName, tableName);
-        if (parser.databaseTables().forTable(tableId) == null) {
-            LOGGER.info("Ignoring CREATE INDEX statement for non-captured table {}", tableId);
-            return;
+        if (tableEditor != null) {
+            LOGGER.debug("CREATE INDEX BY CONSTRAINT USING INDEX (CREATE_INDEX_STATEMENT)");
         }
-        tableEditor = parser.databaseTables().editTable(tableId);
-        tableEditor.clearColumnChange();
-        tableEditor.clearConstraint();
+        else {
+            if (parser.databaseTables().forTable(tableId) == null) {
+                LOGGER.info("Ignoring CREATE INDEX statement for non-captured table {}", tableId);
+                return;
+            }
+            tableEditor = parser.databaseTables().editTable(tableId);
+            tableEditor.clearColumnChange();
+            tableEditor.clearConstraint();
+        }
         LOGGER.info("PARSING CREATE INDEX, [{}.{}] FOR TABLE: [{}]", schemaName, indexName, tableId.identifier());
         index = new Index();
         index.setIndexName(indexName);
@@ -79,8 +88,8 @@ public class CreateIndexParserListener extends BaseParserListener {
         parser.runIfNotNull(() -> {
             tableEditor.setChangeIndex(index).addIndex(indexName);
             parser.databaseTables().overwriteTable(tableEditor.create());
-            parser.databaseTables().bindTableIndex(indexName, tableEditor.tableId());
             parser.signalCreateIndex(indexName, tableEditor.tableId(), ctx);
+            tableEditor = null;
         }, tableEditor, index);
         super.exitCreate_index(ctx);
     }

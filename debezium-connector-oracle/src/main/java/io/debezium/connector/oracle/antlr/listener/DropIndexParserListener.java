@@ -6,9 +6,6 @@
 
 package io.debezium.connector.oracle.antlr.listener;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.debezium.connector.oracle.antlr.OracleDdlParser;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser;
 import io.debezium.relational.Index;
@@ -20,13 +17,11 @@ import io.debezium.relational.TableId;
  */
 public class DropIndexParserListener extends BaseParserListener {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(DropIndexParserListener.class);
     private TableEditor tableEditor;
     private String catalogName;
     private String schemaName;
     private OracleDdlParser parser;
     private String indexName;
-
     private Index index;
 
     public DropIndexParserListener(String catalogName, String schemaName, OracleDdlParser parser) {
