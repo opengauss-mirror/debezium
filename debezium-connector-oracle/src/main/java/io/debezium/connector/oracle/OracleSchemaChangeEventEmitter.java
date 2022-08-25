@@ -7,8 +7,11 @@ package io.debezium.connector.oracle;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.slf4j.Logger;
@@ -115,13 +118,22 @@ public class OracleSchemaChangeEventEmitter implements SchemaChangeEventEmitter 
                         case TRUNCATE_TABLE_CASCADE:
                             truncateReceiver.processTruncateCascadeEvent();
                             break;
+                        case CREATE_INDEX:
+                            changeEvents.add(createIndexEvent(partition, (DdlParserListener.TableIndexCreatedEvent) event));
+                            break;
                         default:
                             LOGGER.info("Skipped DDL event type {}: {}", event.type(), ddlText);
                             break;
                     }
                 });
             });
-
+            Map<SchemaChangeEventType, Integer> sortMap = new HashMap<SchemaChangeEventType, Integer>() {
+                {
+                    put(SchemaChangeEventType.CREATE_INDEX, 1);
+                    put(SchemaChangeEventType.DROP_INDEX, 1);
+                }
+            };
+            changeEvents.sort(Comparator.comparing(o -> sortMap.getOrDefault(o.getType(), 0)));
             for (SchemaChangeEvent event : changeEvents) {
                 receiver.schemaChangeEvent(event);
             }
@@ -139,6 +151,19 @@ public class OracleSchemaChangeEventEmitter implements SchemaChangeEventEmitter 
                 event.statement(),
                 schema.tableFor(event.tableId()),
                 SchemaChangeEventType.CREATE,
+                false);
+    }
+
+    private SchemaChangeEvent createIndexEvent(OraclePartition partition, DdlParserListener.TableIndexCreatedEvent event) {
+        offsetContext.tableEvent(tableId, changeTime);
+        return new SchemaChangeEvent(partition.getSourcePartition(),
+                offsetContext.getOffset(),
+                offsetContext.getSourceInfo(),
+                event.tableId().catalog(),
+                event.tableId().schema(),
+                event.statement(),
+                schema.tableFor(event.tableId()),
+                SchemaChangeEvent.SchemaChangeEventType.CREATE_INDEX,
                 false);
     }
 

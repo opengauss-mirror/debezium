@@ -5,6 +5,20 @@
  */
 package io.debezium.connector.oracle.logminer.processor;
 
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import io.debezium.DebeziumException;
 import io.debezium.connector.oracle.OracleConnection;
 import io.debezium.connector.oracle.OracleConnectorConfig;
@@ -37,19 +51,6 @@ import io.debezium.pipeline.source.spi.ChangeEventSource.ChangeEventSourceContex
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
 import io.debezium.util.Clock;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.function.Supplier;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * An abstract implementation of {@link LogMinerEventProcessor} that all processors should extend.

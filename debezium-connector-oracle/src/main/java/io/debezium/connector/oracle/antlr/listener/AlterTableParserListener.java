@@ -5,7 +5,18 @@
  */
 package io.debezium.connector.oracle.antlr.listener;
 
+import static io.debezium.antlr.AntlrDdlParser.getText;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
+import org.antlr.v4.runtime.tree.ParseTreeListener;
+
 import com.google.common.collect.Maps;
+
 import io.debezium.connector.oracle.antlr.OracleDdlParser;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Constraint_nameContext;
@@ -16,25 +27,12 @@ import io.debezium.relational.TableEditor;
 import io.debezium.relational.TableId;
 import io.debezium.text.ParsingException;
 import io.netty.util.internal.StringUtil;
-import org.antlr.v4.runtime.tree.ParseTreeListener;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-
-import static io.debezium.antlr.AntlrDdlParser.getText;
 
 /**
  * Parser listener that is parsing Oracle ALTER TABLE statements
  * Modified by an in 2020.7.2 for constraint feature
  */
 public class AlterTableParserListener extends BaseParserListener {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(AlterTableParserListener.class);
 
     private static final int STARTING_INDEX = 1;
     private TableEditor tableEditor;
@@ -45,6 +43,7 @@ public class AlterTableParserListener extends BaseParserListener {
     private final List<ParseTreeListener> listeners;
     private ColumnDefinitionParserListener columnDefinitionParserListener;
     private OutOfLineConstraintParserListener outOfLineConstraintParserListener;
+    private ConstraintStateParserListener constraintStateParserListener;
     private List<ColumnEditor> columnEditors;
     private int parsingColumnIndex = STARTING_INDEX;
 
@@ -88,6 +87,10 @@ public class AlterTableParserListener extends BaseParserListener {
             outOfLineConstraintParserListener = new OutOfLineConstraintParserListener(parser, tableEditor, listeners);
             listeners.add(outOfLineConstraintParserListener);
         }
+        if (constraintStateParserListener == null) {
+            constraintStateParserListener = new ConstraintStateParserListener(parser, tableEditor, listeners);
+            listeners.add(constraintStateParserListener);
+        }
         super.enterAlter_table(ctx);
     }
 
@@ -96,7 +99,9 @@ public class AlterTableParserListener extends BaseParserListener {
         parser.runIfNotNull(() -> {
             listeners.remove(columnDefinitionParserListener);
             listeners.remove(outOfLineConstraintParserListener);
+            listeners.remove(constraintStateParserListener);
             outOfLineConstraintParserListener = null;
+            constraintStateParserListener = null;
             parser.databaseTables().overwriteTable(tableEditor.create());
             parser.signalAlterTable(tableEditor.tableId(), previousTableId, ctx.getParent());
         }, tableEditor);
