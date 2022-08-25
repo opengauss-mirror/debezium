@@ -6,6 +6,7 @@
 package io.debezium.connector.oracle.xstream;
 
 import java.sql.SQLException;
+import java.sql.Types;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -205,7 +206,7 @@ class LcrEventHandler implements XStreamLCRCallbackHandler {
         // such a flag would allow us to conditionalize this loop and only apply it to tables
         // which have LOB columns.
         for (Column column : table.columns()) {
-            if (isLobColumn(column)) {
+            if (isLobColumn(column) || isObjectColumn(column)) {
                 // again Xstream doesn't supply before state for LOB values; explicitly use unavailable value
                 oldChunkValues.put(column.name(), OracleValueConverters.UNAVAILABLE_VALUE);
                 if (!chunkValues.containsKey(column.name())) {
@@ -345,7 +346,20 @@ class LcrEventHandler implements XStreamLCRCallbackHandler {
     }
 
     private boolean isLobColumn(Column column) {
-        return column.jdbcType() == OracleTypes.CLOB || column.jdbcType() == OracleTypes.NCLOB || column.jdbcType() == OracleTypes.BLOB;
+        return column.jdbcType() == OracleTypes.CLOB || column.jdbcType() == OracleTypes.NCLOB || column.jdbcType() == OracleTypes.BLOB
+                || column.jdbcType() == Types.SQLXML
+                || column.jdbcType() == Types.LONGVARBINARY || column.jdbcType() == Types.LONGVARCHAR;
+    }
+
+    private boolean isObjectColumn(Column column) {
+        switch (column.jdbcType()) {
+            case Types.STRUCT:
+            case OracleTypes.OTHER:
+            case OracleTypes.ARRAY:
+                return true;
+            default:
+                return false;
+        }
     }
 
     private void resolveAndDispatchCurrentChunkedRow() {
@@ -367,10 +381,14 @@ class LcrEventHandler implements XStreamLCRCallbackHandler {
                 switch (type) {
                     case ChunkColumnValue.CLOB:
                     case ChunkColumnValue.NCLOB:
+                    case ChunkColumnValue.LONG:
+                    case ChunkColumnValue.LONGRAW:
                         resolvedChunkValues.put(columnName, chunkValues.getStringValue());
                         break;
 
                     case ChunkColumnValue.BLOB:
+                    case ChunkColumnValue.RAW:
+                    case ChunkColumnValue.XMLTYPE:
                         resolvedChunkValues.put(columnName, chunkValues.getByteArray());
                         break;
 

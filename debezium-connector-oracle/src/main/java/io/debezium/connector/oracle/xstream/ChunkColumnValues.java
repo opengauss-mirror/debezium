@@ -105,8 +105,12 @@ public class ChunkColumnValues {
             switch (chunkColumnValue.getChunkType()) {
                 case ChunkColumnValue.CLOB:
                 case ChunkColumnValue.NCLOB:
+                case ChunkColumnValue.LONG:
+                case ChunkColumnValue.LONGRAW:
                     return chunkColumnValue.getColumnData().stringValue().length();
                 case ChunkColumnValue.BLOB:
+                case ChunkColumnValue.RAW:
+                case ChunkColumnValue.XMLTYPE:
                     return chunkColumnValue.getColumnData().getBytes().length;
                 default:
                     return 0;

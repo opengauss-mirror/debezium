@@ -43,6 +43,7 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
     private final DataTypeResolver dataTypeResolver;
     private final TableEditor tableEditor;
     private final List<ParseTreeListener> listeners;
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ColumnDefinitionParserListener.class);
     private ColumnEditor columnEditor;
 
     ColumnDefinitionParserListener(final TableEditor tableEditor, final ColumnEditor columnEditor, OracleDdlParser parser,
@@ -188,7 +189,18 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
 
         if (ctx.datatype() == null) {
             if (ctx.type_name() != null && "\"MDSYS\".\"SDO_GEOMETRY\"".equalsIgnoreCase(ctx.type_name().getText())) {
-                columnEditor.jdbcType(Types.STRUCT).type("MDSYS.SDO_GEOMETRY");
+                columnEditor.jdbcType(Types.OTHER).type("MDSYS.SDO_GEOMETRY");
+            }
+            else if (ctx.type_name() != null && "\"MDSYS\".\"SDO_TOPO_GEOMETRY\"".equalsIgnoreCase(ctx.type_name().getText())) {
+                columnEditor.jdbcType(Types.OTHER).type("MDSYS.SDO_TOPO_GEOMETRY");
+            }
+            else if (ctx.type_name() != null && "\"MDSYS\".\"SDO_LIST_TYPE\"".equalsIgnoreCase(ctx.type_name().getText())) {
+                columnEditor.jdbcType(Types.ARRAY).type("MDSYS.SDO_LIST_TYPE");
+            }
+            else {
+                columnEditor
+                        .jdbcType(Types.STRUCT)
+                        .type(ctx.type_name().getText().toUpperCase());
             }
         }
         else {
@@ -341,8 +353,22 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
             else if (ctx.native_datatype_element().CLOB() != null) {
                 columnEditor.jdbcType(Types.CLOB).type("CLOB");
             }
+            else if (ctx.native_datatype_element().LONG() != null) {
+                if (ctx.native_datatype_element().RAW() != null) {
+                    columnEditor
+                            .jdbcType(Types.LONGVARBINARY)
+                            .type("LONG RAW");
+                }
+                else {
+                    columnEditor
+                            .jdbcType(Types.LONGVARCHAR)
+                            .type("LONG");
+                }
+            }
             else if (ctx.native_datatype_element().RAW() != null) {
-                columnEditor.jdbcType(OracleTypes.RAW).type("RAW");
+                columnEditor
+                        .jdbcType(OracleTypes.VARBINARY)
+                        .type("RAW");
 
                 setPrecision(precisionPart, columnEditor);
             }
@@ -351,11 +377,47 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
                 // This is the same registration of the column that is resolved during JDBC metadata inspection.
                 columnEditor.jdbcType(OracleTypes.OTHER).type("SDO_GEOMETRY").length(1);
             }
+            else if (ctx.native_datatype_element().SDO_TOPO_GEOMETRY() != null) {
+                columnEditor
+                        .jdbcType(OracleTypes.OTHER)
+                        .type("SDO_TOPO_GEOMETRY");
+            }
+            else if (ctx.native_datatype_element().SDO_LIST_TYPE() != null) {
+                columnEditor
+                        .jdbcType(OracleTypes.ARRAY)
+                        .type("SDO_LIST_TYPE()");
+            }
             else if (ctx.native_datatype_element().ROWID() != null) {
                 columnEditor.jdbcType(Types.VARCHAR).type("ROWID");
             }
+            else if (ctx.native_datatype_element().XMLTYPE() != null) {
+                columnEditor
+                        .jdbcType(Types.SQLXML)
+                        .type("XMLTYPE")
+                        .length(2000);
+            }
+            else if (ctx.native_datatype_element().URITYPE() != null) {
+                columnEditor
+                        .jdbcType(OracleTypes.OTHER)
+                        .type("URITYPE")
+                        .length(getVarCharDefaultLength());
+            }
+            else if (ctx.native_datatype_element().HTTPURITYPE() != null) {
+                columnEditor
+                        .jdbcType(OracleTypes.OTHER)
+                        .type("HTTPURITYPE")
+                        .length(getVarCharDefaultLength());
+            }
+            else if (ctx.native_datatype_element().XDBURITYPE() != null) {
+                columnEditor
+                        .jdbcType(OracleTypes.OTHER)
+                        .type("XDBURITYPE")
+                        .length(getVarCharDefaultLength());
+            }
             else {
-                throw new IllegalArgumentException("Unsupported column type: " + ctx.native_datatype_element().getText());
+                columnEditor
+                        .jdbcType(OracleTypes.OTHER)
+                        .type(ctx.native_datatype_element().getText());
             }
         }
         else if (ctx.INTERVAL() != null && ctx.YEAR() != null && ctx.TO() != null && ctx.MONTH() != null) {
@@ -379,7 +441,9 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
             }
         }
         else {
-            throw new IllegalArgumentException("Unsupported column type: " + ctx.getText());
+            columnEditor
+                    .jdbcType(OracleTypes.STRUCT)
+                    .type("OTHER");
         }
     }
 

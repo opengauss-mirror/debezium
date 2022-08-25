@@ -7,6 +7,7 @@ package io.debezium.connector.oracle;
 
 import static io.debezium.util.NumberConversions.BYTE_FALSE;
 
+import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.sql.Blob;
 import java.sql.Clob;
@@ -148,10 +149,17 @@ public class OracleValueConverters extends JdbcValueConverters {
             case OracleTypes.INTERVALYM:
             case OracleTypes.INTERVALDS:
                 return intervalHandlingMode == OracleConnectorConfig.IntervalHandlingMode.STRING ? Interval.builder() : MicroDuration.builder();
-            case Types.STRUCT:
-                return SchemaBuilder.string();
             case OracleTypes.ROWID:
+            case Types.LONGVARBINARY:
+                return SchemaBuilder.string().name("LONG RAW");
+            case OracleTypes.RAW:
+            case OracleTypes.VARBINARY:
                 return SchemaBuilder.string();
+            case Types.STRUCT:
+            case OracleTypes.OTHER:
+                return SchemaBuilder.string().name("UDT");
+            case OracleTypes.ARRAY:
+                return SchemaBuilder.string().name("Array");
             default: {
                 SchemaBuilder builder = super.schemaBuilder(column);
                 logger.debug("JdbcValueConverters returned '{}' for column '{}'", builder != null ? builder.getClass().getName() : null, column.name());
@@ -207,6 +215,11 @@ public class OracleValueConverters extends JdbcValueConverters {
             case Types.STRUCT:
             case Types.CLOB:
             case OracleTypes.ROWID:
+            case Types.LONGVARBINARY:
+            case OracleTypes.RAW:
+            case OracleTypes.VARBINARY:
+            case OracleTypes.OTHER:
+            case OracleTypes.ARRAY:
                 return data -> convertString(column, fieldDefn, data);
             case Types.BLOB:
                 return data -> convertBinary(column, fieldDefn, data, binaryMode);
@@ -225,9 +238,6 @@ public class OracleValueConverters extends JdbcValueConverters {
                 return (data) -> convertIntervalYearMonth(column, fieldDefn, data);
             case OracleTypes.INTERVALDS:
                 return (data) -> convertIntervalDaySecond(column, fieldDefn, data);
-            case OracleTypes.RAW:
-                // Raw data types are not supported
-                return null;
         }
 
         return super.converter(column, fieldDefn);
@@ -292,6 +302,19 @@ public class OracleValueConverters extends JdbcValueConverters {
             else if (UnistrHelper.isUnistrFunction(s)) {
                 return UnistrHelper.convert(s);
             }
+        }
+        if (data instanceof byte[]) {
+            byte[] b = (byte[]) data;
+            try {
+                return new String(b, "UTF-8");
+            }
+            catch (UnsupportedEncodingException e) {
+                // should not get here
+                logger.error("Unexpected convertion error: from byte[] to String.", e);
+            }
+        }
+        if (data instanceof RAW) {
+            return ((RAW) data).stringValue().toString();
         }
 
         if (data == UNAVAILABLE_VALUE) {
