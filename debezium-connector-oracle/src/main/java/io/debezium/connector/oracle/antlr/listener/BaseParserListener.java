@@ -6,12 +6,13 @@
 package io.debezium.connector.oracle.antlr.listener;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.antlr.v4.runtime.tree.TerminalNode;
 import org.slf4j.Logger;
@@ -19,20 +20,15 @@ import org.slf4j.LoggerFactory;
 
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.AtomContext;
-import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Between_elementsContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Column_nameContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Compound_expressionContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.ConcatenationContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Constraint_nameContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.ExpressionsContext;
-import io.debezium.ddl.parser.oracle.generated.PlSqlParser.In_elementsContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Logical_expressionContext;
-import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Logical_operationContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Model_expressionContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Multiset_expressionContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Relational_expressionContext;
-import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Relational_operatorContext;
-import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Type_specContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Unary_expressionContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser.Unary_logical_expressionContext;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParserBaseListener;
@@ -52,8 +48,6 @@ class BaseParserListener extends PlSqlParserBaseListener {
     public static final String ADD_COLUMN = "addColumn";
     public static final String DROP_COLUMN = "dropColumn";
 
-    public static Boolean IS_COLUMN = true;
-
     protected static final String UNIQUE_NAME = "unique";
 
     protected static final String PKTABLE_SCHEM = "pktableSchem";
@@ -72,6 +66,7 @@ class BaseParserListener extends PlSqlParserBaseListener {
     protected static final String PRIMARY_KEY_ADD = "add";
 
     protected static final String CONDITION = "condition";
+    protected static final String INCLUDE_COLUMN = "includeColumn";
 
     protected static final String DEFAULT_VALUE_KEY = "defaultValueExpression";
     protected static final String OPTIONAL_KEY = "optional";
@@ -156,293 +151,105 @@ class BaseParserListener extends PlSqlParserBaseListener {
         return upperCaseIfNotQuoted ? text.toUpperCase() : text;
     }
 
-    public String addSpace(Object str) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(SPACE)
-                .append(str)
-                .append(SPACE);
-        return sb.toString();
+    protected List<String> Logical_expression_parse(Logical_expressionContext logical_expressionContext) {
+        List<String> includeColumn = new ArrayList<>();
+        Logical_expression_parse(logical_expressionContext, includeColumn);
+        return includeColumn.stream().distinct().collect(Collectors.toList());
     }
 
-    public String addLeftSpace(Object str) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(SPACE)
-                .append(str);
-        return sb.toString();
-    }
-
-    public String addQuo(Object str) {
-        if (str != null && str.toString().contains("\"")) {
-            return str.toString();
+    private void Logical_expression_parse(Logical_expressionContext logical_expression, List<String> includeColumn) {
+        Optional<TerminalNode> terminalNode = Logical_expression_node(logical_expression);
+        if (terminalNode.isPresent()) {
+            logical_expression.logical_expression().forEach(each -> {
+                Logical_expression_parse(each, includeColumn);
+            });
         }
-        StringBuilder sb = new StringBuilder();
-        sb.append(QUO)
-                .append(str)
-                .append(QUO);
-        return sb.toString().toUpperCase();
-    }
-
-    protected String Logical_expression_parse(Logical_expressionContext logical_expression) {
-
-        StringBuilder sb = new StringBuilder();
-
-        sb.append(unary_logical_expression_parse(logical_expression.unary_logical_expression()));
-
-        Logical_expression_node(logical_expression).ifPresent(node -> {
-            List<String> logical_expressions = logical_expression.logical_expression().stream().map(logical_exp -> Logical_expression_parse(logical_exp))
-                    .collect(Collectors.toList());
-            sb.append(StringUtil.join(addSpace(node.getText()), logical_expressions));
-        });
-
-        return sb.toString();
+        else {
+            unary_logical_expression_parse(logical_expression.unary_logical_expression(), includeColumn);
+        }
     }
 
     private Optional<TerminalNode> Logical_expression_node(Logical_expressionContext logical_expression) {
-        return Arrays.asList(
+        return Stream.of(
                 logical_expression.AND(),
-                logical_expression.OR())
-                .stream().filter(node -> node != null).findFirst();
+                logical_expression.OR()).filter(Objects::nonNull).findFirst();
     }
 
-    private String unary_logical_expression_parse(Unary_logical_expressionContext unary_logical_expression) {
-        StringBuilder sb = new StringBuilder();
-        if (unary_logical_expression == null) {
-            return sb.toString();
-        }
+    private List<String> unary_logical_expression_parse(Unary_logical_expressionContext unary_logical_expression, List<String> includeColumn) {
 
-        IS_COLUMN = true;
+        if (unary_logical_expression == null) {
+            return includeColumn;
+        }
 
         Multiset_expressionContext multiset_expression = unary_logical_expression.multiset_expression();
         Relational_expressionContext relational_expression = multiset_expression.relational_expression();
 
-        sb.append(multiset_expression(relational_expression.compound_expression()));
-
+        multisetExpression(relational_expression.compound_expression(), includeColumn);
         List<Relational_expressionContext> relational_expressions = relational_expression.relational_expression();
-        Relational_operatorContext relational_operator = relational_expression.relational_operator();
-        if (relational_operator != null) {
-            List<String> exps = relational_expressions.stream().map(exp -> multiset_expression(exp.compound_expression())).collect(Collectors.toList());
-            sb.append(StringUtil.join(addSpace(relational_operator.getText()), exps));
+        for (Relational_expressionContext relationalExpression : relational_expressions) {
+            multisetExpression(relationalExpression.compound_expression(), includeColumn);
         }
-
-        List<TerminalNode> unary_logical_expression_nodes = unary_logical_expression_node(unary_logical_expression);
-        if (unary_logical_expression_nodes.size() <= 0) {
-            return sb.toString();
-        }
-
-        unary_logical_expression_nodes.forEach(node -> sb.append(addLeftSpace(node.getText())));
-        sb.append(logical_operation_expression(unary_logical_expression));
-
-        return sb.toString();
+        return includeColumn;
     }
 
-    private String multiset_expression(Compound_expressionContext compound_expression) {
-        StringBuilder sb = new StringBuilder();
+    private List<String> multisetExpression(Compound_expressionContext compound_expression, List<String> includeColumn) {
         if (compound_expression == null) {
-            return sb.toString();
+            return includeColumn;
         }
+        compound_expression.concatenation().forEach(concatenation -> concatenation(concatenation, includeColumn));
 
-        List<String> concatenations = compound_expression.concatenation().stream().map(concatenation -> {
-            String concatenationStr = IS_COLUMN ? addQuo(concatenation(concatenation)) : concatenation(concatenation);
-            IS_COLUMN = false;
-            return concatenationStr;
-        }).collect(Collectors.toList());
-
-        Optional<TerminalNode> multiset_expression_node_middle = multiset_expression_node_middle(compound_expression);
-        if (multiset_expression_node_middle.isPresent()) {
-            if (concatenations.size() == 1) {
-                sb.append(concatenations.get(0)).append(addSpace(multiset_expression_node_middle.get().getText()));
-            }
-            else {
-                sb.append(StringUtil.join(addSpace(multiset_expression_node_middle.get().getText()), concatenations));
-            }
-        }
-        else {
-            sb.append(StringUtil.join(SPACE, concatenations));
-        }
-
-        multiset_expression_node(compound_expression).ifPresent(node -> {
-            sb.append(addSpace(node.getText()));
-            switch (node.getText().toUpperCase()) {
-                case "IN":
-                    sb.append(in_elements(compound_expression.in_elements()));
-                    break;
-                case "BETWEEN":
-                    sb.append(between_elements(compound_expression.between_elements()));
-                    break;
-                default:
-                    break;
-            }
-        });
-
-        return sb.toString();
+        return includeColumn;
     }
 
-    private String concatenation(ConcatenationContext ctx) {
-        StringBuilder sb = new StringBuilder();
+    private void concatenation(ConcatenationContext ctx, List<String> includeColumn) {
 
         Model_expressionContext model_expression = ctx.model_expression();
 
         if (model_expression != null) {
             Unary_expressionContext unary_expression = model_expression.unary_expression();
-            sb.append(unary_expression(unary_expression));
+            unary_expression(unary_expression, includeColumn);
         }
 
         List<ConcatenationContext> concatenations = ctx.concatenation();
         if (concatenations != null && concatenations.size() > 0) {
-            List<String> concatenationList = concatenations.stream().map(concatenation -> concatenation(concatenation)).collect(Collectors.toList());
-            sb.append(StringUtil.join(addSpace(concatenation_node(ctx).get().getText()), concatenationList));
+            concatenations.forEach(concatenation -> concatenation(concatenation, includeColumn));
         }
-
-        return sb.toString();
     }
 
-    private Optional<TerminalNode> concatenation_node(ConcatenationContext concatenation) {
-        return Arrays.asList(
-                concatenation.ASTERISK(),
-                concatenation.SOLIDUS(),
-                concatenation.PLUS_SIGN(),
-                concatenation.MINUS_SIGN())
-                .stream().filter(node -> node != null).findFirst();
-    }
-
-    private String unary_expression(Unary_expressionContext ctx) {
-        StringBuilder sb = new StringBuilder();
+    private void unary_expression(Unary_expressionContext ctx, List<String> includeColumn) {
 
         Unary_expressionContext unary_expression = ctx.unary_expression();
         if (unary_expression != null) {
-            sb.append(unary_expression(unary_expression));
+            unary_expression(unary_expression, includeColumn);
         }
-
-        sb.append(ctx.case_statement() != null ? ctx.case_statement().getText() : StringUtil.EMPTY_STRING);
-        sb.append(ctx.quantified_expression() != null ? ctx.quantified_expression().getText() : StringUtil.EMPTY_STRING);
-        sb.append(ctx.standard_function() != null ? ctx.standard_function().getText() : StringUtil.EMPTY_STRING);
-
         AtomContext atom = ctx.atom();
         if (atom != null) {
-            sb.append(atom.table_element() != null ? atom.table_element().getText() : StringUtil.EMPTY_STRING);
-            sb.append(atom.outer_join_sign() != null ? atom.outer_join_sign().getText() : StringUtil.EMPTY_STRING);
-            sb.append(atom.bind_variable() != null ? atom.bind_variable().getText() : StringUtil.EMPTY_STRING);
-            sb.append(atom.constant() != null ? atom.constant().getText() : StringUtil.EMPTY_STRING);
-            sb.append(atom.general_element() != null ? atom.general_element().getText() : StringUtil.EMPTY_STRING);
-            sb.append(atom.LEFT_PAREN() != null ? atom.LEFT_PAREN().getText() : StringUtil.EMPTY_STRING);
-            sb.append(atom.subquery() != null ? atom.subquery().getText() : StringUtil.EMPTY_STRING);
+            PlSqlParser.ConstantContext constant = atom.constant();
+            if (constant != null) {
+                List<PlSqlParser.Quoted_stringContext> quotedStringContexts = constant.quoted_string();
+                if (quotedStringContexts.size() > 0) {
+                    quotedStringContexts.stream()
+                            .filter(quoted_stringContext -> quoted_stringContext.variable_name() != null)
+                            .map(quoted_stringContext -> quoted_stringContext.variable_name().getText())
+                            .forEach(includeColumn::add);
+                }
+            }
+            PlSqlParser.General_elementContext general_elementContext = atom.general_element();
+            if (general_elementContext != null) {
+                general_elementContext.general_element_part()
+                        .stream()
+                        .filter(each -> each.function_argument() != null)
+                        .flatMap(each -> each.function_argument().argument().stream())
+                        .forEach(each -> Logical_expression_parse(each.expression().logical_expression(), includeColumn));
+            }
 
             ExpressionsContext expressions = atom.expressions();
             if (expressions != null && expressions.expression() != null) {
-                expressions.expression().forEach(expression -> sb.append(Logical_expression_parse(expression.logical_expression())));
+                expressions.expression().forEach(expression -> Logical_expression_parse(expression.logical_expression(), includeColumn));
             }
 
-            sb.append(atom.RIGHT_PAREN() != null ? atom.RIGHT_PAREN().getText() : StringUtil.EMPTY_STRING);
         }
 
-        return sb.toString();
-    }
-
-    private String between_elements(Between_elementsContext between_element) {
-        StringBuilder sb = new StringBuilder();
-
-        List<String> in_elements = between_element.concatenation()
-                .stream()
-                .map(concatenation -> concatenation.getText()).collect(Collectors.toList());
-        sb.append(StringUtil.join(addSpace(between_element.AND().getText()), in_elements));
-
-        return sb.toString();
-    }
-
-    private String in_elements(In_elementsContext in_element) {
-        StringBuilder sb = new StringBuilder();
-
-        sb.append(in_element.LEFT_PAREN().getText());
-        List<String> in_elements = in_element.concatenation()
-                .stream()
-                .map(concatenation -> concatenation.getText()).collect(Collectors.toList());
-        sb.append(StringUtil.join(String.valueOf(StringUtil.COMMA), in_elements));
-
-        sb.append(in_element.RIGHT_PAREN().getText());
-        return sb.toString();
-    }
-
-    private Optional<TerminalNode> multiset_expression_node(Compound_expressionContext compound_expression) {
-        return Arrays.asList(
-                compound_expression.IN(),
-                compound_expression.BETWEEN())
-                .stream().filter(node -> node != null).findFirst();
-    }
-
-    private Optional<TerminalNode> multiset_expression_node_middle(Compound_expressionContext compound_expression) {
-        return Arrays.asList(
-                compound_expression.NOT(),
-                compound_expression.LIKE(),
-                compound_expression.LIKEC(),
-                compound_expression.LIKE2(),
-                compound_expression.LIKE4(),
-                compound_expression.ESCAPE())
-                .stream().filter(node -> node != null).findFirst();
-    }
-
-    private String logical_operation_expression(Unary_logical_expressionContext unary_logical_expression) {
-
-        StringBuilder sb = new StringBuilder();
-
-        List<Logical_operationContext> logical_operations = unary_logical_expression.logical_operation();
-
-        logical_operations.forEach(logical_operation -> {
-            logical_operation_left_node(logical_operation).ifPresent(node -> sb.append(addSpace(node.getText())));
-            sb.append(addSpace(type_spec_operation(logical_operation)));
-            logical_operation_right_node(logical_operation).ifPresent(node -> sb.append(addSpace(node.getText())));
-        });
-
-        return sb.toString();
-    }
-
-    private List<TerminalNode> unary_logical_expression_node(Unary_logical_expressionContext unary_logical_expression) {
-        return Arrays.asList(unary_logical_expression.IS(), unary_logical_expression.NOT())
-                .stream()
-                .filter(nodeList -> nodeList != null && nodeList.size() > 0)
-                .flatMap(node -> node.stream())
-                .collect(Collectors.toList());
-    }
-
-    private String type_spec_operation(Logical_operationContext logical_operation) {
-        StringBuilder sb = new StringBuilder();
-
-        List<Type_specContext> type_specs = logical_operation.type_spec();
-        type_specs.forEach(type_spec -> {
-            type_spec_node(type_spec).ifPresent(node -> sb.append(addSpace(node.getText())).append(type_spec.type_name().getText()));
-        });
-
-        return sb.toString();
-    }
-
-    private Optional<TerminalNode> logical_operation_left_node(Logical_operationContext logical_operation) {
-        return Arrays.asList(
-                logical_operation.NULL_(),
-                logical_operation.NAN(),
-                logical_operation.PRESENT(),
-                logical_operation.INFINITE(),
-                logical_operation.A_LETTER(),
-                logical_operation.SET(),
-                logical_operation.EMPTY(),
-                logical_operation.OF(),
-                logical_operation.LEFT_PAREN())
-                .stream().filter(node -> node != null).findFirst();
-    }
-
-    private Optional<TerminalNode> logical_operation_right_node(Logical_operationContext logical_operation) {
-        return Arrays.asList(
-                logical_operation.RIGHT_PAREN(),
-                logical_operation.TYPE(),
-                logical_operation.ONLY(),
-                logical_operation.COMMA() != null && logical_operation.COMMA().size() > 0 ? logical_operation.COMMA(0) : null)
-                .stream().filter(node -> node != null).findFirst();
-    }
-
-    private Optional<TerminalNode> type_spec_node(Type_specContext type_spec) {
-        return Arrays.asList(
-                type_spec.REF(),
-                type_spec.PERCENT_ROWTYPE(),
-                type_spec.PERCENT_TYPE())
-                .stream().filter(node -> node != null).findFirst();
     }
 
     protected List<Map<String, String>> enterInline_ref_constraint(PlSqlParser.References_clauseContext ctx, String schema, String columnName,
@@ -467,8 +274,7 @@ class BaseParserListener extends PlSqlParserBaseListener {
         }
 
         pkColumn.put(FK_NAME, constraint_name == null ? buildInlineFkName(pkColumn.get(PKTABLE_SCHEM),
-                pkColumn.get(PKTABLE_NAME), columnName, pkColumn.get(PKCOLUMN_NAME)) : constraint_name.getText());
-
+                pkColumn.get(PKTABLE_NAME), columnName, pkColumn.get(PKCOLUMN_NAME)) : getTableOrColumnName(constraint_name.getText()));
         return fkColumns;
     }
 

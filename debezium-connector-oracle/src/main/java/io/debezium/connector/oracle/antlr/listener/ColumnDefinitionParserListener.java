@@ -5,11 +5,14 @@
  */
 package io.debezium.connector.oracle.antlr.listener;
 
+import static io.debezium.antlr.AntlrDdlParser.getText;
+
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.antlr.v4.runtime.tree.ParseTreeListener;
 
@@ -69,9 +72,8 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
 
         List<Inline_constraintContext> inline_constraint = ctx.inline_constraint();
         if (inline_constraint != null && inline_constraint.size() > 0) {
-            String indexName = ctx.type_name() != null ? ctx.type_name().getText() : "CHECK_" + ctx.column_name().getText().replace("_", "").toUpperCase();
             String columnName = getColumnName(ctx.column_name());
-            inline_constraint.forEach(inlineConstraint -> enterInline_constraint(inlineConstraint, indexName, columnName));
+            inline_constraint.forEach(inlineConstraint -> enterInline_constraint(inlineConstraint, tableEditor.tableId().table(), columnName));
         }
         super.enterColumn_definition(ctx);
     }
@@ -86,28 +88,37 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
         super.enterPrimary_key_clause(ctx);
     }
 
-    private void enterInline_constraint(PlSqlParser.Inline_constraintContext ctx, String indexName, String columnName) {
+    private void enterInline_constraint(PlSqlParser.Inline_constraintContext ctx, String tableName, String columnName) {
 
         Check_constraintContext check_constraint = ctx.check_constraint();
         References_clauseContext references_clause = ctx.references_clause();
-
-        if (ctx.check_constraint() != null) {
+        Constraint_nameContext constraintNameContext = ctx.constraint_name();
+        if (check_constraint != null) {
             List<Map<String, String>> checkColumns = new ArrayList<>();
 
             final Map<String, String> checkColumn = new HashMap<>();
-            checkColumn.put(INDEX_NAME, indexName);
-
-            String condition = enterCheck_constraint_condition(check_constraint);
-            checkColumn.put(CONDITION, condition);
-
+            if (constraintNameContext != null) {
+                checkColumn.put(INDEX_NAME, getTableOrColumnName(constraintNameContext.getText()));
+            }
+            else {
+                checkColumn.put(INDEX_NAME, String.format("%s_%s_check", tableName, columnName));
+            }
+            List<String> includeColumn = Logical_expression_parse(check_constraint.condition().expression().logical_expression());
+            String rawExpr = getText(check_constraint.condition().expression().logical_expression());
+            for (int i = 0; i < includeColumn.size(); i++) {
+                rawExpr = rawExpr.replace(includeColumn.get(i), ":$" + i);
+            }
+            checkColumn.put(CONDITION, rawExpr);
+            checkColumn.put(INCLUDE_COLUMN, includeColumn.stream().map(BaseParserListener::getTableOrColumnName).collect(Collectors.joining(
+                    ",")));
             checkColumns.add(checkColumn);
-
             tableEditor.setCheckColumns(checkColumns);
 
         }
 
         if (references_clause != null) {
-            List<Map<String, String>> fkColumns = enterInline_ref_constraint(references_clause, tableEditor.tableId().schema(), columnName, null);
+            List<Map<String, String>> fkColumns = enterInline_ref_constraint(references_clause, tableEditor.tableId().schema(), columnName,
+                    constraintNameContext);
             tableEditor.setForeignKeys(fkColumns);
         }
 
@@ -134,11 +145,14 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
             pkColumn.put(PRIMARY_KEY_ACTION, PRIMARY_KEY_ADD);
             Constraint_nameContext constraint_name = ctx.constraint_name();
             if (constraint_name != null) {
+                List<String> primaryConstraintNames = new ArrayList<>(tableEditor.primaryConstraintName());
                 pkColumn.put(CONSTRAINT_NAME, getTableOrColumnName(constraint_name.getText()));
                 final Map<String, String> constraintColumn = new HashMap<>();
                 constraintColumn.put(CONSTRAINT_NAME, getTableOrColumnName(constraint_name.getText()));
                 constraintColumn.put(TYPE_NAME, ctx.PRIMARY().getText());
                 constraintChanges.add(constraintColumn);
+                primaryConstraintNames.add(getTableOrColumnName(constraint_name.getText()));
+                tableEditor.setPrimaryConstraintName(primaryConstraintNames);
             }
             pkColumnChanges.add(pkColumn);
             tableEditor.setConstraintChanges(constraintChanges);
@@ -146,10 +160,6 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
         }
 
         super.enterInline_constraint(ctx);
-    }
-
-    private String enterCheck_constraint_condition(PlSqlParser.Check_constraintContext ctx) {
-        return Logical_expression_parse(ctx.condition().expression().logical_expression());
     }
 
     @Override
