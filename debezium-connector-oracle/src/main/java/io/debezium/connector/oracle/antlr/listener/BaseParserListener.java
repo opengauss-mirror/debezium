@@ -58,6 +58,7 @@ class BaseParserListener extends PlSqlParserBaseListener {
     protected static final String FK_DROP_IS_CASCADE = "cascade";
 
     protected static final String INDEX_NAME = "indexName";
+    protected static final String USING_INDEX = "usingIndex";
     protected static final String COLUMN_NAME = "columnName";
     protected static final String TYPE_NAME = "type";
 
@@ -286,5 +287,26 @@ class BaseParserListener extends PlSqlParserBaseListener {
         sb.append("_").append(pkColumnName.replaceAll(String.valueOf(StringUtil.COMMA), "_"));
         sb.append("_").append(fkColumnName.replaceAll(String.valueOf(StringUtil.COMMA), "_"));
         return sb.toString();
+    }
+
+    protected String getUsingIndexName(PlSqlParser.Constraint_stateContext constraint_stateContext) {
+        if (constraint_stateContext != null) {
+            List<PlSqlParser.Using_index_clauseContext> using_index_clauseContexts = constraint_stateContext.using_index_clause();
+            for (PlSqlParser.Using_index_clauseContext using_index_clauseContext : using_index_clauseContexts) {
+                PlSqlParser.Index_nameContext index_nameContext = using_index_clauseContext.index_name();
+                if (index_nameContext != null) {
+                    String indexName;
+                    if (index_nameContext.id_expression() == null) {
+                        indexName = getTableOrColumnName(index_nameContext.identifier().getText());
+                    }
+                    else {
+                        indexName = getTableOrColumnName(index_nameContext.id_expression().getText());
+                    }
+                    LOGGER.info("Constraint using index: {}", indexName);
+                    return indexName;
+                }
+            }
+        }
+        return null;
     }
 }

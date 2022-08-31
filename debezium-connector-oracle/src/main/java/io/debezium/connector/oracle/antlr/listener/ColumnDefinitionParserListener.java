@@ -122,7 +122,10 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
             tableEditor.setForeignKeys(fkColumns);
         }
 
-        // col_3 varchar(64） constraint key_1 unique for this issue
+        String indexName = null;
+        if (ctx.constraint_state() != null) {
+            indexName = getUsingIndexName(ctx.constraint_state());
+        }
         if (ctx.UNIQUE() != null) {
             List<Map<String, String>> uniqueColumns = new ArrayList<>(tableEditor.uniqueColumns());
             Map<String, String> uniqueColumn = new HashMap<>();
@@ -133,6 +136,9 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
                 uniqueColumn.put(INDEX_NAME, tableEditor.tableId().table() + "_" + columnName + "_key");
             }
             uniqueColumn.put(COLUMN_NAME, columnName);
+            if (null != indexName) {
+                uniqueColumn.put(USING_INDEX, indexName);
+            }
             uniqueColumns.add(uniqueColumn);
             tableEditor.setUniqueColumns(uniqueColumns);
         }
@@ -143,6 +149,9 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
             final Map<String, String> pkColumn = new HashMap<>();
             pkColumn.put(COLUMN_NAME, columnName);
             pkColumn.put(PRIMARY_KEY_ACTION, PRIMARY_KEY_ADD);
+            if (null != indexName) {
+                pkColumn.put(USING_INDEX, indexName);
+            }
             Constraint_nameContext constraint_name = ctx.constraint_name();
             if (constraint_name != null) {
                 List<String> primaryConstraintNames = new ArrayList<>(tableEditor.primaryConstraintName());
@@ -160,6 +169,11 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
         }
 
         super.enterInline_constraint(ctx);
+    }
+
+    @Override
+    public void enterInline_constraint(PlSqlParser.Inline_constraintContext ctx) {
+        LOGGER.debug("enterInline_constraint: {}", getText(ctx));
     }
 
     @Override

@@ -104,7 +104,10 @@ public class OutOfLineConstraintParserListener extends BaseParserListener {
     private void doUniqueConstraint(PlSqlParser.Out_of_line_constraintContext constraint, List<Map<String, String>> uniqueColumns) {
         uniqueColumns.addAll(tableEditor.uniqueColumns());
         PlSqlParser.Constraint_nameContext constraint_name = constraint.constraint_name();
-
+        String indexName = null;
+        if (constraint.constraint_state() != null) {
+            indexName = getUsingIndexName(constraint.constraint_state());
+        }
         for (PlSqlParser.Column_nameContext columnNameContext : constraint.column_name()) {
             final Map<String, String> uniqueColumn = new HashMap<>();
             if (constraint_name != null) {
@@ -114,6 +117,9 @@ public class OutOfLineConstraintParserListener extends BaseParserListener {
                 continue;
             }
             uniqueColumn.put(COLUMN_NAME, getColumnName(columnNameContext));
+            if (null != indexName) {
+                uniqueColumn.put(USING_INDEX, indexName);
+            }
             uniqueColumns.add(uniqueColumn);
         }
     }
@@ -121,6 +127,10 @@ public class OutOfLineConstraintParserListener extends BaseParserListener {
     private void doPrimaryConstraint(PlSqlParser.Out_of_line_constraintContext constraint, List<String> primaryKeyColumns,
                                      List<Map<String, String>> pkColumnChanges, List<Map<String, String>> constraintChanges) {
         PlSqlParser.Constraint_nameContext constraint_name = constraint.constraint_name();
+        String indexName = null;
+        if (constraint.constraint_state() != null) {
+            indexName = getUsingIndexName(constraint.constraint_state());
+        }
         for (PlSqlParser.Column_nameContext columnNameContext : constraint.column_name()) {
             Map<String, String> pkChangeMap = new HashMap<>();
             primaryKeyColumns.add(getColumnName(columnNameContext));
@@ -145,7 +155,9 @@ public class OutOfLineConstraintParserListener extends BaseParserListener {
                 primaryConstraintName.add(getTableOrColumnName(constraint_name.getText()));
                 tableEditor.setPrimaryConstraintName(primaryConstraintName);
             }
-
+            if (null != indexName) {
+                pkChangeMap.put(USING_INDEX, indexName);
+            }
             pkColumnChanges.add(pkChangeMap);
         }
     }
