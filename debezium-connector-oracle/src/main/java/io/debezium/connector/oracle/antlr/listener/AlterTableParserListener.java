@@ -420,6 +420,10 @@ public class AlterTableParserListener extends BaseParserListener {
         List<Map<String, String>> constraintChanges = new ArrayList<>();
 
         for (PlSqlParser.Inline_constraintContext constraint : column.inline_constraint()) {
+            String indexName = null;
+            if (constraint.constraint_state() != null) {
+                indexName = getUsingIndexName(constraint.constraint_state());
+            }
             if (constraint.PRIMARY() != null) {
                 Constraint_nameContext constraint_name = constraint.constraint_name();
                 Map<String, String> pkChangeMap = new HashMap<>();
@@ -434,7 +438,9 @@ public class AlterTableParserListener extends BaseParserListener {
                     constraintColumn.put(TYPE_NAME, constraint.PRIMARY().getText());
                     constraintChanges.add(constraintColumn);
                 }
-
+                if (null != indexName) {
+                    pkChangeMap.put(USING_INDEX, indexName);
+                }
                 pkColumnChanges.add(pkChangeMap);
             }
             else if (constraint.UNIQUE() != null) {
@@ -444,7 +450,13 @@ public class AlterTableParserListener extends BaseParserListener {
                 if (constraint_name != null) {
                     uniqueColumn.put(INDEX_NAME, getTableOrColumnName(constraint_name.getText()));
                 }
+                else {
+                    uniqueColumn.put(INDEX_NAME, tableEditor.tableId().table() + "_" + columnName + "_key");
+                }
                 uniqueColumn.put(COLUMN_NAME, columnName);
+                if (null != indexName) {
+                    uniqueColumn.put(USING_INDEX, indexName);
+                }
                 uniqueColumns.add(uniqueColumn);
 
             }
@@ -455,6 +467,9 @@ public class AlterTableParserListener extends BaseParserListener {
                     Constraint_nameContext constraint_name = constraint.constraint_name();
                     if (constraint_name != null) {
                         checkColumn.put(INDEX_NAME, getTableOrColumnName(constraint_name.getText()));
+                    }
+                    else {
+                        checkColumn.put(INDEX_NAME, String.format("%s_%s_check", tableEditor.tableId().table(), columnName));
                     }
                     List<String> includeColumn = Logical_expression_parse(expression.logical_expression());
                     String rawExpr = getText(expression.logical_expression());

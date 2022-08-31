@@ -53,6 +53,10 @@ public class CreateIndexParserListener extends BaseParserListener {
     @Override
     public void enterCreate_index(PlSqlParser.Create_indexContext ctx) {
         index = null;
+        if (tableEditor != null) {
+            LOGGER.debug("Ignoring :CREATE INDEX BY CONSTRAINT USING INDEX (CREATE_INDEX_STATEMENT);");
+            return;
+        }
         if (ctx.index_name().id_expression() == null) {
             indexName = getTableOrColumnName(ctx.index_name().identifier().getText());
         }
@@ -61,18 +65,13 @@ public class CreateIndexParserListener extends BaseParserListener {
         }
         String tableName = getTableName(ctx.table_index_clause().tableview_name());
         TableId tableId = new TableId(catalogName, schemaName, tableName);
-        if (tableEditor != null) {
-            LOGGER.debug("CREATE INDEX BY CONSTRAINT USING INDEX (CREATE_INDEX_STATEMENT)");
+        if (parser.databaseTables().forTable(tableId) == null) {
+            LOGGER.info("Ignoring CREATE INDEX statement for non-captured table {}", tableId);
+            return;
         }
-        else {
-            if (parser.databaseTables().forTable(tableId) == null) {
-                LOGGER.info("Ignoring CREATE INDEX statement for non-captured table {}", tableId);
-                return;
-            }
-            tableEditor = parser.databaseTables().editTable(tableId);
-            tableEditor.clearColumnChange();
-            tableEditor.clearConstraint();
-        }
+        tableEditor = parser.databaseTables().editTable(tableId);
+        tableEditor.clearColumnChange();
+        tableEditor.clearConstraint();
         LOGGER.info("PARSING CREATE INDEX, [{}.{}] FOR TABLE: [{}]", schemaName, indexName, tableId.identifier());
         index = new Index();
         index.setIndexName(indexName);

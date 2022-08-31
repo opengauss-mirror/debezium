@@ -6,6 +6,8 @@
 
 package io.debezium.connector.oracle.antlr.listener;
 
+import static io.debezium.antlr.AntlrDdlParser.getText;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -33,14 +35,19 @@ public class ConstraintStateParserListener extends BaseParserListener {
 
     @Override
     public void enterConstraint_state(PlSqlParser.Constraint_stateContext ctx) {
-        LOGGER.debug("enterConstraint_state");
-        parser.runIfNotNull(() -> {
-            Optional<ParseTreeListener> first = listeners.stream().filter(each -> each instanceof CreateIndexParserListener).findFirst();
-            if (first.isPresent()) {
-                CreateIndexParserListener createIndexParserListener = (CreateIndexParserListener) first.get();
-                createIndexParserListener.setTableEditor(tableEditor);
+        LOGGER.debug("enterConstraint_state: {}", getText(ctx));
+        List<PlSqlParser.Using_index_clauseContext> using_index_clauseContexts = ctx.using_index_clause();
+        for (PlSqlParser.Using_index_clauseContext using_index_clauseContext : using_index_clauseContexts) {
+            if (using_index_clauseContext.create_index() != null) {
+                parser.runIfNotNull(() -> {
+                    Optional<ParseTreeListener> first = listeners.stream().filter(each -> each instanceof CreateIndexParserListener).findFirst();
+                    if (first.isPresent()) {
+                        CreateIndexParserListener createIndexParserListener = (CreateIndexParserListener) first.get();
+                        createIndexParserListener.setTableEditor(tableEditor);
+                    }
+                }, tableEditor);
             }
-        }, tableEditor);
+        }
         super.enterConstraint_state(ctx);
     }
 }
