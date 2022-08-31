@@ -58,7 +58,7 @@ public class OutOfLineConstraintParserListener extends BaseParserListener {
         PlSqlParser.Foreign_key_clauseContext foreign_key_clause = constraint.foreign_key_clause();
         if (foreign_key_clause != null) {
             PlSqlParser.Constraint_nameContext constraint_name = constraint.constraint_name();
-            fkColumns = enterForeign_key_clause(foreign_key_clause, constraint_name == null ? null : constraint_name.getText());
+            fkColumns = enterForeign_key_clause(foreign_key_clause, constraint_name);
         }
         if (!primaryKeyColumns.isEmpty()) {
             tableEditor.setPrimaryKeyNames(primaryKeyColumns);
@@ -89,8 +89,14 @@ public class OutOfLineConstraintParserListener extends BaseParserListener {
             if (constraint_name != null) {
                 checkColumn.put(INDEX_NAME, getTableOrColumnName(constraint_name.getText()));
             }
-            String condition = Logical_expression_parse(expression.logical_expression());
-            checkColumn.put(CONDITION, condition);
+            List<String> includeColumn = Logical_expression_parse(expression.logical_expression());
+            String rawExpr = OracleDdlParser.getText(expression.logical_expression());
+            for (int i = 0; i < includeColumn.size(); i++) {
+                rawExpr = rawExpr.replace(includeColumn.get(i), ":$" + i);
+            }
+            checkColumn.put(CONDITION, rawExpr);
+            checkColumn.put(INCLUDE_COLUMN, includeColumn.stream().map(BaseParserListener::getTableOrColumnName).collect(Collectors.joining(
+                    ",")));
             checkColumns.add(checkColumn);
         }
     }
@@ -144,7 +150,8 @@ public class OutOfLineConstraintParserListener extends BaseParserListener {
         }
     }
 
-    public List<Map<String, String>> enterForeign_key_clause(PlSqlParser.Foreign_key_clauseContext ctx, String fkName) {
+    public List<Map<String, String>> enterForeign_key_clause(PlSqlParser.Foreign_key_clauseContext ctx,
+                                                             PlSqlParser.Constraint_nameContext constraint_name) {
 
         List<Map<String, String>> fkColumns = new ArrayList<>();
         final Map<String, String> pkColumn = new HashMap<>();
@@ -159,7 +166,7 @@ public class OutOfLineConstraintParserListener extends BaseParserListener {
         pkColumn.put(PKCOLUMN_NAME, StringUtil.join(String.valueOf(StringUtil.COMMA), pkColumnList).toString());
         pkColumn.put(FKCOLUMN_NAME, StringUtil.join(String.valueOf(StringUtil.COMMA), fkColumnList).toString());
         pkColumn.put(FK_NAME,
-                fkName != null ? fkName
+                constraint_name != null ? getTableOrColumnName(constraint_name.getText())
                         : buildInlineFkName(pkColumn.get(PKTABLE_SCHEM),
                                 pkColumn.get(PKTABLE_NAME),
                                 pkColumn.get(FKCOLUMN_NAME),

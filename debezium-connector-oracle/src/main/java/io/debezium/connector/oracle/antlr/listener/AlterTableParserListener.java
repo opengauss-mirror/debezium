@@ -12,6 +12,8 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 import org.antlr.v4.runtime.tree.ParseTreeListener;
 
@@ -274,6 +276,9 @@ public class AlterTableParserListener extends BaseParserListener {
             for (PlSqlParser.Column_nameContext columnNameContext : columnNameContexts) {
                 String columnName = getColumnName(columnNameContext);
                 tableEditor.removeColumn(columnName);
+                if (!ctx.CASCADE().isEmpty()) {
+                    columnName = String.join(";", columnName, "CASCADE");
+                }
                 Map<String, List<String>> changeColumn = Maps.newHashMap();
                 changeColumn.putAll(tableEditor.getChangeColumn());
                 if (changeColumn.containsKey(DROP_COLUMN)) {
@@ -321,35 +326,68 @@ public class AlterTableParserListener extends BaseParserListener {
 
                     if (dropConstraint.DROP() != null) {
                         Constraint_nameContext constraint_name = dropPrimaryKeyOrUnique.constraint_name();
-
+                        String constraintName = null;
+                        if (constraint_name != null) {
+                            constraintName = getTableOrColumnName(constraint_name.getText());
+                        }
+                        List<String> primaryConstraintNames = new ArrayList<>(tableEditor.primaryConstraintName());
+                        String primaryConstraintName = null;
+                        if (primaryConstraintNames.size() != 0) {
+                            primaryConstraintName = primaryConstraintNames.get(0);
+                        }
                         List<String> primaryKeyColumnNames = tableEditor.primaryKeyColumnNames();
-                        // todo if there was no primary key in table and only drop unique key ,there was no uniqueKeyChanges pass out
-                        for (String primaryKeyColumnName : primaryKeyColumnNames) {
-                            Map<String, String> pkChangeMap = new HashMap<>();
-                            pkChangeMap.put(COLUMN_NAME, primaryKeyColumnName);
-                            pkChangeMap.put(PRIMARY_KEY_ACTION, dropConstraint.DROP().getText());
-                            pkChangeMap.put(PRIMARY_DROP_IS_CASCADE, dropPrimaryKeyOrUnique.CASCADE() == null ? StringUtil.EMPTY_STRING : PRIMARY_DROP_IS_CASCADE);
-                            if (constraint_name != null) {
-                                String constraintName = constraint_name.getText();
-                                pkChangeMap.put(CONSTRAINT_NAME, getTableOrColumnName(constraintName));
-                                pkChangeMap.put(TYPE_NAME, removeConstraintAndGetType(getTableOrColumnName(constraintName)).toString());
-                            }
-                            else {
-                                if (dropPrimaryKeyOrUnique.PRIMARY() != null && dropPrimaryKeyOrUnique.KEY() != null) {
-                                    List<String> primaryConstraintNames = new ArrayList<>(tableEditor.primaryConstraintName());
-                                    if (primaryConstraintNames.size() != 0) {
-                                        String constraintName = primaryConstraintNames.get(0);
-                                        pkChangeMap.put(CONSTRAINT_NAME, getTableOrColumnName(constraintName));
-                                        pkChangeMap.put(TYPE_NAME, removeConstraintAndGetType(constraintName).toString());
-                                        primaryConstraintNames.clear();
-                                        tableEditor.setPrimaryConstraintName(primaryConstraintNames);
+                        if (!primaryKeyColumnNames.isEmpty()) {
+                            for (String primaryKeyColumnName : primaryKeyColumnNames) {
+                                Map<String, String> pkChangeMap = new HashMap<>();
+                                pkChangeMap.put(COLUMN_NAME, primaryKeyColumnName);
+                                pkChangeMap.put(PRIMARY_KEY_ACTION, dropConstraint.DROP().getText());
+                                pkChangeMap.put(PRIMARY_DROP_IS_CASCADE,
+                                        dropPrimaryKeyOrUnique.CASCADE() == null ? StringUtil.EMPTY_STRING : PRIMARY_DROP_IS_CASCADE);
+                                if (constraintName != null) {
+                                    pkChangeMap.put(CONSTRAINT_NAME, constraintName);
+                                    pkChangeMap.put(TYPE_NAME, removeConstraintAndGetType(constraintName).toString());
+                                }
+                                else {
+                                    if (dropPrimaryKeyOrUnique.PRIMARY() != null && dropPrimaryKeyOrUnique.KEY() != null) {
+                                        if (primaryConstraintName != null) {
+                                            constraintName = primaryConstraintNames.get(0);
+                                            pkChangeMap.put(CONSTRAINT_NAME, constraintName);
+                                            pkChangeMap.put(TYPE_NAME, removeConstraintAndGetType(constraintName).toString());
+                                            primaryConstraintNames.clear();
+                                            tableEditor.setPrimaryConstraintName(primaryConstraintNames);
+                                        }
                                     }
                                 }
+                                pkColumnChanges.add(pkChangeMap);
                             }
-                            pkColumnChanges.add(pkChangeMap);
+                            if (null != primaryConstraintName && primaryConstraintName.equals(constraintName)) {
+                                primaryConstraintNames.clear();
+                                tableEditor.setPrimaryConstraintName(primaryConstraintNames);
+                                tableEditor.setPrimaryKeyNames(new ArrayList<>());
+                            }
+                        }
+                        else {
+                            // there was no primary key in table and only drop constraint like foreign/ check /unique ,they should pass by drop
+                            // constraint changes and if constraint name equals tableEditor.primaryConstraintName(),we should set pkColumnNames
+                            // be null
+                            if (!Objects.requireNonNull(constraintName).isEmpty()) {
+                                Map<String, String> pkChangeMap = new HashMap<>();
+                                pkChangeMap.put(PRIMARY_KEY_ACTION, dropConstraint.DROP().getText());
+                                pkChangeMap.put(PRIMARY_DROP_IS_CASCADE,
+                                        dropPrimaryKeyOrUnique.CASCADE() == null ? StringUtil.EMPTY_STRING : PRIMARY_DROP_IS_CASCADE);
+                                pkChangeMap.put(CONSTRAINT_NAME, getTableOrColumnName(constraintName));
+                                pkChangeMap.put(TYPE_NAME, removeConstraintAndGetType(getTableOrColumnName(constraintName)).toString());
+                                if (primaryConstraintName != null) {
+                                    if (primaryConstraintName.equals(constraintName)) {
+                                        primaryConstraintNames.clear();
+                                        tableEditor.setPrimaryConstraintName(primaryConstraintNames);
+                                        tableEditor.setPrimaryKeyNames(new ArrayList<>());
+                                    }
+                                }
+                                pkColumnChanges.add(pkChangeMap);
+                            }
                         }
                     }
-
                 }
                 if (!pkColumnChanges.isEmpty()) {
                     tableEditor.setPrimaryKeyChanges(pkColumnChanges);
@@ -418,9 +456,14 @@ public class AlterTableParserListener extends BaseParserListener {
                     if (constraint_name != null) {
                         checkColumn.put(INDEX_NAME, getTableOrColumnName(constraint_name.getText()));
                     }
-
-                    String condition = Logical_expression_parse(expression.logical_expression());
-                    checkColumn.put(CONDITION, condition);
+                    List<String> includeColumn = Logical_expression_parse(expression.logical_expression());
+                    String rawExpr = getText(expression.logical_expression());
+                    for (int i = 0; i < includeColumn.size(); i++) {
+                        rawExpr = rawExpr.replace(includeColumn.get(i), ":$" + i);
+                    }
+                    checkColumn.put(CONDITION, rawExpr);
+                    checkColumn.put(INCLUDE_COLUMN, includeColumn.stream().map(BaseParserListener::getTableOrColumnName).collect(Collectors.joining(
+                            ",")));
                     checkColumns.add(checkColumn);
 
                 }
@@ -447,5 +490,19 @@ public class AlterTableParserListener extends BaseParserListener {
         if (!constraintChanges.isEmpty()) {
             tableEditor.setConstraintChanges(constraintChanges);
         }
+    }
+
+    @Override
+    public void exitInline_constraint(PlSqlParser.Inline_constraintContext ctx) {
+        if (ctx.PRIMARY() != null) {
+            if (ctx.getParent() instanceof PlSqlParser.Column_definitionContext) {
+                PlSqlParser.Column_definitionContext columnCtx = (PlSqlParser.Column_definitionContext) ctx.getParent();
+                String inlinePrimaryKey = getColumnName(columnCtx.column_name());
+                parser.runIfNotNull(() -> {
+                    tableEditor.setPrimaryKeyNames(inlinePrimaryKey);
+                }, tableEditor);
+            }
+        }
+        super.exitInline_constraint(ctx);
     }
 }

@@ -5,17 +5,19 @@
  */
 package io.debezium.connector.oracle.antlr.listener;
 
-import io.debezium.connector.oracle.antlr.OracleDdlParser;
-import io.debezium.ddl.parser.oracle.generated.PlSqlParser;
-import io.debezium.relational.Index;
-import io.debezium.relational.TableEditor;
-import io.debezium.relational.TableId;
+import static io.debezium.antlr.AntlrDdlParser.getText;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+
+import io.debezium.connector.oracle.antlr.OracleDdlParser;
+import io.debezium.ddl.parser.oracle.generated.PlSqlParser;
+import io.debezium.relational.Index;
+import io.debezium.relational.TableEditor;
+import io.debezium.relational.TableId;
 
 /**
  * @author saxisuer
@@ -113,7 +115,7 @@ public class CreateIndexParserListener extends BaseParserListener {
                         indexColumnExpr.setDesc(indexColumnExprContext.DESC() != null);
                         List<String> includeColumn = new ArrayList<>();
                         analyzeConcatenationContext(concatenationContext, includeColumn);
-                        String rawExpr = concatenationContext.getText();
+                        String rawExpr = getText(concatenationContext);
                         for (int i = 0; i < includeColumn.size(); i++) {
                             rawExpr = rawExpr.replace(includeColumn.get(i), ":$" + i);
                         }
@@ -157,6 +159,20 @@ public class CreateIndexParserListener extends BaseParserListener {
             if (null != atom) {
                 if (atom.bind_variable() != null) {
                     LOGGER.debug("get bind segment {}", atom.bind_variable().getText());
+                }
+                if (atom.expressions() != null) {
+                    List<PlSqlParser.ExpressionContext> expression = atom.expressions().expression();
+                    for (PlSqlParser.ExpressionContext expressionContext : expression) {
+                        List<PlSqlParser.ConcatenationContext> concatenation = expressionContext.logical_expression()
+                                .unary_logical_expression()
+                                .multiset_expression()
+                                .relational_expression()
+                                .compound_expression()
+                                .concatenation();
+                        for (PlSqlParser.ConcatenationContext context : concatenation) {
+                            analyzeConcatenationContext(context, includeColumn);
+                        }
+                    }
                 }
                 else {
                     PlSqlParser.ConstantContext constant = atom.constant();

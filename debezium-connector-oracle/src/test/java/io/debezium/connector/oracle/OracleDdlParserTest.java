@@ -412,7 +412,7 @@ public class OracleDdlParserTest {
                 .addColumn(Column.editor().name("T_VARCHAR2").type("VARCHAR2").length(10).create())
                 .create();
         tables.overwriteTable(table);
-        String sql = "create index IDX_TAB_1 on SCOTT.T_DBZ_TEST1 (COL_1 asc,COL_2 desc);";
+        String sql = "create index IDX_TAB_1 on SCOTT.T_DBZ_TEST1(((col_1*2)+1)/3);";
         DdlChanges changes = parser.getDdlChanges();
         changes.reset();
         parser.parse(sql, tables);
@@ -420,7 +420,7 @@ public class OracleDdlParserTest {
         assertThat(eventTypes).containsExactly(DdlParserListener.EventType.CREATE_INDEX);
         table = tables.forTable(new TableId(PDB_NAME, "SCOTT", "T_DBZ_TEST1"));
         Index index = table.indexChanges();
-        assertThat(index.getIndexColumnExpr().size()).isEqualTo(2);
+        assertThat(index.getIndexColumnExpr().size()).isEqualTo(1);
     }
 
     private void testColumn(@NotNull Table table, @NotNull String name, boolean isOptional, Integer jdbcType, String typeName, Integer length,
@@ -543,5 +543,135 @@ public class OracleDdlParserTest {
 
         Table table = tables.forTable(new TableId(PDB_NAME, "SCOTT", "DBZ4976"));
         assertThat(table.columnWithName("COL_1").length()).isEqualTo(10);
+    }
+
+    @Test
+    public void shouldParserPrimaryKeyConstraintDrop() {
+        parser.setCurrentDatabase(PDB_NAME);
+        parser.setCurrentSchema("SCOTT");
+        Table table = Table.editor()
+                .tableId(new TableId(PDB_NAME, "SCOTT", "TAB_1"))
+                .addColumn(Column.editor().name("col_1").type("INT").create())
+                .addColumn(Column.editor().name("col_2").type("VARCHAR2").length(32).create())
+                .addColumn(Column.editor().name("col_3").type("VARCHAR2").length(32).create())
+                .create();
+        tables.overwriteTable(table);
+        DdlChanges ddlChanges = parser.getDdlChanges();
+        String sql = "alter table SCOTT.TAB_1 add col_4 int constraint pk_1 primary key;";
+        ddlChanges.reset();
+        parser.parse(sql, tables);
+        table = tables.forTable(new TableId(PDB_NAME, "SCOTT", "TAB_1"));
+        String sql2 = "alter table SCOTT.TAB_1 drop constraint pk_1;";
+        ddlChanges.reset();
+        parser.parse(sql2, tables);
+        ddlChanges = parser.getDdlChanges();
+        List<DdlParserListener.EventType> eventTypes = getEventTypesFromChanges(ddlChanges);
+        assertThat(eventTypes).containsExactly(DdlParserListener.EventType.ALTER_TABLE);
+        table = tables.forTable(new TableId(PDB_NAME, "SCOTT", "TAB_1"));
+        assertThat(table.primaryKeyColumns().size()).isEqualTo(0);
+    }
+
+    @Test
+    public void shouldParserCheckConstraintInLIne() {
+        parser.setCurrentDatabase(PDB_NAME);
+        parser.setCurrentSchema("SCOTT");
+        Table table = Table.editor()
+                .tableId(new TableId(PDB_NAME, "SCOTT", "TAB_1"))
+                .addColumn(Column.editor().name("col_1").type("INT").create())
+                .addColumn(Column.editor().name("col_2").type("VARCHAR2").length(32).create())
+                .addColumn(Column.editor().name("col_3").type("VARCHAR2").length(32).create())
+                .create();
+        tables.overwriteTable(table);
+        DdlChanges ddlChanges = parser.getDdlChanges();
+        String sql = "ALTER TABLE SCOTT.TAB_1 ADD COL_4 INT CONSTRAINT CK_1 CHECK ((COL_4 >5) AND (SQRT(COL_4) > 10));";
+        ddlChanges.reset();
+        parser.parse(sql, tables);
+        ddlChanges = parser.getDdlChanges();
+        List<DdlParserListener.EventType> eventTypes = getEventTypesFromChanges(ddlChanges);
+        assertThat(eventTypes).containsExactly(DdlParserListener.EventType.ALTER_TABLE);
+        table = tables.forTable(new TableId(PDB_NAME, "SCOTT", "TAB_1"));
+        assertThat(table.checkColumns().size()).isEqualTo(1);
+    }
+
+    @Test
+    public void shouldParserForeignKeyConstraint() {
+        parser.setCurrentDatabase(PDB_NAME);
+        parser.setCurrentSchema("SCOTT");
+        Table table = Table.editor()
+                .tableId(new TableId(PDB_NAME, "SCOTT", "TAB_1"))
+                .addColumn(Column.editor().name("col_1").type("INT").create())
+                .addColumn(Column.editor().name("col_2").type("VARCHAR2").length(32).create())
+                .addColumn(Column.editor().name("col_3").type("VARCHAR2").length(32).create())
+                .addColumn(Column.editor().name("col_4").type("VARCHAR2").length(32).create())
+                .create();
+        tables.overwriteTable(table);
+        DdlChanges ddlChanges = parser.getDdlChanges();
+        String sql = "ALTER TABLE SCOTT.TAB_1 ADD CONSTRAINT fk_2 FOREIGN KEY(COL3,COL4) REFERENCES SCOTT.TAB_1 (COL1,COL2) ON DELETE SET NULL;";
+        ddlChanges.reset();
+        parser.parse(sql, tables);
+        ddlChanges = parser.getDdlChanges();
+        List<DdlParserListener.EventType> eventTypes = getEventTypesFromChanges(ddlChanges);
+        assertThat(eventTypes).containsExactly(DdlParserListener.EventType.ALTER_TABLE);
+        table = tables.forTable(new TableId(PDB_NAME, "SCOTT", "TAB_1"));
+        assertThat(table.foreignKeyColumns().size()).isEqualTo(1);
+    }
+
+    @Test
+    public void shouldParseDropMultiConstraint() {
+        parser.setCurrentDatabase(PDB_NAME);
+        parser.setCurrentSchema("SCOTT");
+        Table table = Table.editor()
+                .tableId(new TableId(PDB_NAME, "SCOTT", "TAB_1"))
+                .addColumn(Column.editor().name("col_1").type("INT").create())
+                .create();
+        tables.overwriteTable(table);
+        DdlChanges ddlChanges = parser.getDdlChanges();
+        String sql = "ALTER TABLE SCOTT.TAB_1\n" + " DROP CONSTRAINT CK_3\n" + " DROP CONSTRAINT UQ_3\n" + " DROP CONSTRAINT UQ_4\n" +
+                " DROP CONSTRAINT CK_2\n" + " DROP CONSTRAINT PK_1 CASCADE\n" + " DROP CONSTRAINT CK_1\n" + " DROP CONSTRAINT UQ_2\n" +
+                " DROP CONSTRAINT UQ_1;";
+        ddlChanges.reset();
+        parser.parse(sql, tables);
+        ddlChanges = parser.getDdlChanges();
+        List<DdlParserListener.EventType> eventTypes = getEventTypesFromChanges(ddlChanges);
+        assertThat(eventTypes).containsExactly(DdlParserListener.EventType.ALTER_TABLE);
+        table = tables.forTable(new TableId(PDB_NAME, "SCOTT", "TAB_1"));
+        assertThat(table.primaryKeyColumnChanges().size()).isEqualTo(8);
+    }
+
+    @Test
+    public void shouldParseDropColumnCascade() {
+        parser.setCurrentDatabase(PDB_NAME);
+        parser.setCurrentSchema("SCOTT");
+        Table table = Table.editor()
+                .tableId(new TableId(PDB_NAME, "SCOTT", "TAB_1"))
+                .addColumn(Column.editor().name("col_1").type("INT").create())
+                .addColumn(Column.editor().name("col_2").type("VARCHAR2").length(32).create())
+                .create();
+        tables.overwriteTable(table);
+        DdlChanges ddlChanges = parser.getDdlChanges();
+        String sql = "ALTER TABLE SCOTT.TAB_1 DROP COLUMN COL_2 CASCADE CONSTRAINTS;";
+        ddlChanges.reset();
+        parser.parse(sql, tables);
+        ddlChanges = parser.getDdlChanges();
+        List<DdlParserListener.EventType> eventTypes = getEventTypesFromChanges(ddlChanges);
+        assertThat(eventTypes).containsExactly(DdlParserListener.EventType.ALTER_TABLE);
+        table = tables.forTable(new TableId(PDB_NAME, "SCOTT", "TAB_1"));
+        assertThat(table.columns().size()).isEqualTo(1);
+    }
+
+    @Test
+    public void parseCreateTableWithPkAndFK() {
+        parser.setCurrentDatabase(PDB_NAME);
+        parser.setCurrentSchema("SCOTT");
+        String sql = "create table SCOTT.TAB_1\n" + "(\n" + "    col1 int\n" + "        constraint pk_1 primary key,\n" +
+                "    col2 varchar(50),\n" + "    col3 varchar(50),\n" + "    col4 int references PUSHENG.t_ddl_0026 (col1)\n" + ");";
+        DdlChanges ddlChanges = parser.getDdlChanges();
+        ddlChanges.reset();
+        parser.parse(sql, tables);
+        ddlChanges = parser.getDdlChanges();
+        List<DdlParserListener.EventType> eventTypes = getEventTypesFromChanges(ddlChanges);
+        assertThat(eventTypes).containsExactly(DdlParserListener.EventType.CREATE_TABLE);
+        Table table = tables.forTable(new TableId(PDB_NAME, "SCOTT", "TAB_1"));
+        assertThat(table.columns().size()).isEqualTo(4);
     }
 }
