@@ -204,13 +204,19 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
 
         if (ctx.datatype() == null) {
             if (ctx.type_name() != null && "\"MDSYS\".\"SDO_GEOMETRY\"".equalsIgnoreCase(ctx.type_name().getText())) {
-                columnEditor.jdbcType(Types.OTHER).type("MDSYS.SDO_GEOMETRY");
+                columnEditor.jdbcType(Types.OTHER).type("SDO_GEOMETRY");
             }
             else if (ctx.type_name() != null && "\"MDSYS\".\"SDO_TOPO_GEOMETRY\"".equalsIgnoreCase(ctx.type_name().getText())) {
-                columnEditor.jdbcType(Types.OTHER).type("MDSYS.SDO_TOPO_GEOMETRY");
+                columnEditor.jdbcType(Types.OTHER).type("SDO_TOPO_GEOMETRY");
             }
             else if (ctx.type_name() != null && "\"MDSYS\".\"SDO_LIST_TYPE\"".equalsIgnoreCase(ctx.type_name().getText())) {
-                columnEditor.jdbcType(Types.ARRAY).type("MDSYS.SDO_LIST_TYPE");
+                columnEditor.jdbcType(Types.ARRAY).type("SDO_LIST_TYPE");
+            }
+            else if (ctx.type_name() != null && "\"SYS\".\"XMLTYPE\"".equalsIgnoreCase(ctx.type_name().getText())) {
+                columnEditor.jdbcType(Types.SQLXML).type("XMLTYPE").length(2000);
+            }
+            else if (ctx.type_name() != null && "SYS.XMLTYPE".equalsIgnoreCase(ctx.type_name().getText())) {
+                columnEditor.jdbcType(Types.SQLXML).type("XMLTYPE").length(2000);
             }
             else {
                 columnEditor
