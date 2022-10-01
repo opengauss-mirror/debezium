@@ -3997,7 +3997,7 @@ unary_logical_expression
 logical_operation:
         (NULL_
         | NAN | PRESENT
-        | INFINITE | A_LETTER SET | EMPTY
+        | INFINITE | A_LETTER SET | EMPTY | JSON
         | OF TYPE? '(' ONLY? type_spec (',' type_spec)* ')')
     ;
 
@@ -4905,6 +4905,7 @@ regular_id
     | EXIT
     | FLOAT
     | FORALL
+    | HTTPURITYPE
     | INDICES
     | INOUT
     | INTEGER
@@ -4929,6 +4930,9 @@ regular_id
     | RENAME
     | RESTRICT_REFERENCES
     | RESULT
+    | SDO_GEOMETRY
+    | SDO_LIST_TYPE
+    | SDO_TOPO_GEOMETRY
     | SELF
     | SERIALLY_REUSABLE
     | SET
@@ -4941,12 +4945,14 @@ regular_id
     | TIMESTAMP_LTZ_UNCONSTRAINED
     | TIMESTAMP_TZ_UNCONSTRAINED
     | TIMESTAMP_UNCONSTRAINED
+    | URITYPE
     | TRIGGER
     | VARCHAR
     | VARCHAR2
     | VARIABLE
     | WARNING
     | WHILE
+    | XDBURITYPE
     | XMLAGG
     | YMINTERVAL_UNCONSTRAINED
     | REGR_

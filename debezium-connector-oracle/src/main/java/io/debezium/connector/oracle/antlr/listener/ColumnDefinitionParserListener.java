@@ -5,17 +5,6 @@
  */
 package io.debezium.connector.oracle.antlr.listener;
 
-import static io.debezium.antlr.AntlrDdlParser.getText;
-
-import java.sql.Types;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
-import org.antlr.v4.runtime.tree.ParseTreeListener;
-
 import io.debezium.antlr.DataTypeResolver;
 import io.debezium.connector.oracle.antlr.OracleDdlParser;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser;
@@ -27,8 +16,17 @@ import io.debezium.relational.Column;
 import io.debezium.relational.ColumnEditor;
 import io.debezium.relational.TableEditor;
 import io.netty.util.internal.StringUtil;
-
 import oracle.jdbc.OracleTypes;
+import org.antlr.v4.runtime.tree.ParseTreeListener;
+
+import java.sql.Types;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import static io.debezium.antlr.AntlrDdlParser.getText;
 
 /**
  * Parser listener that parses column definitions of Oracle DDL statements.
@@ -65,7 +63,6 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
 
     @Override
     public void enterColumn_definition(PlSqlParser.Column_definitionContext ctx) {
-        resolveColumnDataType(ctx);
         if (ctx.DEFAULT() != null) {
             columnEditor.defaultValueExpression(ctx.column_default_value().getText());
         }
@@ -75,6 +72,7 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
             String columnName = getColumnName(ctx.column_name());
             inline_constraint.forEach(inlineConstraint -> enterInline_constraint(inlineConstraint, tableEditor.tableId().table(), columnName));
         }
+        resolveColumnDataType(ctx);
         super.enterColumn_definition(ctx);
     }
 
@@ -206,11 +204,20 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
             if (ctx.type_name() != null && "\"MDSYS\".\"SDO_GEOMETRY\"".equalsIgnoreCase(ctx.type_name().getText())) {
                 columnEditor.jdbcType(Types.OTHER).type("SDO_GEOMETRY");
             }
+            else if (ctx.type_name() != null && "MDSYS.SDO_GEOMETRY".equalsIgnoreCase(ctx.type_name().getText())) {
+                columnEditor.jdbcType(Types.OTHER).type("SDO_GEOMETRY");
+            }
             else if (ctx.type_name() != null && "\"MDSYS\".\"SDO_TOPO_GEOMETRY\"".equalsIgnoreCase(ctx.type_name().getText())) {
                 columnEditor.jdbcType(Types.OTHER).type("SDO_TOPO_GEOMETRY");
             }
+            else if (ctx.type_name() != null && "MDSYS.SDO_TOPO_GEOMETRY".equalsIgnoreCase(ctx.type_name().getText())) {
+                columnEditor.jdbcType(Types.OTHER).type("SDO_TOPO_GEOMETRY");
+            }
             else if (ctx.type_name() != null && "\"MDSYS\".\"SDO_LIST_TYPE\"".equalsIgnoreCase(ctx.type_name().getText())) {
-                columnEditor.jdbcType(Types.ARRAY).type("SDO_LIST_TYPE");
+                columnEditor.jdbcType(Types.ARRAY).type("ARRAYS");
+            }
+            else if (ctx.type_name() != null && "MDSYS.SDO_LIST_TYPE".equalsIgnoreCase(ctx.type_name().getText())) {
+                columnEditor.jdbcType(Types.ARRAY).type("ARRAYS");
             }
             else if (ctx.type_name() != null && "\"SYS\".\"XMLTYPE\"".equalsIgnoreCase(ctx.type_name().getText())) {
                 columnEditor.jdbcType(Types.SQLXML).type("XMLTYPE").length(2000);
@@ -221,7 +228,7 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
             else {
                 columnEditor
                         .jdbcType(Types.STRUCT)
-                        .type(ctx.type_name().getText().toUpperCase());
+                        .type("OBJECT");
             }
         }
         else {
@@ -296,7 +303,21 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
             }
             // VARCHAR is the same as VARCHAR2 in Oracle
             else if (ctx.native_datatype_element().VARCHAR2() != null || ctx.native_datatype_element().VARCHAR() != null) {
-                columnEditor.jdbcType(Types.VARCHAR).type("VARCHAR2");
+                boolean flag = false;
+                List<Map<String, String>> checkColumns = tableEditor.checkColumns();
+                for (Map<String, String> checkColumn : checkColumns) {
+                    if (checkColumn.get("includeColumn").equals(columnEditor.name())) {
+                        if (checkColumn.get("condition").contains("IS JSON")) {
+                            flag = true;
+                        }
+                    }
+                }
+                if (flag) {
+                    columnEditor.jdbcType(Types.VARCHAR).type("JSON");
+                }
+                else {
+                    columnEditor.jdbcType(Types.VARCHAR).type("VARCHAR2");
+                }
 
                 if (precisionPart == null) {
                     columnEditor.length(getVarCharDefaultLength());
@@ -371,7 +392,21 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
                 columnEditor.jdbcType(Types.BLOB).type("BLOB");
             }
             else if (ctx.native_datatype_element().CLOB() != null) {
-                columnEditor.jdbcType(Types.CLOB).type("CLOB");
+                boolean flag = false;
+                List<Map<String, String>> checkColumns = tableEditor.checkColumns();
+                for (Map<String, String> checkColumn : checkColumns) {
+                    if (checkColumn.get("includeColumn").equals(columnEditor.name())) {
+                        if (checkColumn.get("condition").contains("IS JSON")) {
+                            flag = true;
+                        }
+                    }
+                }
+                if (flag) {
+                    columnEditor.jdbcType(Types.CLOB).type("JSON");
+                }
+                else {
+                    columnEditor.jdbcType(Types.CLOB).type("CLOB");
+                }
             }
             else if (ctx.native_datatype_element().LONG() != null) {
                 if (ctx.native_datatype_element().RAW() != null) {
@@ -405,7 +440,7 @@ public class ColumnDefinitionParserListener extends BaseParserListener {
             else if (ctx.native_datatype_element().SDO_LIST_TYPE() != null) {
                 columnEditor
                         .jdbcType(OracleTypes.ARRAY)
-                        .type("SDO_LIST_TYPE()");
+                        .type("ARRAYS");
             }
             else if (ctx.native_datatype_element().ROWID() != null) {
                 columnEditor.jdbcType(Types.VARCHAR).type("ROWID");

@@ -5,6 +5,23 @@
  */
 package io.debezium.connector.oracle;
 
+import io.debezium.DebeziumException;
+import io.debezium.config.Configuration;
+import io.debezium.config.Field;
+import io.debezium.connector.oracle.OracleConnectorConfig.ConnectorAdapter;
+import io.debezium.jdbc.JdbcConnection;
+import io.debezium.relational.Column;
+import io.debezium.relational.ColumnEditor;
+import io.debezium.relational.TableId;
+import io.debezium.relational.Tables;
+import io.debezium.relational.Tables.ColumnNameFilter;
+import io.debezium.util.Clock;
+import io.debezium.util.Metronome;
+import io.debezium.util.Strings;
+import oracle.jdbc.OracleTypes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.sql.Clob;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -24,25 +41,6 @@ import java.util.Set;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import io.debezium.DebeziumException;
-import io.debezium.config.Configuration;
-import io.debezium.config.Field;
-import io.debezium.connector.oracle.OracleConnectorConfig.ConnectorAdapter;
-import io.debezium.jdbc.JdbcConnection;
-import io.debezium.relational.Column;
-import io.debezium.relational.ColumnEditor;
-import io.debezium.relational.TableId;
-import io.debezium.relational.Tables;
-import io.debezium.relational.Tables.ColumnNameFilter;
-import io.debezium.util.Clock;
-import io.debezium.util.Metronome;
-import io.debezium.util.Strings;
-
-import oracle.jdbc.OracleTypes;
 
 /**
  * Copyright Debezium Authors.
@@ -205,6 +203,7 @@ public class OracleConnection extends JdbcConnection {
                 "where table_name NOT LIKE 'MDRT_%' " +
                 "and table_name NOT LIKE 'MDRS_%' " +
                 "and table_name NOT LIKE 'MDXT_%' " +
+                "and table_name NOT LIKE 'MDTP_%' " +
                 // filter index-organized-tables
                 "and (table_name NOT LIKE 'SYS_IOT_OVER_%' and IOT_NAME IS NULL) ";
 
