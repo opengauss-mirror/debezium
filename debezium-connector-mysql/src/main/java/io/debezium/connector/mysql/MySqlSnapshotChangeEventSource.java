@@ -28,6 +28,8 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.mysql.cj.util.StringUtils;
+
 import io.debezium.DebeziumException;
 import io.debezium.connector.SnapshotRecord;
 import io.debezium.connector.mysql.legacy.MySqlJdbcContext.DatabaseLocales;
@@ -47,6 +49,7 @@ import io.debezium.util.Strings;
 public class MySqlSnapshotChangeEventSource extends RelationalSnapshotChangeEventSource<MySqlPartition, MySqlOffsetContext> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MySqlSnapshotChangeEventSource.class);
+    private static final String SHOW_MASTER_STATUS = "SHOW MASTER STATUS";
 
     private final MySqlConnectorConfig connectorConfig;
     private final MySqlConnection connection;
@@ -271,31 +274,47 @@ public class MySqlSnapshotChangeEventSource extends RelationalSnapshotChangeEven
             return;
         }
         final MySqlOffsetContext offsetContext = MySqlOffsetContext.initial(connectorConfig);
+        MySqlOffsetContext.setGtid(connectorConfig, offsetContext);
         ctx.offset = offsetContext;
         LOGGER.info("Read binlog position of MySQL primary server");
-        final String showMasterStmt = "SHOW MASTER STATUS";
-        connection.query(showMasterStmt, rs -> {
-            if (rs.next()) {
-                final String binlogFilename = rs.getString(1);
-                final long binlogPosition = rs.getLong(2);
-                offsetContext.setBinlogStartPoint(binlogFilename, binlogPosition);
-                if (rs.getMetaData().getColumnCount() > 4) {
-                    // This column exists only in MySQL 5.6.5 or later ...
-                    final String gtidSet = rs.getString(5); // GTID set, may be null, blank, or contain a GTID set
-                    offsetContext.setCompletedGtidSet(gtidSet);
-                    LOGGER.info("\t using binlog '{}' at position '{}' and gtid '{}'", binlogFilename, binlogPosition,
-                            gtidSet);
+        if (!StringUtils.isNullOrEmpty(offsetContext.getRestartBinlogFilename())
+                && offsetContext.getRestartBinlogPosition() > 0L
+                && !StringUtils.isNullOrEmpty(offsetContext.getRestartGtidSet())) {
+            LOGGER.info("using binlog '{}' at position '{}' according to user-defined configuration file",
+                    offsetContext.getRestartBinlogFilename(), offsetContext.getRestartBinlogPosition());
+            LOGGER.info("Executed gtid set is {} according to user-defined configuration file",
+                    offsetContext.getRestartGtidSet());
+        }
+        else {
+            connection.query(SHOW_MASTER_STATUS, rs -> {
+                if (rs.next()) {
+                    final String binlogFilename = rs.getString("File");
+                    final long binlogPosition = rs.getLong("Position");
+                    offsetContext.setBinlogStartPoint(binlogFilename, binlogPosition);
+                    if (rs.getMetaData().getColumnCount() > 4) {
+                        // This column exists only in MySQL 5.6.5 or later ...
+                        final String gtidSet = rs.getString("Executed_Gtid_Set"); // GTID set, may be null, blank, or contain a GTID set
+                        offsetContext.setCompletedGtidSet(modifiedGtidSet(gtidSet));
+                        LOGGER.info("\t using binlog '{}' at position '{}' and gtid '{}'", binlogFilename, binlogPosition,
+                                gtidSet);
+                    }
+                    else {
+                        LOGGER.info("\t using binlog '{}' at position '{}'", binlogFilename, binlogPosition);
+                    }
                 }
                 else {
-                    LOGGER.info("\t using binlog '{}' at position '{}'", binlogFilename, binlogPosition);
+                    throw new DebeziumException("Cannot read the binlog filename and position via '" + SHOW_MASTER_STATUS
+                            + "'. Make sure your server is correctly configured");
                 }
-            }
-            else {
-                throw new DebeziumException("Cannot read the binlog filename and position via '" + showMasterStmt
-                        + "'. Make sure your server is correctly configured");
-            }
-        });
+            });
+        }
         tryStartingSnapshot(ctx);
+    }
+
+    private String modifiedGtidSet(String originGtid) {
+        int index = originGtid.lastIndexOf("-");
+        long transactionId = Long.parseLong(originGtid.substring(index + 1)) - 1;
+        return originGtid.substring(0, index + 1) + transactionId;
     }
 
     private void addSchemaEvent(RelationalSnapshotContext<MySqlPartition, MySqlOffsetContext> snapshotContext,

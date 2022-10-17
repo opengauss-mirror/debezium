@@ -57,7 +57,6 @@ import com.github.shyiko.mysql.binlog.event.UpdateRowsEventData;
 import com.github.shyiko.mysql.binlog.event.WriteRowsEventData;
 import com.github.shyiko.mysql.binlog.event.deserialization.EventDataDeserializationException;
 import com.github.shyiko.mysql.binlog.event.deserialization.EventDeserializer;
-import com.github.shyiko.mysql.binlog.event.deserialization.GtidEventDataDeserializer;
 import com.github.shyiko.mysql.binlog.io.ByteArrayInputStream;
 import com.github.shyiko.mysql.binlog.network.AuthenticationException;
 import com.github.shyiko.mysql.binlog.network.DefaultSSLSocketFactory;
@@ -71,6 +70,8 @@ import io.debezium.config.CommonConnectorConfig.EventProcessingFailureHandlingMo
 import io.debezium.config.Configuration;
 import io.debezium.connector.mysql.MySqlConnectorConfig.GtidNewChannelPosition;
 import io.debezium.connector.mysql.MySqlConnectorConfig.SecureConnectionMode;
+import io.debezium.connector.mysql.sink.event.MyGtidEventData;
+import io.debezium.connector.mysql.sink.event.MyGtidEventDataDeserializer;
 import io.debezium.data.Envelope.Operation;
 import io.debezium.function.BlockingConsumer;
 import io.debezium.pipeline.ErrorHandler;
@@ -266,7 +267,7 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
 
         // Add our custom deserializers ...
         eventDeserializer.setEventDataDeserializer(EventType.STOP, new StopEventDataDeserializer());
-        eventDeserializer.setEventDataDeserializer(EventType.GTID, new GtidEventDataDeserializer());
+        eventDeserializer.setEventDataDeserializer(EventType.GTID, new MyGtidEventDataDeserializer());
         eventDeserializer.setEventDataDeserializer(EventType.WRITE_ROWS,
                 new RowDeserializers.WriteRowsDeserializer(tableMapEventByTableId));
         eventDeserializer.setEventDataDeserializer(EventType.UPDATE_ROWS,
@@ -487,6 +488,12 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
         LOGGER.debug("GTID transaction: {}", event);
         GtidEventData gtidEvent = unwrapData(event);
         String gtid = gtidEvent.getGtid();
+        if (gtidEvent instanceof MyGtidEventData) {
+            long lastCommitted = ((MyGtidEventData) gtidEvent).getLastCommitted();
+            long sequenceNumber = ((MyGtidEventData) gtidEvent).getSequenceNumber();
+            offsetContext.setLastCommitted(lastCommitted);
+            offsetContext.setSequenceNumber(sequenceNumber);
+        }
         gtidSet.add(gtid);
         offsetContext.startGtid(gtid, gtidSet.toString()); // rather than use the client's GTID set
         ignoreDmlEventByGtidSource = false;
@@ -1119,6 +1126,9 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
                     .retainAll(uuid -> knownGtidSet.forServerWithId(uuid) != null)
                     .with(purgedServerGtid)
                     .with(filteredGtidSet);
+            LOGGER.info("Merged GTID set to use when connecting to MySQL: {}", mergedGtidSet);
+            mergedGtidSet = new GtidSet(modifiedGtidSet(mergedGtidSet.toString()));
+            LOGGER.info("Modified merged GTID set to use when connecting to MySQL: {}", mergedGtidSet);
         }
         else {
             mergedGtidSet = availableServerGtidSet.with(filteredGtidSet);
@@ -1126,6 +1136,12 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
 
         LOGGER.info("Final merged GTID set to use when connecting to MySQL: {}", mergedGtidSet);
         return mergedGtidSet;
+    }
+
+    private String modifiedGtidSet(String originGtid) {
+        int index = originGtid.lastIndexOf("-");
+        long transactionId = Long.parseLong(originGtid.substring(index + 1)) + 1;
+        return originGtid.substring(0, index + 1) + transactionId;
     }
 
     MySqlStreamingChangeEventSourceMetrics getMetrics() {

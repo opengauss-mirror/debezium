@@ -117,6 +117,7 @@
 
         <!-- Database drivers, should align with databases -->
         <version.postgresql.driver>42.3.2</version.postgresql.driver>
+        <version.opengauss.driver>3.1.0-og</version.opengauss.driver>
         <version.mysql.driver>8.0.27</version.mysql.driver>
         <version.mysql.binlog>0.25.4</version.mysql.binlog>
         <version.mongo.driver>4.3.3</version.mongo.driver>

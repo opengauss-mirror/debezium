@@ -22,6 +22,8 @@ public class MySqlSourceInfoStructMaker extends AbstractSourceInfoStructMaker<So
                 .field(SourceInfo.TABLE_NAME_KEY, Schema.OPTIONAL_STRING_SCHEMA)
                 .field(SourceInfo.SERVER_ID_KEY, Schema.INT64_SCHEMA)
                 .field(SourceInfo.GTID_KEY, Schema.OPTIONAL_STRING_SCHEMA)
+                .field(SourceInfo.LAST_COMMITTED, Schema.INT64_SCHEMA)
+                .field(SourceInfo.SEQUENCE_NUMBER, Schema.INT64_SCHEMA)
                 .field(SourceInfo.BINLOG_FILENAME_OFFSET_KEY, Schema.STRING_SCHEMA)
                 .field(SourceInfo.BINLOG_POSITION_OFFSET_KEY, Schema.INT64_SCHEMA)
                 .field(SourceInfo.BINLOG_ROW_IN_EVENT_OFFSET_KEY, Schema.INT32_SCHEMA)
@@ -43,6 +45,8 @@ public class MySqlSourceInfoStructMaker extends AbstractSourceInfoStructMaker<So
             // Don't put the GTID Set into the struct; only the current GTID is fine ...
             result.put(SourceInfo.GTID_KEY, sourceInfo.getCurrentGtid());
         }
+        result.put(SourceInfo.LAST_COMMITTED, sourceInfo.getLastCommitted());
+        result.put(SourceInfo.SEQUENCE_NUMBER, sourceInfo.getSequenceNumber());
         result.put(SourceInfo.BINLOG_FILENAME_OFFSET_KEY, sourceInfo.getCurrentBinlogFilename());
         result.put(SourceInfo.BINLOG_POSITION_OFFSET_KEY, sourceInfo.getCurrentBinlogPosition());
         result.put(SourceInfo.BINLOG_ROW_IN_EVENT_OFFSET_KEY, sourceInfo.getCurrentRowNumber());

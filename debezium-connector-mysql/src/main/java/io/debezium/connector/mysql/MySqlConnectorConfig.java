@@ -629,6 +629,33 @@ public class MySqlConnectorConfig extends HistorizedRelationalDatabaseConnectorC
                     + "client, and they each need their own unique connection ID. This offset is "
                     + "used to generate those IDs from the base configured cluster ID.");
 
+    public static final Field SNAPSHOT_OFFSET_BINLOG_FILENAME = Field.create("snapshot.offset.binlog.filename")
+            .withDisplayName("Binlog filename")
+            .withType(Type.STRING)
+            .withGroup(Field.createGroupEntry(Field.Group.CONNECTOR_SNAPSHOT, 5))
+            .withWidth(Width.LONG)
+            .withImportance(Importance.LOW)
+            .withDefault("")
+            .withDescription("Specify binlog filename for incremental mode.");
+
+    public static final Field SNAPSHOT_OFFSET_BINLOG_POSITION = Field.create("snapshot.offset.binlog.position")
+            .withDisplayName("Binlog position")
+            .withType(Type.LONG)
+            .withGroup(Field.createGroupEntry(Field.Group.CONNECTOR_SNAPSHOT, 6))
+            .withWidth(Width.LONG)
+            .withImportance(Importance.LOW)
+            .withDefault(0L)
+            .withDescription("Specify binlog position for incremental mode.");
+
+    public static final Field SNAPSHOT_OFFSET_GTID_SET = Field.create("snapshot.offset.gtid.set")
+            .withDisplayName("Executed gtid set")
+            .withType(Type.STRING)
+            .withGroup(Field.createGroupEntry(Field.Group.CONNECTOR_SNAPSHOT, 7))
+            .withWidth(Width.LONG)
+            .withImportance(Importance.LOW)
+            .withDefault("")
+            .withDescription("Specify executed gtid set for incremental mode.");
+
     public static final Field SSL_MODE = Field.create("database.ssl.mode")
             .withDisplayName("SSL mode")
             .withEnum(SecureConnectionMode.class, SecureConnectionMode.DISABLED)
@@ -975,7 +1002,10 @@ public class MySqlConnectorConfig extends HistorizedRelationalDatabaseConnectorC
                     SSL_KEYSTORE_PASSWORD,
                     SSL_TRUSTSTORE,
                     SSL_TRUSTSTORE_PASSWORD,
-                    JDBC_DRIVER)
+                    JDBC_DRIVER,
+                    SNAPSHOT_OFFSET_BINLOG_FILENAME,
+                    SNAPSHOT_OFFSET_BINLOG_POSITION,
+                    SNAPSHOT_OFFSET_GTID_SET)
             .connector(
                     CONNECTION_TIMEOUT_MS,
                     KEEP_ALIVE,
@@ -1039,6 +1069,9 @@ public class MySqlConnectorConfig extends HistorizedRelationalDatabaseConnectorC
     private final boolean legacy;
     private final SourceInfoStructMaker<? extends AbstractSourceInfo> sourceInfoStructMaker;
     private final boolean readOnlyConnection;
+    private final String snapshotOffsetBinlogFilename;
+    private final Long snapshotOffsetBinlogPosition;
+    private final String snapshotOffsetGtidSet;
 
     public MySqlConnectorConfig(Configuration config) {
         super(
@@ -1056,6 +1089,9 @@ public class MySqlConnectorConfig extends HistorizedRelationalDatabaseConnectorC
         this.snapshotMode = SnapshotMode.parse(config.getString(SNAPSHOT_MODE), SNAPSHOT_MODE.defaultValueAsString());
         this.snapshotLockingMode = SnapshotLockingMode.parse(config.getString(SNAPSHOT_LOCKING_MODE), SNAPSHOT_LOCKING_MODE.defaultValueAsString());
         this.readOnlyConnection = config.getBoolean(READ_ONLY_CONNECTION);
+        this.snapshotOffsetBinlogFilename = config.getString(SNAPSHOT_OFFSET_BINLOG_FILENAME);
+        this.snapshotOffsetBinlogPosition = config.getLong(SNAPSHOT_OFFSET_BINLOG_POSITION);
+        this.snapshotOffsetGtidSet = config.getString(SNAPSHOT_OFFSET_GTID_SET);
 
         final String gitIdNewChannelPosition = config.getString(MySqlConnectorConfig.GTID_NEW_CHANNEL_POSITION);
         this.gitIdNewChannelPosition = GtidNewChannelPosition.parse(gitIdNewChannelPosition, MySqlConnectorConfig.GTID_NEW_CHANNEL_POSITION.defaultValueAsString());
@@ -1079,6 +1115,18 @@ public class MySqlConnectorConfig extends HistorizedRelationalDatabaseConnectorC
         this.ddlFilter = (ddlFilter != null) ? Predicates.includes(ddlFilter) : (x -> false);
 
         this.sourceInfoStructMaker = getSourceInfoStructMaker(Version.parse(config.getString(SOURCE_STRUCT_MAKER_VERSION)));
+    }
+
+    public String getSnapshotOffsetBinlogFilename() {
+        return this.snapshotOffsetBinlogFilename;
+    }
+
+    public Long getSnapshotOffsetBinlogPosition() {
+        return this.snapshotOffsetBinlogPosition;
+    }
+
+    public String getSnapshotOffsetGtidSet() {
+        return this.snapshotOffsetGtidSet;
     }
 
     public boolean useCursorFetch() {
