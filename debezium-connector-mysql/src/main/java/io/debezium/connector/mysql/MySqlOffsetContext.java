@@ -104,6 +104,18 @@ public class MySqlOffsetContext implements OffsetContext {
         return map;
     }
 
+    public String getRestartBinlogFilename() {
+        return this.restartBinlogFilename;
+    }
+
+    public long getRestartBinlogPosition() {
+        return this.restartBinlogPosition;
+    }
+
+    public String getRestartGtidSet() {
+        return this.restartGtidSet;
+    }
+
     @Override
     public Schema getSourceInfoSchema() {
         return sourceInfoSchema;
@@ -165,7 +177,12 @@ public class MySqlOffsetContext implements OffsetContext {
 
     public static MySqlOffsetContext initial(MySqlConnectorConfig config) {
         final MySqlOffsetContext offset = new MySqlOffsetContext(config, false, false, new SourceInfo(config));
-        offset.setBinlogStartPoint("", 0L); // start from the beginning of the binlog
+        offset.setBinlogStartPoint(config.getSnapshotOffsetBinlogFilename(), config.getSnapshotOffsetBinlogPosition());
+        return offset;
+    }
+
+    public static MySqlOffsetContext setGtid(MySqlConnectorConfig config, MySqlOffsetContext offset) {
+        offset.setCompletedGtidSet(config.getSnapshotOffsetGtidSet());
         return offset;
     }
 
@@ -198,8 +215,6 @@ public class MySqlOffsetContext implements OffsetContext {
                     TransactionContext.load(offset), incrementalSnapshotContext,
                     new SourceInfo(connectorConfig));
             offsetContext.setBinlogStartPoint(binlogFilename, binlogPosition);
-            offsetContext.setInitialSkips(longOffsetValue(offset, EVENTS_TO_SKIP_OFFSET_KEY),
-                    (int) longOffsetValue(offset, SourceInfo.BINLOG_ROW_IN_EVENT_OFFSET_KEY));
             offsetContext.setCompletedGtidSet((String) offset.get(GTID_SET_KEY)); // may be null
             return offsetContext;
         }
@@ -319,6 +334,14 @@ public class MySqlOffsetContext implements OffsetContext {
             // Record the GTID set that includes the current transaction ...
             this.currentGtidSet = trimmedGtidSet;
         }
+    }
+
+    public void setLastCommitted(long lastCommitted) {
+        sourceInfo.setLastCommitted(lastCommitted);
+    }
+
+    public void setSequenceNumber(long sequenceNumber) {
+        sourceInfo.setSequenceNumber(sequenceNumber);
     }
 
     public SourceInfo getSource() {

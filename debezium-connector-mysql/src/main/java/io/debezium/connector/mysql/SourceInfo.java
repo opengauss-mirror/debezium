@@ -96,6 +96,8 @@ public final class SourceInfo extends BaseSourceInfo {
     public static final String SERVER_ID_KEY = "server_id";
 
     public static final String GTID_KEY = "gtid";
+    public static final String LAST_COMMITTED = "last_committed";
+    public static final String SEQUENCE_NUMBER = "sequence_number";
     public static final String BINLOG_FILENAME_OFFSET_KEY = "file";
     public static final String BINLOG_POSITION_OFFSET_KEY = "pos";
     public static final String BINLOG_ROW_IN_EVENT_OFFSET_KEY = "row";
@@ -103,6 +105,8 @@ public final class SourceInfo extends BaseSourceInfo {
     public static final String QUERY_KEY = "query";
 
     private String currentGtid;
+    private long lastCommitted;
+    private long sequenceNumber;
     private String currentBinlogFilename;
     private long currentBinlogPosition = 0L;
     private int currentRowNumber = 0;
@@ -186,6 +190,22 @@ public final class SourceInfo extends BaseSourceInfo {
 
     public void startGtid(String gtid) {
         this.currentGtid = gtid;
+    }
+
+    public void setLastCommitted(long lastCommitted) {
+        this.lastCommitted = lastCommitted;
+    }
+
+    public void setSequenceNumber(long sequenceNumber) {
+        this.sequenceNumber = sequenceNumber;
+    }
+
+    public long getLastCommitted() {
+        return this.lastCommitted;
+    }
+
+    public long getSequenceNumber() {
+        return this.sequenceNumber;
     }
 
     /**
@@ -286,6 +306,7 @@ public final class SourceInfo extends BaseSourceInfo {
     public String toString() {
         return "SourceInfo [currentGtid=" + currentGtid + ", currentBinlogFilename=" + currentBinlogFilename
                 + ", currentBinlogPosition=" + currentBinlogPosition + ", currentRowNumber=" + currentRowNumber
+                + ", lastcommitted=" + lastCommitted + ", sequenceNumber=" + sequenceNumber
                 + ", serverId=" + serverId + ", sourceTime=" + sourceTime + ", threadId=" + threadId + ", currentQuery="
                 + currentQuery + ", tableIds=" + tableIds + ", databaseName=" + databaseName + "]";
     }
