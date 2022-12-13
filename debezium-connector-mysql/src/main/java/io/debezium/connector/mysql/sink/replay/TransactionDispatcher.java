@@ -5,12 +5,15 @@
  */
 package io.debezium.connector.mysql.sink.replay;
 
-import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
+import io.debezium.time.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,7 +29,7 @@ public class TransactionDispatcher {
     /**
      * Default max thread count
      */
-    public static final int MAX_THREAD_COUNT = 50;
+    public static final int MAX_THREAD_COUNT = 30;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TransactionDispatcher.class);
 
@@ -35,25 +38,42 @@ public class TransactionDispatcher {
     private ConnectionInfo connectionInfo;
     private Transaction selectedTransaction = null;
     private ArrayList<WorkThread> threadList = new ArrayList<>();
-    private final SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
     private final DateTimeFormatter ofPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
-    private BlockingQueue<Transaction> transactionQueue;
     private ArrayList<String> changedTableNameList;
     private BlockingQueue<String> feedBackQueue;
+    private ArrayList<ConcurrentLinkedQueue<Transaction>> transactionQueueList;
 
     /**
      * Constructor
      *
      * @param ConnectionInfo the connection info
-     * @param BlockingQueue<Transaction> the transaction queue
+     * @param ArrayList<ConcurrentLinkedQueue<Transaction>> the transaction queue list
      * @param ArrayList<String> the changed table name list
      * @param BlockingQueue<String> the feed back queue
      */
-    public TransactionDispatcher(ConnectionInfo connectionInfo, BlockingQueue<Transaction> transactionQueue,
+    public TransactionDispatcher(ConnectionInfo connectionInfo, ArrayList<ConcurrentLinkedQueue<Transaction>> transactionQueueList,
                                  ArrayList<String> changedTableNameList, BlockingQueue<String> feedBackQueue) {
         this.threadCount = MAX_THREAD_COUNT;
         this.connectionInfo = connectionInfo;
-        this.transactionQueue = transactionQueue;
+        this.transactionQueueList = transactionQueueList;
+        this.changedTableNameList = changedTableNameList;
+        this.feedBackQueue = feedBackQueue;
+    }
+
+    /**
+     * Constructor
+     *
+     * @param int threadCount
+     * @param ConnectionInfo the connection info
+     * @param ArrayList<ConcurrentLinkedQueue<Transaction>> the transaction queue list
+     * @param ArrayList<String> the changed table name list
+     * @param BlockingQueue<String> the feed back queue
+     */
+    public TransactionDispatcher(int threadCount, ConnectionInfo connectionInfo, ArrayList<ConcurrentLinkedQueue<Transaction>> transactionQueueList,
+                                 ArrayList<String> changedTableNameList, BlockingQueue<String> feedBackQueue) {
+        this.threadCount = threadCount;
+        this.connectionInfo = connectionInfo;
+        this.transactionQueueList = transactionQueueList;
         this.changedTableNameList = changedTableNameList;
         this.feedBackQueue = feedBackQueue;
     }
@@ -66,16 +86,18 @@ public class TransactionDispatcher {
         statTask();
         Transaction txn = null;
         int freeThreadIndex = -1;
+        int queueIndex = 0;
         while (true) {
             if (selectedTransaction == null) {
-                try {
-                    txn = transactionQueue.take();
-                }
-                catch (InterruptedException exp) {
-                    LOGGER.warn("Interrupted exception occurred", exp);
-                }
+                txn = transactionQueueList.get(queueIndex).poll();
                 if (txn != null) {
                     count++;
+                    if (count % JdbcDbWriter.MAX_VALUE == 0) {
+                        queueIndex++;
+                        if (queueIndex % JdbcDbWriter.TRANSACTION_QUEUE_NUM == 0) {
+                            queueIndex = 0;
+                        }
+                    }
                 }
                 else {
                     try {
@@ -104,31 +126,26 @@ public class TransactionDispatcher {
 
     private void createThreads() {
         for (int i = 0; i < threadCount; i++) {
-            WorkThread workThread = new WorkThread(connectionInfo, changedTableNameList, feedBackQueue);
+            WorkThread workThread = new WorkThread(connectionInfo, changedTableNameList, feedBackQueue, i);
             threadList.add(workThread);
             workThread.start();
         }
     }
 
     private void statTask() {
-        new Thread(() -> {
-            int before = count;
-            int delta = 0;
-            while (true) {
-                try {
-                    Thread.sleep(1000);
-                    delta = count - before;
-                    before = count;
-                    String date = ofPattern.format(LocalDateTime.now());
-                    String result = String.format("have replayed %s transaction, and current time is %s, and current " +
-                            "speed is %s", count, date, delta);
-                    LOGGER.info(result);
-                }
-                catch (InterruptedException exp) {
-                    LOGGER.warn("Interrupted exception occurred", exp);
-                }
+        Timer timer = new Timer();
+        final int[] before = {count};
+        TimerTask task = new TimerTask() {
+            @Override
+            public void run() {
+                String date = ofPattern.format(LocalDateTime.now());
+                String result = String.format("have replayed %s transaction, and current time is %s, and current "
+                        + "speed is %s", count, date, count - before[0]);
+                LOGGER.info(result);
+                before[0] = count;
             }
-        }).start();
+        };
+        timer.schedule(task, 1000, 1000);
     }
 
     private int canParallelAndFindFreeThread(Transaction transaction, ArrayList<WorkThread> threadList) {

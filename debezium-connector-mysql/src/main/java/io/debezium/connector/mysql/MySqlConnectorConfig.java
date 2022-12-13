@@ -656,6 +656,15 @@ public class MySqlConnectorConfig extends HistorizedRelationalDatabaseConnectorC
             .withDefault("")
             .withDescription("Specify executed gtid set for incremental mode.");
 
+    public static final Field PARALLEL_PARSE_EVENT = Field.create("parallel.parse.event")
+            .withDisplayName("Parallel parse event")
+            .withType(Type.BOOLEAN)
+            .withGroup(Field.createGroupEntry(Field.Group.OPTIMIZE, 0))
+            .withWidth(Width.LONG)
+            .withImportance(Importance.LOW)
+            .withDefault(false)
+            .withDescription("Parallel parse event for improving binlog parse performance");
+
     public static final Field SSL_MODE = Field.create("database.ssl.mode")
             .withDisplayName("SSL mode")
             .withEnum(SecureConnectionMode.class, SecureConnectionMode.DISABLED)
@@ -1005,7 +1014,8 @@ public class MySqlConnectorConfig extends HistorizedRelationalDatabaseConnectorC
                     JDBC_DRIVER,
                     SNAPSHOT_OFFSET_BINLOG_FILENAME,
                     SNAPSHOT_OFFSET_BINLOG_POSITION,
-                    SNAPSHOT_OFFSET_GTID_SET)
+                    SNAPSHOT_OFFSET_GTID_SET,
+                    PARALLEL_PARSE_EVENT)
             .connector(
                     CONNECTION_TIMEOUT_MS,
                     KEEP_ALIVE,
@@ -1072,6 +1082,7 @@ public class MySqlConnectorConfig extends HistorizedRelationalDatabaseConnectorC
     private final String snapshotOffsetBinlogFilename;
     private final Long snapshotOffsetBinlogPosition;
     private final String snapshotOffsetGtidSet;
+    private final boolean parallelParseEvent;
 
     public MySqlConnectorConfig(Configuration config) {
         super(
@@ -1092,6 +1103,7 @@ public class MySqlConnectorConfig extends HistorizedRelationalDatabaseConnectorC
         this.snapshotOffsetBinlogFilename = config.getString(SNAPSHOT_OFFSET_BINLOG_FILENAME);
         this.snapshotOffsetBinlogPosition = config.getLong(SNAPSHOT_OFFSET_BINLOG_POSITION);
         this.snapshotOffsetGtidSet = config.getString(SNAPSHOT_OFFSET_GTID_SET);
+        this.parallelParseEvent = config.getBoolean(PARALLEL_PARSE_EVENT);
 
         final String gitIdNewChannelPosition = config.getString(MySqlConnectorConfig.GTID_NEW_CHANNEL_POSITION);
         this.gitIdNewChannelPosition = GtidNewChannelPosition.parse(gitIdNewChannelPosition, MySqlConnectorConfig.GTID_NEW_CHANNEL_POSITION.defaultValueAsString());
@@ -1127,6 +1139,10 @@ public class MySqlConnectorConfig extends HistorizedRelationalDatabaseConnectorC
 
     public String getSnapshotOffsetGtidSet() {
         return this.snapshotOffsetGtidSet;
+    }
+
+    public boolean getParallelParseEvent() {
+        return this.parallelParseEvent;
     }
 
     public boolean useCursorFetch() {

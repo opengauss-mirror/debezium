@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import io.debezium.data.Envelope;
 import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,47 +57,12 @@ public class SqlTools {
     }
 
     public String getInsertSql(TableMetaData tableMetaData, Struct after) {
-        List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
         StringBuilder sb = new StringBuilder();
         sb.append("insert into \"").append(tableMetaData.getSchemaName()).append("\".\"")
                 .append(tableMetaData.getTableName()).append("\"").append(" values (");
-        for (ColumnMetaData columnMetaData : columnMetaDataList) {
-            String columnName = columnMetaData.getColumnName();
-            String columnType = columnMetaData.getColumnType();
-            Object originValue = after.get(columnName);
-            if (originValue == null) {
-                sb.append(originValue).append(", ");
-            }
-            else {
-                String value = getSingleValue(columnType, originValue);
-                sb.append(value).append(", ");
-            }
-        }
-        sb.deleteCharAt(sb.length() - 1);
-        sb.deleteCharAt(sb.length() - 1);
+        ArrayList<String> valueList = getValueList(tableMetaData, after, Envelope.Operation.CREATE);
+        sb.append(String.join(", ", valueList));
         sb.append(");");
-        return sb.toString();
-    }
-
-    public String getDeleteSql(TableMetaData tableMetaData, Struct before) {
-        List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
-        StringBuilder sb = new StringBuilder();
-        sb.append("delete from \"").append(tableMetaData.getSchemaName()).append("\".\"")
-                .append(tableMetaData.getTableName()).append("\"").append(" where ");
-        for (ColumnMetaData columnMetaData : columnMetaDataList) {
-            String columnName = columnMetaData.getColumnName();
-            String columnType = columnMetaData.getColumnType();
-            Object originValue = before.get(columnName);
-            if (originValue == null) {
-                sb.append(columnName).append(" is null ").append(" and ");
-            }
-            else {
-                String value = getSingleValue(columnType, originValue);
-                sb.append(columnName).append(" = ").append(value).append(" and ");
-            }
-        }
-        sb.delete(sb.length() - 5, sb.length());
-        sb.append(";");
         return sb.toString();
     }
 
@@ -105,60 +71,49 @@ public class SqlTools {
         StringBuilder sb = new StringBuilder();
         sb.append("update \"").append(tableMetaData.getSchemaName()).append("\".\"")
                 .append(tableMetaData.getTableName()).append("\"").append(" set ");
-        for (ColumnMetaData columnMetaData : columnMetaDataList) {
-            String columnName = columnMetaData.getColumnName();
-            String columnType = columnMetaData.getColumnType();
-            Object originValue = after.get(columnName);
-            if (originValue == null) {
-                sb.append(columnName).append(" = ").append(originValue).append(", ");
-            }
-            else {
-                String value = getSingleValue(columnType, originValue);
-                sb.append(columnName).append(" = ").append(value).append(", ");
-            }
-        }
-        sb.delete(sb.length() - 2, sb.length());
+        ArrayList<String> updateSetValueList = getValueList(tableMetaData, after, Envelope.Operation.UPDATE);
+        sb.append(String.join(", ", updateSetValueList));
         sb.append(" where ");
-        for (ColumnMetaData columnMetaData : columnMetaDataList) {
-            String columnName = columnMetaData.getColumnName();
-            String columnType = columnMetaData.getColumnType();
-            Object originValue = before.get(columnName);
-            if (originValue == null) {
-                sb.append(columnName).append(" is null ").append(" and ");
-            }
-            else {
-                String value = getSingleValue(columnType, originValue);
-                sb.append(columnName).append(" = ").append(value).append(" and ");
-            }
-        }
-        sb.delete(sb.length() - 5, sb.length());
+        ArrayList<String> whereConditionValueList = getValueList(tableMetaData, before, Envelope.Operation.DELETE);
+        sb.append(String.join(" and ", whereConditionValueList));
         sb.append(";");
         return sb.toString();
     }
 
-    public String getSingleValue(String columnType, Object originValue) {
-        switch (columnType) {
-            case "int":
-                return originValue.toString();
-            case "char":
-                return addingSingleQuotation(originValue);
-            default:
-                return addingSingleQuotation(originValue);
-        }
+    public String getDeleteSql(TableMetaData tableMetaData, Struct before) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("delete from \"").append(tableMetaData.getSchemaName()).append("\".\"")
+                .append(tableMetaData.getTableName()).append("\"").append(" where ");
+        ArrayList<String> whereConditionValueList = getValueList(tableMetaData, before, Envelope.Operation.DELETE);
+        sb.append(String.join(" and ", whereConditionValueList));
+        sb.append(";");
+        return sb.toString();
     }
 
-    public Object getSingleValue_new(String columnType, Object originValue) {
-        switch (columnType) {
-            case "int":
-                return originValue.toString();
-            case "char":
-                return addingSingleQuotation(originValue);
-            default:
-                return addingSingleQuotation(originValue);
+    private ArrayList<String> getValueList(TableMetaData tableMetaData, Struct after, Envelope.Operation operation) {
+        ArrayList<String> valueList = new ArrayList<>();
+        List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
+        String singleValue;
+        String columnName;
+        for (ColumnMetaData columnMetaData : columnMetaDataList) {
+            singleValue = DebeziumValueConverters.getValue(columnMetaData, after);
+            columnName = columnMetaData.getColumnName();
+            switch (operation) {
+                case CREATE:
+                    valueList.add(singleValue);
+                    break;
+                case UPDATE:
+                    valueList.add(columnName + " = " + singleValue);
+                    break;
+                case DELETE:
+                    if (singleValue == null) {
+                        valueList.add(columnName + " is null");
+                    } else {
+                        valueList.add(columnName + " = " + singleValue);
+                    }
+                    break;
+            }
         }
-    }
-
-    public String addingSingleQuotation(Object originValue) {
-        return "'" + originValue.toString() + "'";
+        return valueList;
     }
 }

@@ -36,12 +36,11 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
+import com.github.shyiko.mysql.binlog.BinaryLogClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
 
-import com.github.shyiko.mysql.binlog.BinaryLogClient;
-import com.github.shyiko.mysql.binlog.BinaryLogClient.LifecycleListener;
 import com.github.shyiko.mysql.binlog.event.DeleteRowsEventData;
 import com.github.shyiko.mysql.binlog.event.Event;
 import com.github.shyiko.mysql.binlog.event.EventData;
@@ -1188,7 +1187,7 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
         return new DebeziumException(msg, error);
     }
 
-    protected final class ReaderThreadLifecycleListener implements LifecycleListener {
+    protected final class ReaderThreadLifecycleListener implements BinaryLogClient.LifecycleListener {
         private final MySqlOffsetContext offsetContext;
 
         ReaderThreadLifecycleListener(MySqlOffsetContext offsetContext) {

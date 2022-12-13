@@ -5,22 +5,23 @@
  */
 package io.debezium.relational.history;
 
-import io.debezium.relational.Column;
-import io.debezium.relational.Index;
-import io.debezium.relational.Table;
-import io.debezium.relational.history.TableChanges.TableChange;
-import io.debezium.util.SchemaNameAdjuster;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
+
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
+import io.debezium.relational.Column;
+import io.debezium.relational.Index;
+import io.debezium.relational.Table;
+import io.debezium.relational.history.TableChanges.TableChange;
+import io.debezium.util.SchemaNameAdjuster;
 
 /**
  * Ther serializer responsible for converting of {@link TableChanges} into an array of {@link Struct}s.

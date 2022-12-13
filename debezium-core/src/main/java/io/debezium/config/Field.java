@@ -268,7 +268,8 @@ public final class Field {
         CONNECTOR,
         ADVANCED_HEARTBEAT,
         CONNECTOR_ADVANCED,
-        ADVANCED
+        ADVANCED,
+        OPTIMIZE
     };
 
     public static class GroupEntry {

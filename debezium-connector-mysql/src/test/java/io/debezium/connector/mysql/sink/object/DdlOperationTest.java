@@ -5,7 +5,6 @@
  */
 package io.debezium.connector.mysql.sink.object;
 
-import org.apache.kafka.connect.data.Struct;
 import org.junit.Assert;
 import org.junit.Test;
 

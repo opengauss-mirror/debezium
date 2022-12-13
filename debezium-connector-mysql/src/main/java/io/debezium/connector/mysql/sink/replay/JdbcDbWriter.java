@@ -5,19 +5,26 @@
  */
 package io.debezium.connector.mysql.sink.replay;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.Scanner;
+import java.util.Locale;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
-import io.debezium.connector.mysql.sink.object.TransactionRecordField;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -34,6 +41,7 @@ import io.debezium.connector.mysql.sink.object.SinkRecordObject;
 import io.debezium.connector.mysql.sink.object.SourceField;
 import io.debezium.connector.mysql.sink.object.TableMetaData;
 import io.debezium.connector.mysql.sink.object.Transaction;
+import io.debezium.connector.mysql.sink.object.TransactionRecordField;
 import io.debezium.connector.mysql.sink.task.MySqlSinkConnectorConfig;
 import io.debezium.connector.mysql.sink.util.SqlTools;
 import io.debezium.data.Envelope;
@@ -44,21 +52,41 @@ import io.debezium.data.Envelope;
  * @date 2022/10/31
  **/
 public class JdbcDbWriter {
+    /**
+     * Transaction queue num
+     */
+    public static final int TRANSACTION_QUEUE_NUM = 5;
+
+    /**
+     * Max value for splitting transaction queue
+     */
+    public static final int MAX_VALUE = 50000;
+
     private static final Logger LOGGER = LoggerFactory.getLogger(JdbcDbWriter.class);
+
     private ConnectionInfo openGaussConnection;
     private SqlTools sqlTools;
+    private TransactionDispatcher transactionDispatcher;
+
+    private int count = 0;
+    private int queueIndex = 0;
+    private boolean needStartReplayFlag = false;
+    private String startReplayFlagPosition;
     private ArrayList<String> sqlList = new ArrayList<>();
     private Transaction transaction = new Transaction();
-    private HashMap<String, TableMetaData> tableMetaDataMap = new HashMap<String, TableMetaData>();
-    private BlockingQueue<SinkRecordObject> sinkRecordQueue = new LinkedBlockingDeque<>();
-    private BlockingQueue<Transaction> transactionQueue = new LinkedBlockingQueue<>();
+
     private HashMap<String, Long> dmlEventCountMap = new HashMap<String, Long>();
-    private TransactionDispatcher transactionDispatcher;
-    private ArrayList<String> changedTableNameList = new ArrayList<>();
-    private BlockingQueue<String> feedBackQueue = new LinkedBlockingQueue<>();
-    private ArrayList<SinkRecordObject> sinkRecordsArrayList = new ArrayList<>();
-    private boolean needStartReplayFlag = false;
     private HashMap<String, String> tableSnapshotHashmap = new HashMap<>();
+    private HashMap<String, TableMetaData> tableMetaDataMap = new HashMap<String, TableMetaData>();
+    private HashMap<String, String> schemaMappingMap = new HashMap<>();
+
+    private ArrayList<String> changedTableNameList = new ArrayList<>();
+    private ArrayList<SinkRecordObject> sinkRecordsArrayList = new ArrayList<>();
+    private BlockingQueue<String> feedBackQueue = new LinkedBlockingQueue<>();
+    private BlockingQueue<SinkRecord> sinkQueue = new LinkedBlockingQueue<>();
+    private ArrayList<ConcurrentLinkedQueue<Transaction>> transactionQueueList = new ArrayList<>();
+
+    private final DateTimeFormatter ofPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
 
     /**
      * Constructor
@@ -66,35 +94,104 @@ public class JdbcDbWriter {
      * @param MySqlSinkConnectorConfig mysql sink connector config
      */
     public JdbcDbWriter(MySqlSinkConnectorConfig config) {
+        initObject(config);
+    }
+
+    private void initObject(MySqlSinkConnectorConfig config) {
+        initOpenGaussConnection(config);
+        initSchemaMappingMap(config.schemaMappings);
+        initTransactionQueueList(TRANSACTION_QUEUE_NUM);
+        initSqlTools();
+        initTransactionDispatcher(config.parallelReplayThreadNum);
+        initStartReplayFlagPosition(config.startReplayFlagPosition);
+    }
+
+    private void initOpenGaussConnection(MySqlSinkConnectorConfig config) {
         openGaussConnection = new ConnectionInfo(config.openGaussUrl, config.openGaussUsername, config.openGaussPassword);
+    }
+
+    private void initSchemaMappingMap(String schemaMappings) {
+        String[] pairs = schemaMappings.split(";");
+        for (String pair : pairs) {
+            String[] schema = pair.split(":");
+            schemaMappingMap.put(schema[0].trim(), schema[1].trim());
+        }
+    }
+
+    private void initTransactionQueueList(int num) {
+        for (int i = 0; i < num; i++) {
+            transactionQueueList.add(new ConcurrentLinkedQueue<Transaction>());
+        }
+    }
+
+    private void initSqlTools() {
         sqlTools = new SqlTools(openGaussConnection.createOpenGaussConnection());
-        transactionDispatcher = new TransactionDispatcher(openGaussConnection, transactionQueue, changedTableNameList, feedBackQueue);
+    }
+
+    private void initTransactionDispatcher(int threadNum) {
+        if (threadNum > 0) {
+            transactionDispatcher = new TransactionDispatcher(threadNum, openGaussConnection, transactionQueueList, changedTableNameList, feedBackQueue);
+        }
+        else {
+            transactionDispatcher = new TransactionDispatcher(openGaussConnection, transactionQueueList, changedTableNameList, feedBackQueue);
+        }
+    }
+
+    private void initStartReplayFlagPosition(String position) {
+        startReplayFlagPosition = position;
     }
 
     /**
      * Batch write
      *
-     * @param Collection<SinkRecord> sink records
+     * @param Collection<SinkRecord> the sink records
      */
     public void batchWrite(Collection<SinkRecord> records) {
+        sinkQueue.addAll(records);
+    }
+
+    /**
+     * Create work threads
+     */
+    public void createWorkThreads() {
+        getTableSnapshot();
+        parseSinkRecordThread();
+        transactionDispatcherThread();
+        statTask();
+    }
+
+    private void parseSinkRecordThread() {
+        new Thread(() -> {
+            Thread.currentThread().setName("parse-sink-thread");
+            parseRecord();
+        }).start();
+    }
+
+    public void parseRecord() {
         boolean skipFlag = false;
-        for (SinkRecord sinkRecord : records) {
-            Struct value = (Struct) sinkRecord.value();
+        Struct value = null;
+        SinkRecord sinkRecord = null;
+        while (true) {
+            try {
+                sinkRecord = sinkQueue.take();
+            }
+            catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            value = (Struct) sinkRecord.value();
             if (value == null) {
                 continue;
             }
             try {
-                String status = value.getString(TransactionRecordField.STATUS);
-                String id = value.getString(TransactionRecordField.ID);
-                if (status.toUpperCase().equals(TransactionRecordField.BEGIN)) {
+                if (TransactionRecordField.BEGIN.equals(value.getString(TransactionRecordField.STATUS))) {
                     sinkRecordsArrayList.clear();
                 }
                 else {
-                    long eventCount = value.getInt64(TransactionRecordField.EVENT_COUNT);
                     if (!skipFlag) {
-                        dmlEventCountMap.put(id, eventCount);
+                        dmlEventCountMap.put(value.getString(TransactionRecordField.ID),
+                                value.getInt64(TransactionRecordField.EVENT_COUNT));
                         for (SinkRecordObject sinkRecordObject : sinkRecordsArrayList) {
-                            sinkRecordQueue.add(sinkRecordObject);
+                            constructDml(sinkRecordObject);
                         }
                     }
                     else {
@@ -112,73 +209,73 @@ public class JdbcDbWriter {
                     continue;
                 }
                 try {
-                    dataOperation = new DdlOperation(value);
-                    sinkRecordObject.setDataOperation(dataOperation);
-                    sinkRecordQueue.add(sinkRecordObject);
-                }
-                catch (DataException exception) {
                     dataOperation = new DmlOperation(value);
                     sinkRecordObject.setDataOperation(dataOperation);
                     sinkRecordsArrayList.add(sinkRecordObject);
+                }
+                catch (DataException exception) {
+                    dataOperation = new DdlOperation(value);
+                    sinkRecordObject.setDataOperation(dataOperation);
+                    constructDdl(sinkRecordObject);
                 }
             }
         }
     }
 
-    /**
-     * Create work threads
-     */
-    public void createWorkThreads() {
-        getTableSnapshot();
-        constructSqlThread();
-        transactionDispatcherThread();
+    private void receivedStartReplayFlag() {
+        File file = new File(startReplayFlagPosition);
+        ensureStartFileExist(file);
+        receiveStartFlag(file);
     }
 
-    private void receivedStartReplayFlag() {
-        Scanner scanner = new Scanner(System.in);
-        while (true) {
-            if (scanner.hasNext()) {
-                String flag = scanner.next();
-                if (flag.equals("start")) {
-                    LOGGER.info("Received start semaphore, and start to replay kafka records.");
-                    break;
+    private void ensureStartFileExist(File file) {
+        if (!file.exists()) {
+            try {
+                file.createNewFile();
+            }
+            catch (IOException exp) {
+                LOGGER.warn("Create start replay flag file failed, please create the file manually and file path is "
+                        + startReplayFlagPosition, exp);
+                while (true) {
+                    if (file.exists()) {
+                        break;
+                    }
+                    else {
+                        try {
+                            Thread.sleep(1000);
+                        }
+                        catch (InterruptedException e) {
+                            LOGGER.warn("Receive interrupted exception when judge whether replay flag file exists", exp);
+                        }
+                    }
                 }
+            }
+        }
+    }
+
+    private void receiveStartFlag(File file) {
+        while (true) {
+            try (BufferedReader in = new BufferedReader(new FileReader(file))) {
+                String str;
+                while ((str = in.readLine()) != null) {
+                    if (str.toLowerCase(Locale.ROOT).startsWith("start")) {
+                        LOGGER.info("Received start semaphore, and start to replay kafka records.");
+                        return;
+                    }
+                }
+                Thread.sleep(1000);
+            }
+            catch (IOException | InterruptedException exp) {
+                LOGGER.warn("Receive replay start flag failed", exp);
             }
         }
     }
 
     private void transactionDispatcherThread() {
         new Thread(() -> {
+            Thread.currentThread().setName("txn-dispatcher-thread");
             transactionDispatcher.dispatcher();
         }).start();
-    }
-
-    private void constructSqlThread() {
-        new Thread(() -> {
-            try {
-                while (true) {
-                    SinkRecordObject sinkRecordObject = sinkRecordQueue.take();
-                    constructSql(sinkRecordObject);
-                }
-            }
-            catch (InterruptedException exp) {
-                LOGGER.error("Interrupted exception occurred", exp);
-            }
-        }).start();
-    }
-
-    private void constructSql(SinkRecordObject sinkRecordObject) {
-        boolean isDml = sinkRecordObject.getDataOperation().getIsDml();
-        if (isDml) {
-            if (needStartReplayFlag) {
-                receivedStartReplayFlag();
-                needStartReplayFlag = false;
-            }
-            constructDml(sinkRecordObject);
-        }
-        else {
-            constructDdl(sinkRecordObject);
-        }
     }
 
     private void constructDdl(SinkRecordObject sinkRecordObject) {
@@ -196,7 +293,7 @@ public class JdbcDbWriter {
         DdlOperation ddlOperation = (DdlOperation) sinkRecordObject.getDataOperation();
         String schemaName = sourceField.getDatabase();
         String tableName = sourceField.getTable();
-        String tableFullName = schemaName + "." + tableName;
+        String tableFullName = schemaMappingMap.getOrDefault(schemaName, schemaName) + "." + tableName;
         String ddl = ddlOperation.getDdl();
         if (StringUtils.isNullOrEmpty(tableName)) {
             sqlList.add(ddl);
@@ -210,11 +307,15 @@ public class JdbcDbWriter {
         }
         transaction.setSqlList(sqlList);
         transaction.setIsDml(false);
-        transactionQueue.add(transaction.clone());
+        splitTransactionQueue();
         sqlList.clear();
     }
 
     private void constructDml(SinkRecordObject sinkRecordObject) {
+        if (needStartReplayFlag) {
+            receivedStartReplayFlag();
+            needStartReplayFlag = false;
+        }
         SourceField sourceField = sinkRecordObject.getSourceField();
         String currentGtid = sourceField.getGtid();
         transaction.setSourceField(sourceField);
@@ -227,7 +328,7 @@ public class JdbcDbWriter {
         TableMetaData tableMetaData = null;
         String schemaName = transaction.getSourceField().getDatabase();
         String tableName = transaction.getSourceField().getTable();
-        String tableFullName = schemaName + "." + tableName;
+        String tableFullName = schemaMappingMap.getOrDefault(schemaName, schemaName) + "." + tableName;
 
         if (changedTableNameList.contains(tableFullName)) {
             try {
@@ -247,7 +348,7 @@ public class JdbcDbWriter {
             }
         }
         else if (!tableMetaDataMap.containsKey(tableFullName)) {
-            tableMetaData = sqlTools.getTableMetaData(schemaName, tableName);
+            tableMetaData = sqlTools.getTableMetaData(schemaMappingMap.getOrDefault(schemaName, schemaName), tableName);
             tableMetaDataMap.put(tableFullName, tableMetaData);
         }
         else {
@@ -270,8 +371,19 @@ public class JdbcDbWriter {
         if (sqlList.size() == dmlEventCountMap.getOrDefault(currentGtid, (long) -1)) {
             dmlEventCountMap.remove(currentGtid);
             transaction.setSqlList(sqlList);
-            transactionQueue.add(transaction.clone());
+            splitTransactionQueue();
             sqlList.clear();
+        }
+    }
+
+    private void splitTransactionQueue() {
+        count++;
+        transactionQueueList.get(queueIndex).add(transaction.clone());
+        if (count % MAX_VALUE == 0) {
+            queueIndex++;
+            if (queueIndex % TRANSACTION_QUEUE_NUM == 0) {
+                queueIndex = 0;
+            }
         }
     }
 
@@ -286,7 +398,7 @@ public class JdbcDbWriter {
                 String tableName = rs.getString("v_table_name");
                 String binlog_name = rs.getString("t_binlog_name");
                 String binloig_position = rs.getString("i_binlog_position");
-                tableSnapshotHashmap.put(schemaName + "." + tableName, binlog_name + ":" + binloig_position);
+                tableSnapshotHashmap.put(schemaMappingMap.getOrDefault(schemaName, schemaName) + "." + tableName, binlog_name + ":" + binloig_position);
             }
         }
         catch (SQLException exp) {
@@ -297,7 +409,7 @@ public class JdbcDbWriter {
     private boolean isSkippedEvent(SourceField sourceField) {
         String schemaName = sourceField.getDatabase();
         String tableName = sourceField.getTable();
-        String fullName = schemaName + "." + tableName;
+        String fullName = schemaMappingMap.getOrDefault(schemaName, schemaName) + "." + tableName;
         if (tableSnapshotHashmap.containsKey(fullName)) {
             String binlogFile = sourceField.getFile();
             Long fileIndex = Long.valueOf(binlogFile.split("\\.")[1]);
@@ -305,12 +417,28 @@ public class JdbcDbWriter {
             String snapshotPoint = tableSnapshotHashmap.get(fullName);
             String snapshotBinlogFile = snapshotPoint.split(":")[0];
             Long snapshotFileIndex = Long.valueOf(snapshotBinlogFile.split("\\.")[1]);
-            Long snapshotBinligPosition = Long.valueOf(snapshotPoint.split(":")[1]);
+            Long snapshotBinlogPosition = Long.valueOf(snapshotPoint.split(":")[1]);
             if (fileIndex < snapshotFileIndex ||
-                    (fileIndex == snapshotFileIndex && binlogPosition <= snapshotBinligPosition)) {
+                    (fileIndex == snapshotFileIndex && binlogPosition <= snapshotBinlogPosition)) {
                 return true;
             }
         }
         return false;
+    }
+
+    private void statTask() {
+        Timer timer = new Timer();
+        final int[] before = {count};
+        TimerTask task = new TimerTask() {
+            @Override
+            public void run() {
+                String date = ofPattern.format(LocalDateTime.now());
+                String result = String.format("have constructed %s transaction, and current time is %s, and current "
+                        + "speed is %s", count, date, count - before[0]);
+                LOGGER.info(result);
+                before[0] = count;
+            }
+        };
+        timer.schedule(task, 1000, 1000);
     }
 }

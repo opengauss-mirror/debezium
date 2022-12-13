@@ -5,6 +5,17 @@
  */
 package io.debezium.connector.oracle.antlr.listener;
 
+import static io.debezium.antlr.AntlrDdlParser.getText;
+
+import java.sql.Types;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.antlr.v4.runtime.tree.ParseTreeListener;
+
 import io.debezium.antlr.DataTypeResolver;
 import io.debezium.connector.oracle.antlr.OracleDdlParser;
 import io.debezium.ddl.parser.oracle.generated.PlSqlParser;
@@ -16,17 +27,8 @@ import io.debezium.relational.Column;
 import io.debezium.relational.ColumnEditor;
 import io.debezium.relational.TableEditor;
 import io.netty.util.internal.StringUtil;
+
 import oracle.jdbc.OracleTypes;
-import org.antlr.v4.runtime.tree.ParseTreeListener;
-
-import java.sql.Types;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
-import static io.debezium.antlr.AntlrDdlParser.getText;
 
 /**
  * Parser listener that parses column definitions of Oracle DDL statements.

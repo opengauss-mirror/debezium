@@ -6,7 +6,6 @@
 package io.debezium.connector.mysql;
 
 import com.github.shyiko.mysql.binlog.BinaryLogClient;
-
 import io.debezium.connector.common.CdcSourceTaskContext;
 import io.debezium.relational.TableId;
 import io.debezium.schema.TopicSelector;
@@ -27,6 +26,9 @@ public class MySqlTaskContext extends CdcSourceTaskContext {
         super(config.getContextName(), config.getLogicalName(), schema::tableIds);
         this.schema = schema;
         this.binaryLogClient = new BinaryLogClient(config.hostname(), config.port(), config.username(), config.password());
+        if (config.getParallelParseEvent()) {
+            binaryLogClient.setIsParallelParseEvent(true);
+        }
         topicSelector = MySqlTopicSelector.defaultSelector(config);
     }
 

@@ -40,7 +40,8 @@ public class WorkThread extends Thread {
      * @param BlockingQueue<String> the feed back queue
      */
     public WorkThread(ConnectionInfo connectionInfo, ArrayList<String> changedTableNameList,
-                      BlockingQueue<String> feedBackQueue) {
+                      BlockingQueue<String> feedBackQueue, int index) {
+        super("work-thread-" + index);
         this.connectionInfo = connectionInfo;
         this.changedTableNameList = changedTableNameList;
         this.feedBackQueue = feedBackQueue;

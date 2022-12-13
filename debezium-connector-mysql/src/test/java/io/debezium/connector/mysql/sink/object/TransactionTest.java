@@ -5,10 +5,10 @@
  */
 package io.debezium.connector.mysql.sink.object;
 
+import java.util.ArrayList;
+
 import org.junit.Assert;
 import org.junit.Test;
-
-import java.util.ArrayList;
 
 /**
  * Description: TransactionTest class
