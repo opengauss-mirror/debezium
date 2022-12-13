@@ -568,4 +568,25 @@ public class OracleConnection extends JdbcConnection {
         }
         return indexSet;
     }
+
+    @Override
+    protected List<Map<String, String>> readCheck(DatabaseMetaData metadata, TableId id) throws SQLException {
+        final List<Map<String, String>> checkColumns = new ArrayList<>();
+        final String sql = "SELECT CONSTRAINT_NAME,SEARCH_CONDITION from ALL_CONSTRAINTS " +
+                "WHERE TABLE_NAME = ? AND OWNER = ? AND CONSTRAINT_TYPE = 'C' and GENERATED = 'USER NAME' ";
+        PreparedStatement prepareStatement = connection().prepareStatement(sql);
+        prepareStatement.setString(1, id.table().toString());
+        prepareStatement.setString(2, id.schema().toString());
+        try (ResultSet rs = prepareStatement.executeQuery()) {
+            while (rs.next()) {
+                final Map<String, String> checkColumn = new HashMap<>();
+
+                checkColumn.put(INDEX_NAME, rs.getString(1));
+                checkColumn.put(CONDITION, rs.getString(2));
+
+                checkColumns.add(checkColumn);
+            }
+        }
+        return checkColumns;
+    }
 }

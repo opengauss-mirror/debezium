@@ -5,6 +5,31 @@
  */
 package io.debezium.jdbc;
 
+import io.debezium.DebeziumException;
+import io.debezium.annotation.NotThreadSafe;
+import io.debezium.annotation.ThreadSafe;
+import io.debezium.config.CommonConnectorConfig;
+import io.debezium.config.Configuration;
+import io.debezium.config.Field;
+import io.debezium.relational.Column;
+import io.debezium.relational.ColumnEditor;
+import io.debezium.relational.RelationalDatabaseConnectorConfig;
+import io.debezium.relational.Table;
+import io.debezium.relational.TableId;
+import io.debezium.relational.Tables;
+import io.debezium.relational.Tables.ColumnNameFilter;
+import io.debezium.relational.Tables.TableFilter;
+import io.debezium.schema.DatabaseSchema;
+import io.debezium.util.BoundedConcurrentHashMap;
+import io.debezium.util.BoundedConcurrentHashMap.Eviction;
+import io.debezium.util.BoundedConcurrentHashMap.EvictionListener;
+import io.debezium.util.Collect;
+import io.debezium.util.ColumnUtils;
+import io.debezium.util.Strings;
+import org.apache.kafka.connect.errors.ConnectException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.lang.reflect.InvocationTargetException;
 import java.sql.CallableStatement;
 import java.sql.Connection;
@@ -37,32 +62,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
-
-import org.apache.kafka.connect.errors.ConnectException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import io.debezium.DebeziumException;
-import io.debezium.annotation.NotThreadSafe;
-import io.debezium.annotation.ThreadSafe;
-import io.debezium.config.CommonConnectorConfig;
-import io.debezium.config.Configuration;
-import io.debezium.config.Field;
-import io.debezium.relational.Column;
-import io.debezium.relational.ColumnEditor;
-import io.debezium.relational.RelationalDatabaseConnectorConfig;
-import io.debezium.relational.Table;
-import io.debezium.relational.TableId;
-import io.debezium.relational.Tables;
-import io.debezium.relational.Tables.ColumnNameFilter;
-import io.debezium.relational.Tables.TableFilter;
-import io.debezium.schema.DatabaseSchema;
-import io.debezium.util.BoundedConcurrentHashMap;
-import io.debezium.util.BoundedConcurrentHashMap.Eviction;
-import io.debezium.util.BoundedConcurrentHashMap.EvictionListener;
-import io.debezium.util.Collect;
-import io.debezium.util.ColumnUtils;
-import io.debezium.util.Strings;
 
 /**
  * A utility that simplifies using a JDBC connection and executing transactions composed of multiple statements.
@@ -1261,7 +1260,7 @@ public class JdbcConnection implements AutoCloseable {
     }
 
     protected Set<String> readTableIndex(DatabaseMetaData metadata, TableId key) throws SQLException {
-        return null;
+        return Collections.emptySet();
     }
 
     protected String resolveCatalogName(String catalogName) {
@@ -1383,27 +1382,18 @@ public class JdbcConnection implements AutoCloseable {
         return fkColumns;
     }
 
-    public List<Map<String, String>> readCheck(DatabaseMetaData metadata, TableId id) throws SQLException {
-        final List<Map<String, String>> checkColumns = new ArrayList<>();
-        final String sql = "SELECT CONSTRAINT_NAME,SEARCH_CONDITION from ALL_CONSTRAINTS " +
-                "WHERE TABLE_NAME = ? AND OWNER = ? AND CONSTRAINT_TYPE = 'C' and GENERATED = 'USER NAME' ";
-        PreparedStatement prepareStatement = connection().prepareStatement(sql);
-        prepareStatement.setString(1, id.table().toString());
-        prepareStatement.setString(2, id.schema().toString());
-        try (ResultSet rs = prepareStatement.executeQuery()) {
-            while (rs.next()) {
-                final Map<String, String> checkColumn = new HashMap<>();
-
-                checkColumn.put(INDEX_NAME, rs.getString(1));
-                checkColumn.put(CONDITION, rs.getString(2));
-
-                checkColumns.add(checkColumn);
-            }
-        }
-        return checkColumns;
+    /**
+     * different query method for get check constraint in mysql,oracle,postgresql
+     * @param metadata
+     * @param id
+     * @return
+     * @throws SQLException
+     */
+    protected List<Map<String, String>> readCheck(DatabaseMetaData metadata, TableId id) throws SQLException {
+        return Collections.emptyList();
     }
 
-    public List<Map<String, String>> readUniqueIndex(DatabaseMetaData metadata, TableId id, List<String> pkColumnNames) throws SQLException {
+    protected List<Map<String, String>> readUniqueIndex(DatabaseMetaData metadata, TableId id, List<String> pkColumnNames) throws SQLException {
         final List<Map<String, String>> uniqueColumns = new ArrayList<>();
         try (ResultSet rs = metadata.getIndexInfo(id.catalog(), id.schema(), id.table(), true, false)) {
             while (rs.next()) {

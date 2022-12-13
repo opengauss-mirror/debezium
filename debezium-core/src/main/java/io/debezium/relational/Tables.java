@@ -192,7 +192,7 @@ public final class Tables {
                 Collections.emptyList(),
                 Collections.emptyList(),
                 Collections.emptyList(),
-                null,
+                Collections.emptySet(),
                 defaultCharsetName);
     }
 
