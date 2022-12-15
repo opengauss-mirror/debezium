@@ -5,23 +5,22 @@
  */
 package io.debezium.relational.history;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
-
+import io.debezium.relational.Column;
+import io.debezium.relational.Index;
+import io.debezium.relational.Table;
+import io.debezium.relational.history.TableChanges.TableChange;
+import io.debezium.util.SchemaNameAdjuster;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.debezium.relational.Column;
-import io.debezium.relational.Index;
-import io.debezium.relational.Table;
-import io.debezium.relational.history.TableChanges.TableChange;
-import io.debezium.util.SchemaNameAdjuster;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 /**
  * Ther serializer responsible for converting of {@link TableChanges} into an array of {@link Struct}s.
@@ -101,6 +100,7 @@ public class ConnectTableChangeSerializer implements TableChanges.TableChangesSe
             .field(MODIFY_KEYS_KEY, SchemaBuilder.array(Schema.STRING_SCHEMA).optional().build())
             .build();
     private static final Schema INDEX_COLUMN_EXPR = SchemaBuilder.struct()
+            .name(schemaNameAdjuster.adjust("io.debezium.connector.schema.IndexColumn"))
             .field(COLUMN_EXPR, Schema.OPTIONAL_STRING_SCHEMA)
             .field(DESC, Schema.OPTIONAL_BOOLEAN_SCHEMA)
             .field(INCLUDE_COLUMN,
@@ -111,6 +111,7 @@ public class ConnectTableChangeSerializer implements TableChanges.TableChangesSe
      * index schema builder
      */
     private static final Schema INDEX_SCHEMA = SchemaBuilder.struct()
+            .name(schemaNameAdjuster.adjust("io.debezium.connector.schema.Index"))
             .field(INDEX_ID, Schema.OPTIONAL_STRING_SCHEMA)
             .field(INDEX_NAME, Schema.OPTIONAL_STRING_SCHEMA)
             .field(TABLE_ID, Schema.OPTIONAL_STRING_SCHEMA)
