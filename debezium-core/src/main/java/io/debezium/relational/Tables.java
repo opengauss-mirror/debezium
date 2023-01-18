@@ -5,16 +5,6 @@
  */
 package io.debezium.relational;
 
-import io.debezium.annotation.ThreadSafe;
-import io.debezium.function.Predicates;
-import io.debezium.schema.DataCollectionFilters.DataCollectionFilter;
-import io.debezium.schema.DatabaseSchema;
-import io.debezium.util.Collect;
-import io.debezium.util.FunctionalReadWriteLock;
-import org.apache.kafka.connect.data.Schema;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -26,6 +16,17 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
+
+import org.apache.kafka.connect.data.Schema;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import io.debezium.annotation.ThreadSafe;
+import io.debezium.function.Predicates;
+import io.debezium.schema.DataCollectionFilters.DataCollectionFilter;
+import io.debezium.schema.DatabaseSchema;
+import io.debezium.util.Collect;
+import io.debezium.util.FunctionalReadWriteLock;
 
 /**
  * Structural definitions for a set of tables in a JDBC database.

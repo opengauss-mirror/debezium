@@ -54,6 +54,16 @@
             <artifactId>opengauss-jdbc</artifactId>
             <version>3.1.0-og</version>
         </dependency>
+        <dependency>
+            <groupId>mil.nga.sf</groupId>
+            <artifactId>sf-wkb</artifactId>
+            <version>2.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>mil.nga.sf</groupId>
+            <artifactId>sf-wkt</artifactId>
+            <version>1.1.0</version>
+        </dependency>
 
         <!-- Testing -->
         <dependency>

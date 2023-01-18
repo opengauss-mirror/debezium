@@ -42,12 +42,21 @@ public class MysqlSinkConnectorTask extends SinkTask {
         remainRetries = config.maxRetries;
     }
 
+    // @Override
+    public void put_old(Collection<SinkRecord> records) {
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        Thread.currentThread().setName("sink-record-thread");
+        jdbcDbWriter.batchWrite(records);
+    }
+
     @Override
     public void put(Collection<SinkRecord> records) {
         if (records == null || records.isEmpty()) {
             return;
         }
-        LOGGER.info("===>>>records size:{}", records.size());
+        Thread.currentThread().setName("sink-record-thread");
         jdbcDbWriter.batchWrite(records);
     }
 
