@@ -57,10 +57,6 @@ public class TableMetaData {
         return schemaName;
     }
 
-    public void setSchemaName(String schemaName) {
-        this.schemaName = schemaName;
-    }
-
     /**
      * Gets column list
      *
@@ -70,12 +66,4 @@ public class TableMetaData {
         return columnList;
     }
 
-    /**
-     * Sets column list
-     *
-     * @param columnList List<ColumnMetaData> the column list
-     */
-    public void setColumnList(List<ColumnMetaData> columnList) {
-        this.columnList = columnList;
-    }
 }

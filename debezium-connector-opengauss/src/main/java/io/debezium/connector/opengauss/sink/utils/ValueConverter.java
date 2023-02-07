@@ -123,9 +123,9 @@ public final class ValueConverter {
         Instant instant = convertDbzDateTime(object, schemaName);
         DateTimeFormatter dateTimeFormatter;
         if ("io.debezium.time.ZonedTimestamp".equals(schemaName)){
-            dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.of("Asia/Shanghai"));
+            dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS").withZone(ZoneId.of("Asia/Shanghai"));
         } else {
-            dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneOffset.UTC);
+            dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS").withZone(ZoneOffset.UTC);
         }
         return addingSingleQuotation(dateTimeFormatter.format(instant));
     }

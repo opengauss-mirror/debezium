@@ -16,6 +16,7 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.sql.Connection;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -43,18 +44,33 @@ public class JdbcDbWriter {
     private final DateTimeFormatter ofPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
     private BlockingQueue<SinkRecord> sinkQueue = new LinkedBlockingQueue<>();
     private static Map<String, Integer> runnableMap = new HashMap<>();
+    private Map<String, String> schemaMappingMap = new HashMap<>();
 
     /**
      * Constructor
      * @param config OpengaussSinkConnectorConfig the config
      */
     public JdbcDbWriter(OpengaussSinkConnectorConfig config) {
-        mysqlConnection = new ConnectionInfo(config.mysqlUrl, config.mysqlUsername, config.mysqlPassword, config.mysqlDatabase, config.port);
+        initSchemaMappingMap(config.schemaMappings);
+        mysqlConnection = new ConnectionInfo(config.mysqlUrl, config.mysqlUsername, config.mysqlPassword, config.port);
         sqlTools = new SqlTools(mysqlConnection.createMysqlConnection());
         this.threadCount = config.maxThreadCount;
         for (int i = 0; i < threadCount; i++) {
-            WorkThread workThread = new WorkThread(mysqlConnection, sqlTools);
+            WorkThread workThread = new WorkThread(schemaMappingMap, mysqlConnection, sqlTools);
             threadList.add(workThread);
+        }
+    }
+
+    private void initSchemaMappingMap(String schemaMappings) {
+        String[] pairs = schemaMappings.split(";");
+        for (String pair : pairs) {
+            if (pair == null || " ".equals(pair)){
+                LOGGER.error("the format of schema.mappings is error:" + schemaMappings);
+            }
+            String[] schema = pair.split(":");
+            if (schema.length == 2) {
+                schemaMappingMap.put(schema[0].trim(), schema[1].trim());
+            }
         }
     }
 
@@ -101,23 +117,24 @@ public class JdbcDbWriter {
             SinkRecordObject sinkRecordObject = new SinkRecordObject();
             sinkRecordObject.setDmlOperation(dmlOperation);
             sinkRecordObject.setSourceField(sourceField);
-            String schemaName = sourceField.getDatabase();
+            String schemaName = sourceField.getSchema();
             String tableName = sourceField.getTable();
-            findProperWorkThread(tableName, sinkRecordObject);
+            String tableFullName = schemaMappingMap.get(schemaName) + "." + tableName;
+            findProperWorkThread(tableFullName, sinkRecordObject, schemaMappingMap.get(schemaName));
         }
     }
 
-    private void findProperWorkThread(String tableName, SinkRecordObject sinkRecordObject){
-        if (runnableMap.containsKey(tableName)) {
-            WorkThread workThread = threadList.get(runnableMap.get(tableName));
+    private void findProperWorkThread(String tableFullName, SinkRecordObject sinkRecordObject, String schemaName){
+        if (runnableMap.containsKey(tableFullName)) {
+            WorkThread workThread = threadList.get(runnableMap.get(tableFullName));
             workThread.addData(sinkRecordObject);
             return;
         }
-        int relyThreadIndex = getRelyIndex(tableName);
+        int relyThreadIndex = getRelyIndex(tableFullName, schemaName);
         if (relyThreadIndex != -1) {
             WorkThread workThread = threadList.get(relyThreadIndex);
             workThread.addData(sinkRecordObject);
-            runnableMap.put(tableName, relyThreadIndex);
+            runnableMap.put(tableFullName, relyThreadIndex);
             return;
         }
         WorkThread workThread;
@@ -129,7 +146,7 @@ public class JdbcDbWriter {
             workThread = threadList.get(runCount % threadCount);
             workThread.addData(sinkRecordObject);
         }
-        runnableMap.put(tableName, runCount % threadCount);
+        runnableMap.put(tableFullName, runCount % threadCount);
         runCount++;
     }
 
@@ -141,17 +158,17 @@ public class JdbcDbWriter {
         return count;
     }
 
-    private int getRelyIndex(String tableName) {
+    private int getRelyIndex(String tableFullName, String schemaName) {
         Set<String> set = runnableMap.keySet();
         Iterator<String> iterator = set.iterator();
         while (iterator.hasNext()) {
             String oldTableName = iterator.next();
-            List<String> relyTableList = sqlTools.getRelyTableList(oldTableName);
+            List<String> relyTableList = sqlTools.getRelyTableList(oldTableName, schemaName);
             if (relyTableList.size() == 0) {
                 return -1;
             } else {
                 for (String relyTable : relyTableList) {
-                    if (relyTable.equals(tableName)) {
+                    if (relyTable.equals(tableFullName)) {
                         return runnableMap.get(oldTableName);
                     }
                 }

@@ -28,7 +28,6 @@ public class OpengaussSinkConnector extends SinkConnector {
     @Override
     public void start(Map<String, String> props) {
         configProps = props;
-
     }
 
     @Override
