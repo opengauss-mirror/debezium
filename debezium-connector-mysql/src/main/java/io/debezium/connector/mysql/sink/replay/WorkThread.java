@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Locale;
 import java.util.concurrent.BlockingQueue;
 
+import io.debezium.connector.mysql.sink.util.SqlTools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -109,8 +110,7 @@ public class WorkThread extends Thread {
                     for (String sql : txn.getSqlList()) {
                         statement.execute(sql);
                     }
-                    if (!txn.getIsDml() && (txn.getSqlList().get(0).toLowerCase(Locale.ROOT).startsWith("alter table") ||
-                            txn.getSqlList().get(0).toLowerCase(Locale.ROOT).startsWith("create table"))) {
+                    if (!txn.getIsDml() && SqlTools.isCreateOrAlterTableStatement(txn.getSqlList().get(1))) {
                         String schemaName = txn.getSourceField().getDatabase();
                         String tableName = txn.getSourceField().getTable();
                         String tableFullName = schemaName + "." + tableName;
@@ -118,7 +118,9 @@ public class WorkThread extends Thread {
                     }
                 }
                 catch (SQLException exp) {
-                    LOGGER.error("SQL exception occurred, the SQL statement executed is " + txn.getSqlList());
+                    LOGGER.error(String.format("SQL exception occurred, the SQL statement executed is: %s," +
+                            " and the cause of the exception is %s",
+                            txn.getSqlList(), exp.getMessage()));
                 }
             }
         }

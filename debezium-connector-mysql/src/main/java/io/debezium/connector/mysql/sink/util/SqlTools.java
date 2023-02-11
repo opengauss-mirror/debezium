@@ -13,13 +13,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-import io.debezium.data.Envelope;
 import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.mysql.sink.object.ColumnMetaData;
 import io.debezium.connector.mysql.sink.object.TableMetaData;
+import io.debezium.data.Envelope;
 
 /**
  * Description: SqlTools class
@@ -108,12 +108,24 @@ public class SqlTools {
                 case DELETE:
                     if (singleValue == null) {
                         valueList.add(columnName + " is null");
-                    } else {
+                    }
+                    else {
                         valueList.add(columnName + " = " + singleValue);
                     }
                     break;
             }
         }
         return valueList;
+    }
+
+    /**
+     * Determine whether the sql statement is create or alter table
+     *
+     * @param String the sql statement
+     * @return boolean true if is create or alter table
+     */
+    public static boolean isCreateOrAlterTableStatement(String sql) {
+        return sql.toLowerCase(Locale.ROOT).startsWith("create table") ||
+                sql.toLowerCase(Locale.ROOT).startsWith("alter table");
     }
 }

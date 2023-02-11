@@ -89,7 +89,7 @@ connector.class=io.debezium.connector.mysql.MySqlConnector
 | snapshot.offset.binlog.filename | String  | 自定义配置快照点的binlog文件名                             |
 | snapshot.offset.binlog.position | String  | 自定义配置快照点的binlog位置                               |
 | snapshot.offset.gtid.set        | String  | 自定义配置快照点的Executed_Gtid_Set，需注意最大事务号需减1 |
-| parallel.parse.event            | boolean | 是否启用并行解析event能力，默认为false，表示不启用         |
+| parallel.parse.event            | boolean | 是否启用并行解析event能力，默认为true，表示启用并行解析能力         |
 
 ```
 mysql> show master status;
@@ -124,7 +124,6 @@ connector.class=io.debezium.connector.mysql.sink.MysqlSinkConnector
 | opengauss.username         | String | openGauss用户名                                              |
 | opengauss.password         | String | openGauss用户密码                                            |
 | opengauss.url              | String | openGauss连接url                                             |
-| start.replay.flag.position | String | 启动回放接收start信号的文件位置，初次启动connector，需在该文件中接收到start信号，才会开始回放操作 |
 | parallel.replay.thread.num | int    | 并行回放默认线程数量，默认为30                               |
 | schema.mappings            | String | mysql和openGauss的schema映射关系，与全量迁移chameleon配置相对应，用；区分不同的映射关系，用：区分mysql的database和openGauss的schema<br>例如chameleon的配置<br>schema_mappings:<br/>      mysql_database1: opengauss_schema1<br/>      mysql_database2: opengauss_schema2<br/>则sink端的schema.mappings参数需配置为schema.mappings=mysql_database1:opengauss_schema1;mysql_database2:opengauss_schema2 |
 
@@ -247,12 +246,20 @@ cd confluent-5.5.1
 ./bin/schema-registry-start etc/schema-registry/schema-registry.properties
 ```
 
-（4）启动kafka-connect
+（4）启动kafka-connect source端
 
 ```
 cd confluent-5.5.1
-./bin/connect-standalone etc/schema-registry/connect-avro-standalone.properties etc/kafka/mysql-source.properties etc/kafka/mysql-sink.properties
+./bin/connect-standalone etc/schema-registry/connect-avro-standalone.properties etc/kafka/mysql-source.properties
 ```
+
+（5）启动kafka-connect sink端
+
+```
+cd confluent-5.5.1
+./bin/connect-standalone etc/schema-registry/connect-avro-standalone-1.properties etc/kafka/mysql-sink.properties
+```
+说明：source端和sink端的两个配置文件connect-avro-standalone.properties和connect-avro-standalone-1.properties的差异点在于rest.port参数的不同，默认为8083，即两个文件中设置不同的端口号，即可启动多个kafka-connect，实现sink端和source端独立工作。
 
 其他命令：
 

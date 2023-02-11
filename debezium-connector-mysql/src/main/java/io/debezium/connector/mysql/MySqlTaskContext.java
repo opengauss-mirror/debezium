@@ -6,6 +6,7 @@
 package io.debezium.connector.mysql;
 
 import com.github.shyiko.mysql.binlog.BinaryLogClient;
+
 import io.debezium.connector.common.CdcSourceTaskContext;
 import io.debezium.relational.TableId;
 import io.debezium.schema.TopicSelector;
