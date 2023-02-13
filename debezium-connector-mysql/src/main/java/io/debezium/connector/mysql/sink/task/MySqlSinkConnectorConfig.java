@@ -47,11 +47,6 @@ public class MySqlSinkConnectorConfig extends AbstractConfig {
     public final String openGaussUrl;
 
     /**
-     * Start replay flag position
-     */
-    public final String startReplayFlagPosition;
-
-    /**
      * Parallel replay thread num
      */
     public final int parallelReplayThreadNum;
@@ -76,7 +71,6 @@ public class MySqlSinkConnectorConfig extends AbstractConfig {
         this.openGaussPassword = getString(OPENGAUSS_PASSWORD);
         this.openGaussUrl = getString(OPENGAUSS_URL);
 
-        this.startReplayFlagPosition = getString(START_REPLAY_FLAG_POSITION);
         this.parallelReplayThreadNum = getInt(PARALLEL_REPLAY_THREAD_NUM);
         this.schemaMappings = getString(SCHEMA_MAPPINGS);
     }
@@ -112,11 +106,6 @@ public class MySqlSinkConnectorConfig extends AbstractConfig {
     public static final String OPENGAUSS_URL = "opengauss.url";
 
     /**
-     * Start replay flag position
-     */
-    public static final String START_REPLAY_FLAG_POSITION = "start.replay.flag.position";
-
-    /**
      * Parallel replay thread num
      */
     public static final String PARALLEL_REPLAY_THREAD_NUM = "parallel.replay.thread.num";
@@ -133,7 +122,6 @@ public class MySqlSinkConnectorConfig extends AbstractConfig {
             .define(OPENGAUSS_USERNAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "openGauss username")
             .define(OPENGAUSS_PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "openGauss password")
             .define(OPENGAUSS_URL, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "openGauss url")
-            .define(START_REPLAY_FLAG_POSITION, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "start replay flag position")
             .define(PARALLEL_REPLAY_THREAD_NUM, ConfigDef.Type.INT, 30, ConfigDef.Importance.HIGH, "parallel replay thread num")
             .define(SCHEMA_MAPPINGS, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "schema mappings");
 }

@@ -5,10 +5,6 @@
  */
 package io.debezium.connector.mysql.sink.replay;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -70,8 +66,6 @@ public class JdbcDbWriter {
 
     private int count = 0;
     private int queueIndex = 0;
-    private boolean needStartReplayFlag = false;
-    private String startReplayFlagPosition;
     private ArrayList<String> sqlList = new ArrayList<>();
     private Transaction transaction = new Transaction();
 
@@ -103,7 +97,6 @@ public class JdbcDbWriter {
         initTransactionQueueList(TRANSACTION_QUEUE_NUM);
         initSqlTools();
         initTransactionDispatcher(config.parallelReplayThreadNum);
-        initStartReplayFlagPosition(config.startReplayFlagPosition);
     }
 
     private void initOpenGaussConnection(MySqlSinkConnectorConfig config) {
@@ -114,7 +107,9 @@ public class JdbcDbWriter {
         String[] pairs = schemaMappings.split(";");
         for (String pair : pairs) {
             String[] schema = pair.split(":");
-            schemaMappingMap.put(schema[0].trim(), schema[1].trim());
+            if (schema.length == 2) {
+                schemaMappingMap.put(schema[0].trim(), schema[1].trim());
+            }
         }
     }
 
@@ -135,10 +130,6 @@ public class JdbcDbWriter {
         else {
             transactionDispatcher = new TransactionDispatcher(openGaussConnection, transactionQueueList, changedTableNameList, feedBackQueue);
         }
-    }
-
-    private void initStartReplayFlagPosition(String position) {
-        startReplayFlagPosition = position;
     }
 
     /**
@@ -222,55 +213,6 @@ public class JdbcDbWriter {
         }
     }
 
-    private void receivedStartReplayFlag() {
-        File file = new File(startReplayFlagPosition);
-        ensureStartFileExist(file);
-        receiveStartFlag(file);
-    }
-
-    private void ensureStartFileExist(File file) {
-        if (!file.exists()) {
-            try {
-                file.createNewFile();
-            }
-            catch (IOException exp) {
-                LOGGER.warn("Create start replay flag file failed, please create the file manually and file path is "
-                        + startReplayFlagPosition, exp);
-                while (true) {
-                    if (file.exists()) {
-                        break;
-                    }
-                    else {
-                        try {
-                            Thread.sleep(1000);
-                        }
-                        catch (InterruptedException e) {
-                            LOGGER.warn("Receive interrupted exception when judge whether replay flag file exists", exp);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private void receiveStartFlag(File file) {
-        while (true) {
-            try (BufferedReader in = new BufferedReader(new FileReader(file))) {
-                String str;
-                while ((str = in.readLine()) != null) {
-                    if (str.toLowerCase(Locale.ROOT).startsWith("start")) {
-                        LOGGER.info("Received start semaphore, and start to replay kafka records.");
-                        return;
-                    }
-                }
-                Thread.sleep(1000);
-            }
-            catch (IOException | InterruptedException exp) {
-                LOGGER.warn("Receive replay start flag failed", exp);
-            }
-        }
-    }
-
     private void transactionDispatcherThread() {
         new Thread(() -> {
             Thread.currentThread().setName("txn-dispatcher-thread");
@@ -282,27 +224,41 @@ public class JdbcDbWriter {
         SourceField sourceField = sinkRecordObject.getSourceField();
         String currentGtid = sourceField.getGtid();
         if (currentGtid == null) {
-            needStartReplayFlag = true;
             return;
-        }
-        if (needStartReplayFlag) {
-            receivedStartReplayFlag();
-            needStartReplayFlag = false;
         }
         transaction.setSourceField(sourceField);
         DdlOperation ddlOperation = (DdlOperation) sinkRecordObject.getDataOperation();
         String schemaName = sourceField.getDatabase();
         String tableName = sourceField.getTable();
-        String tableFullName = schemaMappingMap.getOrDefault(schemaName, schemaName) + "." + tableName;
-        String ddl = ddlOperation.getDdl();
+        String newSchemaName = schemaMappingMap.getOrDefault(schemaName, schemaName);
+        String ddl = ddlOperation.getDdl().replace("`", "");
+        sqlList.add("set current_schema to " + newSchemaName);
         if (StringUtils.isNullOrEmpty(tableName)) {
             sqlList.add(ddl);
         }
         else {
-            String modifiedDdl = ddl.replace("`", "").replaceFirst(tableName, tableFullName);
+            String modifiedDdl = null;
+            if (ddl.toLowerCase(Locale.ROOT).startsWith("alter table") &&
+                    ddl.toLowerCase(Locale.ROOT).contains("rename to") &&
+                    !ddl.toLowerCase(Locale.ROOT).contains("`rename to")) {
+                int preIndex = ddl.toLowerCase(Locale.ROOT).indexOf("table");
+                int postIndex = ddl.toLowerCase(Locale.ROOT).indexOf("rename");
+                String oldFullName = ddl.substring(preIndex + 6, postIndex).trim();
+                if (oldFullName.split("\\.").length == 2) {
+                    String oldName = oldFullName.split("\\.")[1];
+                    modifiedDdl = ddl.replaceFirst(oldFullName, oldName);
+                }
+                else {
+                    modifiedDdl = ddl;
+                }
+            }
+            else {
+                modifiedDdl = ddl.replaceFirst(schemaName + "." + tableName, tableName);
+            }
             sqlList.add(modifiedDdl);
-            if (modifiedDdl.startsWith("alter table") || modifiedDdl.startsWith("create table")) {
-                changedTableNameList.add(tableFullName);
+            if (SqlTools.isCreateOrAlterTableStatement(ddl)) {
+                changedTableNameList.add(newSchemaName + "." + tableName);
+                transaction.getSourceField().setDatabase(newSchemaName);
             }
         }
         transaction.setSqlList(sqlList);
@@ -312,10 +268,6 @@ public class JdbcDbWriter {
     }
 
     private void constructDml(SinkRecordObject sinkRecordObject) {
-        if (needStartReplayFlag) {
-            receivedStartReplayFlag();
-            needStartReplayFlag = false;
-        }
         SourceField sourceField = sinkRecordObject.getSourceField();
         String currentGtid = sourceField.getGtid();
         transaction.setSourceField(sourceField);
@@ -428,7 +380,7 @@ public class JdbcDbWriter {
 
     private void statTask() {
         Timer timer = new Timer();
-        final int[] before = {count};
+        final int[] before = { count };
         TimerTask task = new TimerTask() {
             @Override
             public void run() {

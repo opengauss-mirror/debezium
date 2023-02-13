@@ -13,7 +13,6 @@ import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-import io.debezium.time.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -91,6 +90,7 @@ public class TransactionDispatcher {
             if (selectedTransaction == null) {
                 txn = transactionQueueList.get(queueIndex).poll();
                 if (txn != null) {
+                    LOGGER.info("Ready to replay the transaction: " + txn.toString());
                     count++;
                     if (count % JdbcDbWriter.MAX_VALUE == 0) {
                         queueIndex++;
@@ -134,7 +134,7 @@ public class TransactionDispatcher {
 
     private void statTask() {
         Timer timer = new Timer();
-        final int[] before = {count};
+        final int[] before = { count };
         TimerTask task = new TimerTask() {
             @Override
             public void run() {
