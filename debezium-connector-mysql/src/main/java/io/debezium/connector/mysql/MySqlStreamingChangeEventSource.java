@@ -1121,12 +1121,10 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
             final GtidSet relevantAvailableServerGtidSet = (gtidSourceFilter != null) ? availableServerGtidSet.retainAll(gtidSourceFilter) : availableServerGtidSet;
             LOGGER.info("Relevant GTID set available on server: {}", relevantAvailableServerGtidSet);
 
-            mergedGtidSet = relevantAvailableServerGtidSet
-                    .retainAll(uuid -> knownGtidSet.forServerWithId(uuid) != null)
-                    .with(purgedServerGtid)
-                    .with(filteredGtidSet);
+            mergedGtidSet = relevantAvailableServerGtidSet;
             LOGGER.info("Merged GTID set to use when connecting to MySQL: {}", mergedGtidSet);
-            mergedGtidSet = new GtidSet(modifiedGtidSet(mergedGtidSet.toString()));
+            String modifiedGtidSet = GtidSet.modifiedGtidSet(mergedGtidSet.toString(), gtidStr, 1);
+            mergedGtidSet = new GtidSet(modifiedGtidSet);
             LOGGER.info("Modified merged GTID set to use when connecting to MySQL: {}", mergedGtidSet);
         }
         else {
@@ -1135,12 +1133,6 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
 
         LOGGER.info("Final merged GTID set to use when connecting to MySQL: {}", mergedGtidSet);
         return mergedGtidSet;
-    }
-
-    private String modifiedGtidSet(String originGtid) {
-        int index = originGtid.lastIndexOf("-");
-        long transactionId = Long.parseLong(originGtid.substring(index + 1)) + 1;
-        return originGtid.substring(0, index + 1) + transactionId;
     }
 
     MySqlStreamingChangeEventSourceMetrics getMetrics() {

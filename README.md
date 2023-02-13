@@ -100,6 +100,10 @@ connector.class=io.debezium.connector.mysql.MySqlConnector
 | snapshot.offset.gtid.set        | String  | 自定义配置快照点的Executed_Gtid_Set，需注意最大事务号需减1 |
 | parallel.parse.event            | boolean | 是否启用并行解析event能力，默认为true，表示启用并行解析能力         |
 
+快照点参数配置说明：
+
+case 1: 查询到一个gtid set，则配置当前查询的gtid set，且最大事务号减1。
+
 ```
 mysql> show master status;
 +------------------+----------+--------------+------------------+-------------------------------------------------+
@@ -117,6 +121,39 @@ mysql> show master status;
 snapshot.offset.binlog.filename=mysql-bin.000027
 snapshot.offset.binlog.position=111822
 snapshot.offset.gtid.set=c6eca988-a77e-11ec-8eec-fa163e3d2519:1-50459546
+```
+
+case 2：查询到多个gtid set，则配置所有gtid，并针对当前uuid对应的gtid set，设置最大事务号减1。
+
+```
+mysql> show master status;
++------------------+----------+--------------+------------------+---------------------------------------------------------------------------------------------+
+| File             | Position | Binlog_Do_DB | Binlog_Ignore_DB | Executed_Gtid_Set                                                                           |
++------------------+----------+--------------+------------------+---------------------------------------------------------------------------------------------+
+| mysql-bin.000034 |    15973 |              |                  | a3ea3aee-ab76-11ed-9e33-fa163e3d2519:1-297,
+c6eca988-a77e-11ec-8eec-fa163e3d2519:1-50459811 |
++------------------+----------+--------------+------------------+---------------------------------------------------------------------------------------------+
+1 row in set (0.00 sec)
+```
+
+查询当前server_uuid
+
+```
+mysql> show global variables like 'server_uuid';
++---------------+--------------------------------------+
+| Variable_name | Value                                |
++---------------+--------------------------------------+
+| server_uuid   | a3ea3aee-ab76-11ed-9e33-fa163e3d2519 |
++---------------+--------------------------------------+
+1 row in set (0.00 sec)
+```
+
+如上示例中，根据查询到的快照点若配置新增的snapshot相关的参数，需配置为如下：
+
+```
+snapshot.offset.binlog.filename=mysql-bin.000034
+snapshot.offset.binlog.position=15973
+snapshot.offset.gtid.set=a3ea3aee-ab76-11ed-9e33-fa163e3d2519:1-296,c6eca988-a77e-11ec-8eec-fa163e3d2519:1-50459811
 ```
 
 #### Sink端
@@ -151,6 +188,7 @@ debezium mysql connector的source端，监控mysql数据库的binlog日志，并
 mysql参数配置：
 
 ```
+log_bin=on
 binlog_format=row
 binglog_row_image=full
 gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放
