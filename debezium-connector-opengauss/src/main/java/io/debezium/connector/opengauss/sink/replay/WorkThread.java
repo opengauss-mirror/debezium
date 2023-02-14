@@ -28,26 +28,27 @@ public class WorkThread extends Thread {
     private static final String INSERT = "c";
     private static final String UPDATE = "u";
     private static final String DELETE = "d";
-    private ConnectionInfo connectionInfo;
     private SqlTools sqlTools;
     public int count;
+    private ConnectionInfo connectionInfo;
     private BlockingQueue<SinkRecordObject> sinkRecordQueue = new LinkedBlockingDeque<>();
     private static Map<String, TableMetaData> oldTableMap = new HashMap<>();
+    private Map<String, String> schemaMappingMap;
 
     /**
-     * Constructor
      *
-     * @param connectionInfo ConnectionInfo the connectionInfo
-     * @param sqlTools SqlTools the sqltools
+     * @param schemaMappingMap Map<String, String> the schema mapping map
+     * @param sqlTools SqlTools the sql tools
      */
-    public WorkThread(ConnectionInfo connectionInfo, SqlTools sqlTools) {
+    public WorkThread(Map<String, String> schemaMappingMap, ConnectionInfo connectionInfo, SqlTools sqlTools) {
+        this.schemaMappingMap = schemaMappingMap;
         this.connectionInfo = connectionInfo;
         this.sqlTools = sqlTools;
     }
 
     @Override
     public void run() {
-        SinkRecordObject sinkRecordObject = null;
+        SinkRecordObject sinkRecordObject;
         try (Connection connection = connectionInfo.createMysqlConnection();
              Statement statement = connection.createStatement()) {
             while(true){
@@ -84,12 +85,14 @@ public class WorkThread extends Thread {
         SourceField sourceField = sinkRecordObject.getSourceField();
         DmlOperation dmlOperation = sinkRecordObject.getDmlOperation();
         String operation = dmlOperation.getOperation();
+        String schemaName = schemaMappingMap.get(sourceField.getSchema());
+        String tableFullName = schemaName + "." + sourceField.getTable();
         TableMetaData tableMetaData;
-        if (oldTableMap.containsKey(sourceField.getTable())){
-            tableMetaData = oldTableMap.get(sourceField.getTable());
+        if (oldTableMap.containsKey(tableFullName)){
+            tableMetaData = oldTableMap.get(tableFullName);
         } else {
-            tableMetaData = sqlTools.getTableMetaData(sourceField.getDatabase(),sourceField.getTable());
-            oldTableMap.put(sourceField.getTable(), tableMetaData);
+            tableMetaData = sqlTools.getTableMetaData(schemaName,sourceField.getTable());
+            oldTableMap.put(tableFullName, tableMetaData);
         }
         String sql = "";
         switch (operation){

@@ -98,16 +98,17 @@ public class SqlTools {
      * Gets rely table list
      *
      * @param oldTableName String the old table name
+     * @param schemaName String the schema name
      * @return List<String> the table name list rely on the old table
      */
-    public  List<String> getRelyTableList(String oldTableName){
+    public  List<String> getRelyTableList(String oldTableName, String schemaName){
         String sql = String.format(Locale.ENGLISH, "select TABLE_NAME from INFORMATION_SCHEMA.KEY_COLUMN_USAGE" +
-                "  where REFERENCED_TABLE_NAME='%s'", oldTableName);
+                "  where REFERENCED_TABLE_NAME='%s' and TABLE_SCHEMA='%s'", oldTableName, schemaName);
         try(PreparedStatement preparedStatement = connection.prepareStatement(sql);
             ResultSet resultSet=preparedStatement.executeQuery(); ){
             List<String> tableList = new ArrayList<>();
             while (resultSet.next()){
-                tableList.add(resultSet.getString("TABLE_NAME"));
+                tableList.add(schemaName + "." + resultSet.getString("TABLE_NAME"));
             }
             return tableList;
         } catch (SQLException e){
@@ -124,9 +125,9 @@ public class SqlTools {
      * @return String the insert sql
      */
     public String getInsertSql(TableMetaData tableMetaData, Struct after){
-        List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
         StringBuilder sb = new StringBuilder();
-        sb.append("insert into ").append(tableMetaData.getTableName()).append(" values(");
+        sb.append("insert into ").append(tableMetaData.getSchemaName()).append(".")
+                .append(tableMetaData.getTableName()).append(" values(");
         ArrayList<String> valueList = getValueList(tableMetaData, after, Envelope.Operation.CREATE);
         sb.append(String.join(", ", valueList));
         sb.append(");");
@@ -170,12 +171,13 @@ public class SqlTools {
     private String getWhereCondition(TableMetaData tableMetaData, Struct before, List<ColumnMetaData> columnMetaDataList) {
         StringBuilder sb = new StringBuilder();
         String primaryKeyColumnName;
-        if (primeKeyTableMap.containsKey(tableMetaData.getTableName())){
-            primaryKeyColumnName = primeKeyTableMap.get(tableMetaData.getTableName());
+        String tableFullName = tableMetaData.getSchemaName() + "." + tableMetaData.getTableName();
+        if (primeKeyTableMap.containsKey(tableFullName)){
+            primaryKeyColumnName = primeKeyTableMap.get(tableFullName);
         } else {
             primaryKeyColumnName = getPrimaryKeyValue(tableMetaData.getSchemaName(), tableMetaData.getTableName());
             if (primaryKeyColumnName != null){
-                primeKeyTableMap.put(tableMetaData.getTableName(), primaryKeyColumnName);
+                primeKeyTableMap.put(tableFullName, primaryKeyColumnName);
             }
         }
         if (primaryKeyColumnName != null){

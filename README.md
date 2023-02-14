@@ -59,6 +59,15 @@ mvn install:install-file -DgroupId=com.oracle.instantclient -DartifactId=xstream
 debezium-connector-mysql/target/debezium-connector-mysql-1.8.1.Final-plugin.tar.gz
 ```
 
+### Debezium opengauss connector
+
+我们基于原始的debezium开源软件的debezium postgresql connector，新增了debezium opengauss connector，支持抽取openGauss的逻辑日志，将其存入kafka的topic中。同时，我们增加了debezium opengauss connector的sink端能力，能够抽取kafka的日志并完成数据的回放，以实现对数据dml操作的反向迁移能力（openGauss -> mysql）.
+编译debezium后，可以得到反向迁移工具的压缩包，压缩包的位置为：
+
+```
+debezium-connector-openngauss/target/debezium-connector-opengauss-1.8.1.Final-plugin.tar.gz
+```
+
 ### 构建命令
 
 ```
@@ -260,6 +269,192 @@ cd confluent-5.5.1
 ./bin/connect-standalone etc/schema-registry/connect-avro-standalone-1.properties etc/kafka/mysql-sink.properties
 ```
 说明：source端和sink端的两个配置文件connect-avro-standalone.properties和connect-avro-standalone-1.properties的差异点在于rest.port参数的不同，默认为8083，即两个文件中设置不同的端口号，即可启动多个kafka-connect，实现sink端和source端独立工作。
+
+其他命令：
+
+（1）查看topic
+
+```
+cd kafka_2.13-3.2.3
+./bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list
+```
+
+（2）查看topic的内容
+
+```
+cd confluent-5.5.1
+./bin/kafka-avro-console-consumer --bootstrap-server 127.0.0.1:9092 --topic topic_name --from-beginning
+```
+
+## Debezium opengauss connector
+
+### 功能介绍
+
+新增的debezium opengauss connector作为source端，可用于捕获数据变更并存入kafka。在此基础上添加sink端功能，功能点如下：
+
+- 支持openGauss端对schema下的数据的dml操作同步到MySQL端；
+- Sink端支持数据按表进行并发回放；
+- 支持openGausss的多个schema下的数据迁移到指定的MySQL的多个库。
+
+### 新增配置参数说明
+
+#### Sink端
+
+```
+connector.class=io.debezium.connector.opengauss.sink.OpengaussSinkConnector
+```
+
+| 参数                         | 类型   | 参数说明                                                                                                                                                                                                                                                                                                                                               |
+|----------------------------| ------ |----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| topics                     | String | sink端从kafka抽取数据的topic                                                                                                                                                                                                                                                                                                                              |
+| max.retries                | String | 从kafka抽取数据的最大重试次数                                                                                                                                                                                                                                                                                                                                  |
+| max_thread_count           | String | 自定义Sink端按表回放时的最大并发线程数（不能为0）                                                                                                                                                                                                                                                                                                                        |
+| mysql.username             | String | MySQL用户名                                                                                                                                                                                                                                                                                                                                           |
+| mysql.password             | String | MySQL用户密码                                                                                                                                                                                                                                                                                                                                          |
+| masql.url                  | String | MySQL连接url                                                                                                                                                                                                                                                                                                                                         |
+| schema.mappings            | String | openGauss的schema与MySQL的映射关系，与全量迁移chameleon配置相反，用；区分不同的映射关系，用：区分openGauss的schema与MySQL的database<br>例如chameleon的配置<br>schema_mappings:<br/>      mysql_database1: opengauss_schema1<br/>      mysql_database2: opengauss_schema2<br/>则sink端的schema.mappings参数需配置为schema.mappings=opengauss_schema1:mysql_database1;opengauss_schema2:mysql_database2 |
+
+
+
+## 基于Debezium opengauss connector进行反向迁移
+
+### 环境依赖
+
+kafka， zookeeper，confluent community，debezium-connector-opengauss
+
+### 原理
+
+debezium opengauss connector的source端，监控openGauss数据库的逻辑日志，并将数据写入到kafka；debezium opengauss connector的sink端，从kafka读取数据，并组装为sql语句，在MySQL端按表并行回放，从而完成数据从openGauss在线迁移至MySQL端。
+
+### 前置条件
+
+openGauss开启逻辑复制功能：
+
+    （1）仅限初始用户和拥有REPLICATION权限的用户进行操作。三权分立关闭时数据库管理员可以进行逻辑复制操作，三权分立开启时不允许数据库管理员进行逻辑复制操作。
+    （2）openGauss的库与逻辑复制槽一一对应，当待迁移的库改变时，需要配置新的逻辑复制槽的名字
+    （3）openGauss开启逻辑复制槽后，对于没有主键的表，不能直接进行update和delete操作，需要先执行命令：ALTER TABLE table_name REPLICA IDENTITY FULL;
+
+openGauss参数配置：
+
+```
+ssl=on
+wal_level=logical
+```
+
+### 部署过程
+
+#### 下载依赖
+
+- [kafka](https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/3.2.3/kafka_2.13-3.2.3.tgz)
+
+  ```
+  wget -c https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/3.2.3/kafka_2.13-3.2.3.tgz
+  
+  tar -zxf kafka_2.13-3.2.3.tgz
+  ```
+
+- [confluent community](https://packages.confluent.io/archive/5.5/confluent-community-5.5.1-2.12.zip)
+
+  ```
+  wget -c  https://packages.confluent.io/archive/5.5/confluent-community-5.5.1-2.12.zip
+  
+  unzip confluent-community-5.5.1-2.12.zip
+  ```
+
+- [debezium-connector-opengauss](https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/debezium-connector-opengauss-1.8.1.Final-plugin.tar.gz)
+
+  ```
+  wget -c https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/debezium-connector-opengauss-1.8.1.Final-plugin.tar.gz
+  
+  tar -zxvf debezium-connector-opengauss-1.8.1.Final-plugin.tar.gz
+  ```
+
+#### 修改配置文件
+
+- zookeeper
+
+  ```
+  配置文件位置：/kafka_2.13-3.2.3/config/zookeeper.properties
+  ```
+
+- kafka
+
+  ```
+  配置文件位置：/kafka_2.13-3.2.3/config/server.properties
+  ```
+
+- schema-registry
+
+  ```
+  配置文件位置：/confluent-5.5.1/etc/schema-registry/schema-registry.properties
+  ```
+
+- connect-standalone
+
+  ```
+  配置文件位置：/confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties
+  ```
+
+  注意在plugin.path配置项中增加debezium-connector-opengauss所在的路径
+
+  若debezium-connector-opengauss所在路径为：/data/debezium_kafka/plugin/debezium-connector-opengauss
+
+  则配置plugin.path=share/java,/data/debezium_kafka/plugin
+
+- opengauss-source.properties
+
+  ```
+  配置文件位置：/confluent-5.5.1/etc/kafka/opengauss-source.properties
+  ```
+
+  示例详见[opengauss-source.properties](https://gitee.com/opengauss/debezium/blob/master/debezium-connector-opengauss/patch/opengauss-source.properties)
+
+- opengauss-sink.properties
+
+  ```
+  配置文件位置：/confluent-5.5.1/etc/kafka/opengauss-sink.properties
+  ```
+
+  示例详见[opengauss-sink.properties](https://gitee.com/opengauss/debezium/blob/master/debezium-connector-opengauss/patch/opengauss-sink.properties)
+
+#### 启动命令
+
+（1）启动zookeeper
+
+```
+cd kafka_2.13-3.2.3
+./bin/zookeeper-server-start.sh ./config/zookeeper.properties
+```
+
+（2）启动kafka
+
+```
+cd kafka_2.13-3.2.3
+./bin/kafka-server-start.sh ./config/server.properties
+```
+
+（3）注册schema
+
+```
+cd confluent-5.5.1
+./bin/schema-registry-start etc/schema-registry/schema-registry.properties
+```
+
+（4）启动kafka-connect source端
+
+```
+cd confluent-5.5.1
+./bin/connect-standalone etc/schema-registry/connect-avro-standalone.properties etc/kafka/opengauss-source.properties
+```
+
+（5）启动kafka-connect sink端
+
+```
+cd confluent-5.5.1
+./bin/connect-standalone etc/schema-registry/connect-avro-standalone-1.properties etc/kafka/opengauss-sink.properties
+```
+
+说明：source端和sink端两个配置文件connect-avro-standalone.properties和connect-avro-standalone-1.properties的差异点在于rest.port参数的不同，默认为8083，即两个文件中设置不同的端口号，即可启动多个kafka-connect，实现source端和sink端独立工作。
 
 其他命令：
 

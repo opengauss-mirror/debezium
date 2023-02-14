@@ -28,6 +28,11 @@ public class SourceField implements Cloneable {
     public static final String DATABASE = "db";
 
     /**
+     * Schema
+     */
+    public static final String SCHEMA = "schema";
+
+    /**
      * Table
      */
     public static final String TABLE = "table";
@@ -35,6 +40,7 @@ public class SourceField implements Cloneable {
     
 
     private String database;
+    private String schema;
     private String table;
     private String file;
     private long position;
@@ -55,6 +61,7 @@ public class SourceField implements Cloneable {
         }
 
         this.database = source.getString(SourceField.DATABASE);
+        this.schema = source.getString(SourceField.SCHEMA);
         this.table = source.getString(SourceField.TABLE);
 
     }
@@ -75,6 +82,24 @@ public class SourceField implements Cloneable {
      */
     public void setDatabase(String database) {
         this.database = database;
+    }
+
+    /**
+     * Gets schema
+     *
+     * @return String the schema
+     */
+    public String getSchema() {
+        return schema;
+    }
+
+    /**
+     * Sets schema
+     *
+     * @param schema String the schema
+     */
+    public void setSchema(String schema) {
+        this.schema = schema;
     }
 
     /**
