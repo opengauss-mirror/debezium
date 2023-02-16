@@ -9,6 +9,9 @@ import java.util.Map;
 
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
+import org.apache.kafka.common.utils.Utils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Description: MySqlSinkConnectorConfig class
@@ -16,6 +19,8 @@ import org.apache.kafka.common.config.ConfigDef;
  * @date 2022/10/17
  **/
 public class MySqlSinkConnectorConfig extends AbstractConfig {
+    private static final Logger LOGGER = LoggerFactory.getLogger(MySqlSinkConnectorConfig.class);
+
     /**
      * Topics
      */
@@ -62,7 +67,7 @@ public class MySqlSinkConnectorConfig extends AbstractConfig {
      * @param Map<?, ?> the props
      */
     public MySqlSinkConnectorConfig(Map<?, ?> props) {
-        super(CONFIG_DEF, props);
+        super(CONFIG_DEF, props, false);
         this.topics = getString(TOPICS);
         this.maxRetries = getInt(MAX_RETRIES);
 
@@ -73,6 +78,8 @@ public class MySqlSinkConnectorConfig extends AbstractConfig {
 
         this.parallelReplayThreadNum = getInt(PARALLEL_REPLAY_THREAD_NUM);
         this.schemaMappings = getString(SCHEMA_MAPPINGS);
+
+        logAll(props);
     }
 
     /**
@@ -124,4 +131,25 @@ public class MySqlSinkConnectorConfig extends AbstractConfig {
             .define(OPENGAUSS_URL, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "openGauss url")
             .define(PARALLEL_REPLAY_THREAD_NUM, ConfigDef.Type.INT, 30, ConfigDef.Importance.HIGH, "parallel replay thread num")
             .define(SCHEMA_MAPPINGS, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "schema mappings");
+
+    private void logAll(Map<?, ?> props) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(getClass().getSimpleName());
+        sb.append(" values: ");
+        sb.append(Utils.NL);
+
+        for (Map.Entry entry : props.entrySet()) {
+            sb.append('\t');
+            sb.append(entry.getKey());
+            sb.append(" = ");
+            if (OPENGAUSS_PASSWORD.equals(entry.getKey())) {
+                sb.append("********");
+            }
+            else {
+                sb.append(entry.getValue());
+            }
+            sb.append(Utils.NL);
+        }
+        LOGGER.info(sb.toString());
+    }
 }

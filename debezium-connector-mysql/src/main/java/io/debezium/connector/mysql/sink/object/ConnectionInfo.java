@@ -29,7 +29,7 @@ public class ConnectionInfo {
     /**
      * The mysql JDBC driver class
      */
-    private static final String MYSQL_JDBC_SRIVER = "com.mysql.jdbc.Driver";
+    private static final String MYSQL_JDBC_SRIVER = "com.mysql.cj.jdbc.Driver";
 
     private String host;
     private int port;
