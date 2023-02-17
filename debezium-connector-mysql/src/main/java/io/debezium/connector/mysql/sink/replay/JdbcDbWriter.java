@@ -14,7 +14,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
@@ -231,7 +233,7 @@ public class JdbcDbWriter {
         String schemaName = sourceField.getDatabase();
         String tableName = sourceField.getTable();
         String newSchemaName = schemaMappingMap.getOrDefault(schemaName, schemaName);
-        String ddl = ddlOperation.getDdl().replace("`", "");
+        String ddl = ddlOperation.getDdl();
         sqlList.add("set current_schema to " + newSchemaName);
         if (StringUtils.isNullOrEmpty(tableName)) {
             sqlList.add(ddl);
@@ -253,7 +255,7 @@ public class JdbcDbWriter {
                 }
             }
             else {
-                modifiedDdl = ddl.replaceFirst(schemaName + "." + tableName, tableName);
+                modifiedDdl = ignoreSchemaName(ddl, schemaName, tableName);
             }
             sqlList.add(modifiedDdl);
             if (SqlTools.isCreateOrAlterTableStatement(ddl)) {
@@ -265,6 +267,24 @@ public class JdbcDbWriter {
         transaction.setIsDml(false);
         splitTransactionQueue();
         sqlList.clear();
+    }
+
+    private String ignoreSchemaName(String ddl, String schemaName, String tableName) {
+        Set<String> schemaTableSet = new HashSet<>();
+        schemaTableSet.add(schemaName + "." + tableName);
+        schemaTableSet.add(addingBackquote(schemaName) + "." + tableName);
+        schemaTableSet.add(schemaName + "." + addingBackquote(tableName));
+        schemaTableSet.add(addingBackquote(schemaName) + "." + addingBackquote(tableName));
+        for (String name : schemaTableSet) {
+            if (ddl.contains(name)) {
+                return ddl.replaceFirst(name, addingBackquote(tableName));
+            }
+        }
+        return ddl;
+    }
+
+    private String addingBackquote(String name) {
+        return "`" + name + "`";
     }
 
     private void constructDml(SinkRecordObject sinkRecordObject) {

@@ -9,15 +9,14 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Locale;
 import java.util.concurrent.BlockingQueue;
 
-import io.debezium.connector.mysql.sink.util.SqlTools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.mysql.sink.object.ConnectionInfo;
 import io.debezium.connector.mysql.sink.object.Transaction;
+import io.debezium.connector.mysql.sink.util.SqlTools;
 
 /**
  * Description: WorkThread class
