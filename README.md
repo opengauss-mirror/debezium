@@ -292,7 +292,7 @@ cd confluent-5.5.1
 
 新增的debezium opengauss connector作为source端，可用于捕获数据变更并存入kafka。在此基础上添加sink端功能，功能点如下：
 
-- 支持openGauss端对schema下的数据的dml操作同步到MySQL端；
+- 支持openGauss端对schema下的数据的dml操作同步到MySQL端，不支持迁移ddl操作的迁移；
 - Sink端支持数据按表进行并发回放；
 - 支持openGausss的多个schema下的数据迁移到指定的MySQL的多个库。
 
@@ -471,3 +471,13 @@ cd kafka_2.13-3.2.3
 cd confluent-5.5.1
 ./bin/kafka-avro-console-consumer --bootstrap-server 127.0.0.1:9092 --topic topic_name --from-beginning
 ```
+
+#### 性能测试模型
+
+| 场景                  | 数据量                        | 性能      |
+|---------------------|----------------------------|---------|
+| insert.lua          | 30线程，30张表，每张表1000行数据，50秒   | 3W+ tps |
+| update_index.lua    | 30线程，30张表，每张表10000行数据，50秒  | 2W+ tps |
+| update_non_index.lua | 30线程，30张表，每张表10000行数据，50秒  | 2W+ tps |
+| delete.lua          | 30线程，30张表，每张表100000行数据，5秒  | 3W+ tps |
+| 混合场景                | 50线程，50张表，每张表100000行数据，50秒 | 3W+ tps |
