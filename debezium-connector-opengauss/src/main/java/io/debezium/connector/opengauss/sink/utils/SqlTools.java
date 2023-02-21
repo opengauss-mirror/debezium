@@ -232,9 +232,11 @@ public class SqlTools {
         List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
         String singleValue;
         String columnName;
+        String columnType;
         for (ColumnMetaData columnMetaData : columnMetaDataList) {
             singleValue = getValue(columnMetaData, after);
             columnName = columnMetaData.getColumnName();
+            columnType = columnMetaData.getColumnType();
             switch (operation) {
                 case CREATE:
                     valueList.add(singleValue);
@@ -245,6 +247,8 @@ public class SqlTools {
                 case DELETE:
                     if (singleValue == null) {
                         valueList.add(columnName + " is null");
+                    } else if ("json".equals(columnType)){
+                        valueList.add(columnName + "= CAST(" + singleValue + " AS json)");
                     } else {
                         valueList.add(columnName + " = " + singleValue);
                     }
