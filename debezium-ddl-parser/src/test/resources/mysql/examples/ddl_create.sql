@@ -43,6 +43,14 @@ CREATE TABLE `tblSRCHjob_desc` (`description_id` bigint(20) unsigned NOT NULL AU
 create table invisible_column_test(id int, col1 int INVISIBLE);
 create table visible_column_test(id int, col1 int VISIBLE);
 
+create table table_items_partition_key(
+    id int not null,
+    name varchar(255),
+    unique key(id)
+)
+partition by key()
+partitions 2;
+
 CREATE TABLE table_items (id INT, purchased DATE)
     PARTITION BY RANGE( YEAR(purchased) )
         SUBPARTITION BY HASH( TO_DAYS(purchased) )
