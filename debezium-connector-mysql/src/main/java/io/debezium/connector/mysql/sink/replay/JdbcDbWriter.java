@@ -254,6 +254,9 @@ public class JdbcDbWriter {
                     modifiedDdl = ddl;
                 }
             }
+            else if (ddl.toLowerCase(Locale.ROOT).startsWith("drop table")) {
+                modifiedDdl =  ddl.replaceFirst(addingBackquote(schemaName) + ".", "");
+            }
             else {
                 modifiedDdl = ignoreSchemaName(ddl, schemaName, tableName);
             }
