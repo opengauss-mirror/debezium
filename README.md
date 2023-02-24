@@ -49,7 +49,7 @@ mvn install:install-file -DgroupId=com.oracle.instantclient -DartifactId=xstream
 
 原始debezium mysql connector基于开源组件mysql-binlog-connector-java的0.25.4版本读取binlog，并串行解析为event事件，我们对该开源软件进行修改，可用于支持并行解析event事件，以提高debezium mysql connector 作为source端的性能。
 
-对应的patch文件为[mysql-binlog-connector-java-0.25.4.patch][https://gitee.com/opengauss/debezium/tree/master/debezium-connector-mysql/patch/mysql-binlog-connector-java-0.25.4.patch],并在配置文件中增加参数parallel.parse.event参数控制是否启用并行解析event功能，默认为false，即不启用。
+对应的patch文件为[mysql-binlog-connector-java-0.25.4.patch](https://gitee.com/opengauss/debezium/tree/master/debezium-connector-mysql/patch/mysql-binlog-connector-java-0.25.4.patch),并在配置文件中增加参数parallel.parse.event参数控制是否启用并行解析event功能，默认为true，表示启用并行解析能力。
 
 同时针对debezium mysql connector，我们也增加sink端能力，可支持数据在openGauss端按照事务粒度并行回放，用于构建完整的端到端的迁移能力（mysql -> openGauss）。
 
@@ -177,22 +177,30 @@ connector.class=io.debezium.connector.mysql.sink.MysqlSinkConnector
 
 ### 环境依赖
 
-kafka， zookeeper，confluent community，debezium-connector-mysql
+kafka，zookeeper，confluent community，debezium-connector-mysql
 
 ### 原理
 
-debezium mysql connector的source端，监控mysql数据库的binlog日志，并将数据写入到kafka；debezium mysql connector的sink端，从kafka读取数据，并组装为事务，在openGauss端按照事务粒度并行回放，从而完成数据从mysql在线迁移至openGauss端。
+debezium mysql connector的source端，监控mysql数据库的binlog日志，并将数据以AVRO格式写入到kafka；debezium mysql connector的sink端，从kafka读取AVRO格式数据，并组装为事务，在openGauss端按照事务粒度并行回放，从而完成数据从mysql在线迁移至openGauss端。
 
-### 前置条件
+### 约束及限制
 
-mysql参数配置：
+(1) MySQL5.7及以上版本；
+(2) MySQL参数配置：
 
 ```
 log_bin=on
 binlog_format=row
 binglog_row_image=full
-gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放
+gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放，会降低在线迁移性能
 ```
+(3) 在线迁移直接透传DDL，对于openGauss和MySQL不兼容的语法，DDL迁移会报错；
+(4) Kafka中以AVRO格式存储数据，AVRO字段名称[命名规则](https://avro.apache.org/docs/1.11.1/specification/#names)为：
+```
+- 以[A-Za-z_]开头
+- 随后仅包含[A-Za-z0-9_]
+```
+因此，对于MySQL中的标识符命名，包括表名、列名等，需满足上述命名规范，否则在线迁移会报错。
 
 ### 部署过程
 
