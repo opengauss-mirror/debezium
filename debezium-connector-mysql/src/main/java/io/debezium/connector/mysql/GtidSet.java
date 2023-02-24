@@ -7,6 +7,7 @@ package io.debezium.connector.mysql;
 
 import java.util.AbstractMap;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -18,6 +19,9 @@ import java.util.TreeMap;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.BoundType;
 import com.google.common.collect.Range;
@@ -35,6 +39,7 @@ import io.debezium.annotation.Immutable;
 @Immutable
 public final class GtidSet {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(GtidSet.class);
     private final Map<String, UUIDSet> uuidSetsByServerId = new TreeMap<>(); // sorts on keys
     public static Pattern GTID_DELIMITER = Pattern.compile(":");
 
@@ -186,6 +191,44 @@ public final class GtidSet {
             return this.uuidSetsByServerId.equals(that.uuidSetsByServerId);
         }
         return false;
+    }
+
+    /**
+     * Modified gtid set
+     *
+     * @param originGtid the origin gtid
+     * @param previousOffset the previous offset gtid
+     * @param modifiedValue the modified value
+     * @return String the modified gtid set
+     */
+    public static String modifiedGtidSet(String originGtid, String previousOffset, int modifiedValue) {
+        String[] multiGtid = originGtid.split(",");
+        String[] previousMultiGtid = previousOffset.split(",");
+        LOGGER.info("There are {} gtid set available on server: {}", multiGtid.length, multiGtid);
+        LOGGER.info("Previous offset is {}", previousOffset);
+
+        for (int i = 0; i < multiGtid.length; i++) {
+            String trxRange = getTrxRange(previousMultiGtid[i]);
+            if (!trxRange.equals(getTrxRange(multiGtid[i]))) {
+                LOGGER.info("Gtid before modification is {}", previousMultiGtid[i]);
+                multiGtid[i] = modifiedMaxTransactionId(previousMultiGtid[i], modifiedValue);
+                LOGGER.info("Gtid after modification is {}", multiGtid[i]);
+            }
+        }
+        String gtidSet = String.join(",", Arrays.asList(multiGtid));
+        LOGGER.info("The modified gtid set is {}", gtidSet);
+        return gtidSet;
+    }
+
+    private static String modifiedMaxTransactionId(String gtid, int modifiedValue) {
+        int index = gtid.lastIndexOf("-");
+        long transactionId = Long.parseLong(gtid.substring(index + 1)) + modifiedValue;
+        return gtid.substring(0, index + 1) + transactionId;
+    }
+
+    private static String getTrxRange(String gtid) {
+        int index = gtid.lastIndexOf(":");
+        return gtid.substring(index + 1);
     }
 
     @Override

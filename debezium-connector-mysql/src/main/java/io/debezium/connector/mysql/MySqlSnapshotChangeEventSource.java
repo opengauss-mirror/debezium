@@ -294,7 +294,15 @@ public class MySqlSnapshotChangeEventSource extends RelationalSnapshotChangeEven
                     if (rs.getMetaData().getColumnCount() > 4) {
                         // This column exists only in MySQL 5.6.5 or later ...
                         final String gtidSet = rs.getString("Executed_Gtid_Set"); // GTID set, may be null, blank, or contain a GTID set
-                        offsetContext.setCompletedGtidSet(modifiedGtidSet(gtidSet));
+                        String userDefinedGtid = connectorConfig.getSnapshotOffsetGtidSet();
+                        String modifiedGtidSet = "";
+                        if (!userDefinedGtid.equals("")) {
+                            modifiedGtidSet = GtidSet.modifiedGtidSet(gtidSet, userDefinedGtid, -1);
+                        }
+                        else {
+                            modifiedGtidSet = GtidSet.modifiedGtidSet(gtidSet, gtidSet, -1);
+                        }
+                        offsetContext.setCompletedGtidSet(modifiedGtidSet);
                         LOGGER.info("\t using binlog '{}' at position '{}' and gtid '{}'", binlogFilename, binlogPosition,
                                 gtidSet);
                     }
@@ -309,12 +317,6 @@ public class MySqlSnapshotChangeEventSource extends RelationalSnapshotChangeEven
             });
         }
         tryStartingSnapshot(ctx);
-    }
-
-    private String modifiedGtidSet(String originGtid) {
-        int index = originGtid.lastIndexOf("-");
-        long transactionId = Long.parseLong(originGtid.substring(index + 1)) - 1;
-        return originGtid.substring(0, index + 1) + transactionId;
     }
 
     private void addSchemaEvent(RelationalSnapshotContext<MySqlPartition, MySqlOffsetContext> snapshotContext,
