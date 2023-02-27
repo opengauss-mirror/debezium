@@ -47,10 +47,17 @@ public class DebeziumValueConverters {
         {
             put("integer", (columnName, value) -> convertInteger(columnName, value));
             put("character", (columnName, value) -> convertChar(columnName, value));
-            put("blob", (columnName, value) -> convertBlob(columnName, value));
+            put("tinyblob", (columnName, value) -> convertBinary(columnName, value));
+            put("mediumblob", (columnName, value) -> convertBinary(columnName, value));
+            put("blob", (columnName, value) -> convertBinary(columnName, value));
+            put("longblob", (columnName, value) -> convertBinary(columnName, value));
             put("point", (columnName, value) -> convertPoint(columnName, value));
             put("path", (columnName, value) -> convertPath(columnName, value));
             put("polygon", (columnName, value) -> convertPolygon(columnName, value));
+            put("\"binary\"", (columnName, value) -> convertBinary(columnName, value));
+            put("\"varbinary\"", (columnName, value) -> convertBinary(columnName, value));
+            put("binary", (columnName, value) -> convertBinary(columnName, value));
+            put("varbinary", (columnName, value) -> convertBinary(columnName, value));
             put("bytea", (columnName, value) -> convertBytea(columnName, value));
             put("date", (columnName, value) -> convertDate(columnName, value));
             put("time without time zone", (columnName, value) -> convertTime(columnName, value));
@@ -89,13 +96,13 @@ public class DebeziumValueConverters {
         return "'" + originValue.toString() + "'";
     }
 
-    private static String convertBlob(String columnName, Struct value) {
+    private static String convertBinary(String columnName, Struct value) {
         byte[] bytes = value.getBytes(columnName);
         return bytes == null ? null : convertHexString(bytes);
     }
 
     private static String convertHexString(byte[] bytes) {
-        return ESCAPE_CHARACTER + addingSingleQuotation(HEX_PREFIX + HexConverter.convertToHexString(bytes));
+        return addingSingleQuotation(HEX_PREFIX + HexConverter.convertToHexString(bytes));
     }
 
     private static String convertPoint(String columnName, Struct value) {
@@ -185,7 +192,7 @@ public class DebeziumValueConverters {
         else {
             bytes = value.getBytes(columnName);
         }
-        return bytes == null ? null : convertHexString(bytes);
+        return bytes == null ? null : ESCAPE_CHARACTER + convertHexString(bytes);
     }
 
     private static String convertDate(String columnName, Struct value) {
