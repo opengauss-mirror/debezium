@@ -45,7 +45,14 @@ public class DebeziumValueConverters {
 
     private static HashMap<String, ValueConverter> dataTypeConverterMap = new HashMap<String, ValueConverter>() {
         {
+            put("uint1", (columnName, value) -> convertInteger(columnName, value));
+            put("uint2", (columnName, value) -> convertInteger(columnName, value));
+            put("uint4", (columnName, value) -> convertInteger(columnName, value));
+            put("uint8", (columnName, value) -> convertInteger(columnName, value));
+            put("tinyint", (columnName, value) -> convertInteger(columnName, value));
+            put("smallint", (columnName, value) -> convertInteger(columnName, value));
             put("integer", (columnName, value) -> convertInteger(columnName, value));
+            put("bigint", (columnName, value) -> convertInteger(columnName, value));
             put("character", (columnName, value) -> convertChar(columnName, value));
             put("tinyblob", (columnName, value) -> convertBinary(columnName, value));
             put("mediumblob", (columnName, value) -> convertBinary(columnName, value));
