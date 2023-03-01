@@ -310,7 +310,7 @@ public class DebeziumValueConverters {
 
     private static String convertBitString(byte[] bytes) {
         StringBuilder sb = new StringBuilder();
-        for (byte aByte: bytes) {
+        for (byte aByte : bytes) {
             sb.append(Integer.toBinaryString((aByte & 0xFF) + 0x100).substring(1));
         }
         return addingSingleQuotation(sb.toString());

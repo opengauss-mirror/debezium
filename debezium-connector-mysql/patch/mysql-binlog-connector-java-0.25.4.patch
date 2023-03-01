@@ -1,12 +1,12 @@
-From 6f998c18eaef7a819522e38eb019fd5ba8c565c6 Mon Sep 17 00:00:00 2001
+From 21a03fc097bc1b6e25e7eed8b4d7810cf30b2097 Mon Sep 17 00:00:00 2001
 From: douxin <xdou1995@163.com>
 Date: Tue, 3 Jan 2023 20:04:28 +0800
 Subject: [PATCH] mysql-binlog-connector-java-0.25.4-patch
 
 ---
  pom.xml                                       |   2 +-
- .../shyiko/mysql/binlog/BinaryLogClient.java  | 178 +++++++++++++++++-
- 2 files changed, 178 insertions(+), 2 deletions(-)
+ .../shyiko/mysql/binlog/BinaryLogClient.java  | 183 +++++++++++++++++-
+ 2 files changed, 183 insertions(+), 2 deletions(-)
 
 diff --git a/pom.xml b/pom.xml
 index 5920031..bccbeec 100644
@@ -22,7 +22,7 @@ index 5920031..bccbeec 100644
      <name>mysql-binlog-connector-java</name>
      <description>MySQL Binary Log connector</description>
 diff --git a/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java b/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java
-index d8b8299..bbdb245 100644
+index d8b8299..b09d88d 100644
 --- a/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java
 +++ b/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java
 @@ -67,11 +67,17 @@ import java.net.SocketException;
@@ -81,7 +81,7 @@ index d8b8299..bbdb245 100644
          } finally {
              connectLock.unlock();
              if (notifyWhenDisconnected) {
-@@ -991,6 +1012,161 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
+@@ -991,6 +1012,166 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
          }
      }
  
@@ -157,38 +157,41 @@ index d8b8299..bbdb245 100644
 +    }
 +
 +    private void packet2Event() {
-+        for (int i = 0; i < THREAD_NUM; i++) {
-+            int index = i;
-+            new Thread(() -> {
-+                Thread.currentThread().setName("packet-to-event-" +index);
-+                byte[] packet;
-+                Event event = null;
-+                while(true) {
-+                    try {
-+                        packet = packetQueueList.get(index).poll();
-+                        if (packet != null) {
-+                            try {
-+                                event = eventDeserializer.nextEvent(new ByteArrayInputStream(packet));
-+                            } catch (EventDataDeserializationException exp) {
-+                                System.out.println("Event data deserialization exception occurred");
-+                            }
-+                            if (event == null) {
-+                                throw new EOFException();
-+                            }
-+                            eventQueueList.get(index).add(event);
-+                        } else {
-+                            try {
-+                                Thread.sleep(1);
-+                            }
-+                            catch (InterruptedException exp) {
-+                                System.out.println("Interrupted exception occurred");
-+                            }
-+                        }
-+                    } catch (IOException e) {
-+                        e.printStackTrace();
-+                    }
++        for (int index = 0; index < THREAD_NUM; index++) {
++            startParseEventThread(index);
++        }
++    }
++
++    private void startParseEventThread(int index) {
++        new Thread(() -> {
++            try {
++                parseEvent(index);
++            } catch (IOException | InterruptedException exp) {
++                if (logger.isLoggable(Level.WARNING)) {
++                    logger.log(Level.WARNING, "Exception occurred", exp);
 +                }
-+            }).start();
++            }
++        }).start();
++    }
++
++    private void parseEvent(int index) throws IOException, InterruptedException {
++        Thread.currentThread().setName("packet-to-event-" + index);
++        byte[] packet;
++        Event event = null;
++        while(true) {
++            packet = packetQueueList.get(index).poll();
++            if (packet != null) {
++                event = eventDeserializer.nextEvent(new ByteArrayInputStream(packet));
++                if (event == null) {
++                    if (logger.isLoggable(Level.WARNING)) {
++                        logger.log(Level.WARNING, "Deserialize a null event");
++                    }
++                    break;
++                }
++                eventQueueList.get(index).add(event);
++            } else {
++                Thread.sleep(1);
++            }
 +        }
 +    }
 +
@@ -233,7 +236,9 @@ index d8b8299..bbdb245 100644
 +                String date = ofPattern.format(LocalDateTime.now());
 +                String result = String.format("have parsed %s GtidEvent, and current time is %s, and current "
 +                    + "speed is %s", count, date, count - before[0]);
-+                logger.info(result);
++                if (logger.isLoggable(Level.WARNING)) {
++                    logger.log(Level.WARNING, result);
++                }
 +                before[0] = count;
 +            }
 +        };

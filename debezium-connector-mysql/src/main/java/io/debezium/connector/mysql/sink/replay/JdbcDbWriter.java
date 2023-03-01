@@ -255,7 +255,7 @@ public class JdbcDbWriter {
                 }
             }
             else if (ddl.toLowerCase(Locale.ROOT).startsWith("drop table")) {
-                modifiedDdl =  ddl.replaceFirst(addingBackquote(schemaName) + ".", "");
+                modifiedDdl = ddl.replaceFirst(addingBackquote(schemaName) + ".", "");
             }
             else {
                 modifiedDdl = ignoreSchemaName(ddl, schemaName, tableName);
@@ -377,7 +377,7 @@ public class JdbcDbWriter {
             }
         }
         catch (SQLException exp) {
-            LOGGER.warn("sch_chameleon.t_replica_tables does not exist.", exp);
+            LOGGER.warn("sch_chameleon.t_replica_tables does not exist.");
         }
     }
 
@@ -410,7 +410,7 @@ public class JdbcDbWriter {
                 String date = ofPattern.format(LocalDateTime.now());
                 String result = String.format("have constructed %s transaction, and current time is %s, and current "
                         + "speed is %s", count, date, count - before[0]);
-                LOGGER.info(result);
+                LOGGER.warn(result);
                 before[0] = count;
             }
         };
