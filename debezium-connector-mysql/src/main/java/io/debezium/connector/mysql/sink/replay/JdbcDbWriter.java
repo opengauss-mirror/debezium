@@ -161,7 +161,7 @@ public class JdbcDbWriter {
     }
 
     public void parseRecord() {
-        boolean skipFlag = false;
+        int skipNum = 0;
         Struct value = null;
         SinkRecord sinkRecord = null;
         while (true) {
@@ -180,25 +180,31 @@ public class JdbcDbWriter {
                     sinkRecordsArrayList.clear();
                 }
                 else {
-                    if (!skipFlag) {
-                        dmlEventCountMap.put(value.getString(TransactionRecordField.ID),
-                                value.getInt64(TransactionRecordField.EVENT_COUNT));
-                        for (SinkRecordObject sinkRecordObject : sinkRecordsArrayList) {
-                            constructDml(sinkRecordObject);
-                        }
+                    dmlEventCountMap.put(value.getString(TransactionRecordField.ID),
+                            value.getInt64(TransactionRecordField.EVENT_COUNT) - skipNum);
+                    for (SinkRecordObject sinkRecordObject : sinkRecordsArrayList) {
+                        constructDml(sinkRecordObject);
                     }
-                    else {
-                        skipFlag = false;
+                    if (skipNum > 0) {
+                        String skipLog = String.format(Locale.ROOT, "Transaction %s contains %s records, and " +
+                                "skips %s records because of table snapshot", value.get(TransactionRecordField.ID),
+                                value.getInt64(TransactionRecordField.EVENT_COUNT), skipNum);
+                        LOGGER.warn(skipLog);
+                        skipNum = 0;
                     }
                 }
             }
             catch (DataException exp) {
                 SinkRecordObject sinkRecordObject = new SinkRecordObject();
                 SourceField sourceField = new SourceField(value);
+                if (sourceField.getGtid() == null) {
+                    continue;
+                }
                 sinkRecordObject.setSourceField(sourceField);
                 DataOperation dataOperation = null;
                 if (isSkippedEvent(sourceField)) {
-                    skipFlag = true;
+                    skipNum ++;
+                    LOGGER.warn("Skip one record: " + sinkRecordObject);
                     continue;
                 }
                 try {
@@ -225,9 +231,6 @@ public class JdbcDbWriter {
     private void constructDdl(SinkRecordObject sinkRecordObject) {
         SourceField sourceField = sinkRecordObject.getSourceField();
         String currentGtid = sourceField.getGtid();
-        if (currentGtid == null) {
-            return;
-        }
         transaction.setSourceField(sourceField);
         DdlOperation ddlOperation = (DdlOperation) sinkRecordObject.getDataOperation();
         String schemaName = sourceField.getDatabase();
@@ -395,6 +398,10 @@ public class JdbcDbWriter {
             Long snapshotBinlogPosition = Long.valueOf(snapshotPoint.split(":")[1]);
             if (fileIndex < snapshotFileIndex ||
                     (fileIndex == snapshotFileIndex && binlogPosition <= snapshotBinlogPosition)) {
+                String skipInfo = String.format("Table %s snapshot is %s, current position is %s, which is less than " +
+                        "table snapshot, so skip the record.", fullName, snapshotPoint,
+                        binlogFile + ":" + binlogPosition);
+                LOGGER.warn(skipInfo);
                 return true;
             }
         }
