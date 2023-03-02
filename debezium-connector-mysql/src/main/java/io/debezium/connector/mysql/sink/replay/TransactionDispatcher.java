@@ -141,7 +141,7 @@ public class TransactionDispatcher {
                 String date = ofPattern.format(LocalDateTime.now());
                 String result = String.format("have replayed %s transaction, and current time is %s, and current "
                         + "speed is %s", count, date, count - before[0]);
-                LOGGER.info(result);
+                LOGGER.warn(result);
                 before[0] = count;
             }
         };
