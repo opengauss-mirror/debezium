@@ -55,6 +55,9 @@ public class WorkThread extends Thread {
                 try {
                     sinkRecordObject = sinkRecordQueue.take();
                     String sql = constructSql(sinkRecordObject);
+                    if ("".equals(sql)) {
+                        continue;
+                    }
                     statement.executeUpdate(sql);
                     count++;
                 } catch (InterruptedException exp) {
