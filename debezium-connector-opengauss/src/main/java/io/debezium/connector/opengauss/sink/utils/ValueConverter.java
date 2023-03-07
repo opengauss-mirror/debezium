@@ -38,11 +38,11 @@ public final class ValueConverter {
      * @return String the column value
      */
     public static String convertBlob(String columnName, Struct valueStruct) {
-        String hexString = convertBinaryToHex(columnName, valueStruct);
-        if (hexString != null) {
-            String originString = new String(Objects.requireNonNull(parseHexStr2bytes(hexString)));
-            BigInteger value = new BigInteger(originString, 16);
-            return addingSingleQuotation(value.toString());
+        byte[] bytes = valueStruct.getBytes(columnName);
+        if (bytes != null) {
+            String hexString = new String(bytes);
+            byte[] indexes = parseHexStr2bytes(hexString);
+            return addingSingleQuotation(new String(indexes));
         }
         return null;
     }
