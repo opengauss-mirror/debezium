@@ -6,9 +6,30 @@
 
 package io.debezium.connector.opengauss.connection;
 
-import static java.lang.Math.toIntExact;
+import io.debezium.DebeziumException;
+import io.debezium.config.Configuration;
+import io.debezium.connector.opengauss.OpengaussConnectorConfig;
+import io.debezium.connector.opengauss.OpengaussSchema;
+import io.debezium.connector.opengauss.TypeRegistry;
+import io.debezium.connector.opengauss.spi.SlotCreationResult;
+import io.debezium.jdbc.JdbcConfiguration;
+import io.debezium.jdbc.JdbcConnection;
+import io.debezium.jdbc.JdbcConnectionException;
+import io.debezium.relational.RelationalTableFilters;
+import io.debezium.relational.TableId;
+import io.debezium.util.Clock;
+import io.debezium.util.Metronome;
+import org.apache.kafka.connect.errors.ConnectException;
+import org.postgresql.core.BaseConnection;
+import org.postgresql.core.ServerVersion;
+import org.postgresql.replication.PGReplicationStream;
+import org.postgresql.replication.fluent.logical.ChainedLogicalStreamBuilder;
+import org.postgresql.util.PSQLException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLWarning;
@@ -16,6 +37,7 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -26,27 +48,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import io.debezium.connector.opengauss.OpengaussConnectorConfig;
-import io.debezium.connector.opengauss.OpengaussSchema;
-import io.debezium.connector.opengauss.TypeRegistry;
-import org.apache.kafka.connect.errors.ConnectException;
-import org.postgresql.core.BaseConnection;
-import org.postgresql.core.ServerVersion;
-import org.postgresql.replication.PGReplicationStream;
-import org.postgresql.replication.fluent.logical.ChainedLogicalStreamBuilder;
-import org.postgresql.util.PSQLException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import io.debezium.DebeziumException;
-import io.debezium.config.Configuration;
-import io.debezium.connector.opengauss.spi.SlotCreationResult;
-import io.debezium.jdbc.JdbcConnection;
-import io.debezium.jdbc.JdbcConnectionException;
-import io.debezium.relational.RelationalTableFilters;
-import io.debezium.relational.TableId;
-import io.debezium.util.Clock;
-import io.debezium.util.Metronome;
+import static java.lang.Math.toIntExact;
 
 /**
  * Implementation of a {@link ReplicationConnection} for Postgresql. Note that replication connections in PG cannot execute
@@ -368,7 +370,16 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
     }
 
     protected BaseConnection pgConnection() throws SQLException {
-        return (BaseConnection) connection(false);
+        try {
+            return (BaseConnection) connection(false);
+        } catch (SQLException e) {
+            LOGGER.warn("Attempt to set up a connection using the HA port");
+            JdbcConfiguration config = super.config();
+            int port = config.getInteger(JdbcConfiguration.PORT);
+            Configuration buildConfig = config.edit().with("port", port + 1).build();
+            super.setConfig(buildConfig);
+            return (BaseConnection) connection(false);
+        }
     }
 
     private SlotCreationResult parseSlotCreation(ResultSet rs) {
