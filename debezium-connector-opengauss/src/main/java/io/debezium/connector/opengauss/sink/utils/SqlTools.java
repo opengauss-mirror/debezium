@@ -183,7 +183,7 @@ public class SqlTools {
         if (primaryKeyColumnName != null){
             for (ColumnMetaData columnMetaData : columnMetaDataList){
                 if (primaryKeyColumnName.equals(columnMetaData.getColumnName())){
-                    String value = getValue(columnMetaData, before);
+                    String value = DebeziumValueConverters.getValue(columnMetaData, before);
                     sb.append(primaryKeyColumnName).append(" = ").append(value);
                     break;
                 }
@@ -196,37 +196,6 @@ public class SqlTools {
         return sb.toString();
     }
 
-    private String getValue(ColumnMetaData columnMetaData, Struct valueStruct){
-        String columnType = columnMetaData.getColumnType();
-        String columnName = columnMetaData.getColumnName();
-        Object object;
-        switch (columnType) {
-            case "integer":
-            case "tinyint":
-            case "double":
-            case "float":
-                return ValueConverter.convertNumberType(columnName, valueStruct);
-            case "blob":
-            case "tinyblob":
-            case "mediumblob":
-            case "longblob":
-                return ValueConverter.convertBlob(columnName, valueStruct);
-            case "datetime":
-            case "timestamp":
-                return ValueConverter.convertDatetimeAndTimestamp(columnName, valueStruct);
-            case "date":
-                return ValueConverter.convertDate(columnName, valueStruct);
-            case "time":
-                return ValueConverter.convertTime(columnName, valueStruct);
-            case "binary":
-            case "varbinary":
-                return ValueConverter.convertBinary(columnName, valueStruct);
-            default:
-                object = valueStruct.get(columnName);
-                return object == null ? null : ValueConverter.addingSingleQuotation(object.toString());
-        }
-    }
-
     private ArrayList<String> getValueList(TableMetaData tableMetaData, Struct after, Envelope.Operation operation) {
         ArrayList<String> valueList = new ArrayList<>();
         List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
@@ -234,7 +203,7 @@ public class SqlTools {
         String columnName;
         String columnType;
         for (ColumnMetaData columnMetaData : columnMetaDataList) {
-            singleValue = getValue(columnMetaData, after);
+            singleValue = DebeziumValueConverters.getValue(columnMetaData, after);
             columnName = columnMetaData.getColumnName();
             columnType = columnMetaData.getColumnType();
             switch (operation) {
