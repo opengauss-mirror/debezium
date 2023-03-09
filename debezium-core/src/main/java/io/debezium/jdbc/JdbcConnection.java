@@ -322,7 +322,7 @@ public class JdbcConnection implements AutoCloseable {
         return url;
     }
 
-    private final Configuration config;
+    private Configuration config;
     private final ConnectionFactory factory;
     private final Operations initialOps;
     private final String openingQuoteCharacter;
@@ -393,6 +393,10 @@ public class JdbcConnection implements AutoCloseable {
      */
     public JdbcConfiguration config() {
         return JdbcConfiguration.adapt(config);
+    }
+
+    public void setConfig(Configuration config) {
+        this.config = config;
     }
 
     public JdbcConnection setAutoCommit(boolean autoCommit) throws SQLException {
