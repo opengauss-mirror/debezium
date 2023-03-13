@@ -242,7 +242,7 @@ public class DebeziumValueConverters {
         String schemaName = field.schema().name();
         Object object = value.get(columnName);
         Instant instant;
-        if (schemaName != null) {
+        if (schemaName != null && object != null) {
             LocalTime localTime;
             switch (schemaName) {
                 case "io.debezium.time.Date":

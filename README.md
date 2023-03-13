@@ -89,9 +89,63 @@ mvn clean package -P quick,skip-integration-tests,oracle,jdk11,assembly,xstream,
 
 #### Source端
 
+(1) 启动类
+
 ```
 connector.class=io.debezium.connector.mysql.MySqlConnector
 ```
+
+(2) 配置文件示例
+
+[mysql-source.properties](https://gitee.com/opengauss/debezium/tree/master/debezium-connector-mysql/patch/mysql-source.properties)
+
+(3) debezium原生参数含义请参考：
+
+[debezium原生参数](https://debezium.io/documentation/reference/1.8/connectors/mysql.html)
+
+(4) topic路由请参考：
+
+[topic路由](https://debezium.io/documentation/reference/stable/transformations/topic-routing.html)
+
+在线迁移方案严格保证事务的顺序性，因此将DDL和DML路由在kafka的一个topic下，且该topic的分区数只能为1(参数num.partitions=1)，从而保证source端推送到kafka，和sink端从kafka拉取数据都是严格保序的。
+
+默认情况下，debezium mysql connector针对DDL，DML和事务创建独立的topic，且每个表为一个topic
+
+事务topic需配置provide.transaction.metadata=true，才显式生成事务topic
+
+topic命名规则为：
+
+DDL topic名称：${database.server.name}
+
+DML topic名称：${database.server.name}.db_name.table_name
+
+事务topic名称：${database.server.name}.transaction
+
+DDL，DML和事务topic名称均以${database.server.name}开头，因此以前缀方式去正则匹配合并topic，将DDL，DML和事务的
+topic进行路由合并为一个topic，且该topic的分区数只能为1。
+
+source端将数据推送至该topic下，同时sink端配置topics为合并后的topic，用于从kafka抽取数据，从而可保证事务的顺序。
+
+DDL，DML和事务topic利用路由转发功能进行合并的配置如下：
+
+Source端：
+```
+database.server.name=mysql_server
+
+provide.transaction.metadata=true
+
+transforms=route
+transforms.route.type=org.apache.kafka.connect.transforms.RegexRouter
+transforms.route.regex=^mysql_server(.*)
+transforms.route.replacement=mysql_server_topic
+```
+
+Sink端：
+```
+topics=mysql_server_topic
+```
+
+(5) 新增配置参数说明
 
 | 参数                            | 类型    | 参数说明                                                   |
 | ------------------------------- | ------- | ---------------------------------------------------------- |
@@ -156,11 +210,52 @@ snapshot.offset.binlog.position=15973
 snapshot.offset.gtid.set=a3ea3aee-ab76-11ed-9e33-fa163e3d2519:1-296,c6eca988-a77e-11ec-8eec-fa163e3d2519:1-50459811
 ```
 
+case 3：若和全量迁移chameleon对接，快照点从表sch_chameleon.t_replica_batch中获得。
+
+binlog文件名与列t_binlog_name相对应，binlog位置与列i_binlog_position相对应，gtid set与列
+t_gtid_set相对应。
+
+```
+openGauss=> select * from sch_chameleon.t_replica_batch;
+-[ RECORD 1 ]-----+------------------------------------------------
+i_id_batch        | 1
+i_id_source       | 1
+t_binlog_name     | mysql-bin.000048
+v_log_table       | t_log_replica_mysql_2
+i_binlog_position | 3967
+t_gtid_set        | a3ea3aee-ab76-11ed-9e33-fa163e3d2519:1-15198,
+                  | c6eca988-a77e-11ec-8eec-fa163e3d2519:1-50459811
+b_started         | f
+b_processed       | f
+b_replayed        | f
+ts_created        | 2023-03-14 09:44:40.165798
+ts_processed      |
+ts_replayed       |
+i_replayed        |
+i_skipped         |
+i_ddl             |
+```
+
+如上示例中，根据查询到的快照点若配置新增的snapshot相关的参数，需配置为如下：
+
+```
+snapshot.offset.binlog.filename=mysql-bin.000048
+snapshot.offset.binlog.position=3967
+snapshot.offset.gtid.set=a3ea3aee-ab76-11ed-9e33-fa163e3d2519:1-15197,c6eca988-a77e-11ec-8eec-fa163e3d2519:1-50459811
+```
+
 #### Sink端
+
+(1) 启动类
 
 ```
 connector.class=io.debezium.connector.mysql.sink.MysqlSinkConnector
 ```
+(2) 配置文件示例
+
+[mysql-sink.properties](https://gitee.com/opengauss/debezium/tree/master/debezium-connector-mysql/patch/mysql-sink.properties)
+
+(3) 新增配置参数说明
 
 | 参数                       | 类型   | 参数说明                                                     |
 | -------------------------- | ------ | ------------------------------------------------------------ |
@@ -181,7 +276,9 @@ kafka，zookeeper，confluent community，debezium-connector-mysql
 
 ### 原理
 
-debezium mysql connector的source端，监控mysql数据库的binlog日志，并将数据以AVRO格式写入到kafka；debezium mysql connector的sink端，从kafka读取AVRO格式数据，并组装为事务，在openGauss端按照事务粒度并行回放，从而完成数据从mysql在线迁移至openGauss端。由于该方案严格保证事务的顺序性，因此将DDL和DML路由在kafka的一个topic下，且该topic的分区数只能为1(参数num.partitions=1)，从而保证source端推送到kafka，和sink端从kafka拉取数据都是严格保序的。
+debezium mysql connector的source端，监控mysql数据库的binlog日志，并将数据（DDL和DML操作）以AVRO格式写入到kafka；debezium mysql connector的sink端，从kafka读取AVRO格式数据（DDL和DML操作），并组装为事务，在openGauss端按照事务粒度并行回放，从而完成数据（DDL和DML操作）从mysql在线迁移至openGauss端。
+
+由于该方案严格保证事务的顺序性，因此将DDL和DML路由在kafka的一个topic下，且该topic的分区数只能为1(参数num.partitions=1)，从而保证source端推送到kafka，和sink端从kafka拉取数据都是严格保序的。
 
 ### 约束及限制
 
@@ -195,7 +292,7 @@ binlog_format=row
 binglog_row_image=full
 gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放，会降低在线迁移性能
 ```
-(3) 在线迁移直接透传DDL，对于openGauss和MySQL不兼容的语法，DDL迁移会报错；
+(3) 支持DML和DDL迁移，在线迁移直接透传DDL，对于openGauss和MySQL不兼容的语法，DDL迁移会报错；
 
 (4) Kafka中以AVRO格式存储数据，AVRO字段名称[命名规则](https://avro.apache.org/docs/1.11.1/specification/#names)为：
 ```
@@ -203,6 +300,10 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
 - 随后仅包含[A-Za-z0-9_]
 ```
 因此，对于MySQL中的标识符命名，包括表名、列名等，需满足上述命名规范，否则在线迁移会报错。
+
+### 性能指标
+
+利用sysbench进行测试，在openEuler arm操作系统2p Kunpeng-920机器，针对混合IUD场景，10张表50个线程（insert-30线程，update-10线程，delete-10线程），性能可达3w tps。
 
 ### 部署过程
 
@@ -234,11 +335,21 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
 
 #### 修改配置文件
 
+默认配置文件的地址均为localhost，若需修改为具体ip，请同步修改下列所有文件中参数涉及localhost的均改为实际ip。
+
 - zookeeper
 
   ```
   配置文件位置：/kafka_2.13-3.2.3/config/zookeeper.properties
   ```
+  zookeeper的默认端口号为2181，对应参数clientPort=2181。
+  
+  若端口冲突，需要修改端口号，则同步修改以下文件对应参数：
+  ```
+  kafka_2.13-3.2.3/config/zookeeper.properties------clientPort=2181
+  kafka_2.13-3.2.3/config/server.properties------zookeeper.connect=localhost:2181
+  confluent-5.5.1/etc/schema-registry/schema-registry.properties------kafkastore.connection.url=localhost:2181
+   ```
 
 - kafka
 
@@ -248,10 +359,28 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
 
   注意topic的分区数必须为1，因此需设置参数num.partitions=1，该参数默认值即为1，因此无需单独修改该参数。
 
+  kafka的默认端口是9092，对应参数listeners=PLAINTEXT://:9092。
+
+  若端口冲突，需要修改端口号，则同步修改以下文件对应参数：
+  ```
+  kafka_2.13-3.2.3/config/server.properties:34------listeners=PLAINTEXT://:9092
+  confluent-5.5.1/etc/schema-registry/schema-registry.properties------kafkastore.bootstrap.servers=PLAINTEXT://localhost:9092
+  confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties------bootstrap.servers=localhost:9092
+  confluent-5.5.1/etc/kafka/mysql-source.properties------database.history.kafka.bootstrap.servers=127.0.0.1:9092
+  ```
+
 - schema-registry
 
   ```
   配置文件位置：/confluent-5.5.1/etc/schema-registry/schema-registry.properties
+  ```
+  schema-registry的默认端口是8081，对应参数listeners=http://0.0.0.0:8081。
+
+  若端口冲突，需要修改端口号，则同步修改以下文件对应参数：
+  ```
+  confluent-5.5.1/etc/schema-registry/schema-registry.properties------listeners=http://0.0.0.0:8081
+  confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties------key.converter.schema.registry.url=http://localhost:8081
+  confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties------value.converter.schema.registry.url=http://localhost:8081
   ```
 
 - connect-standalone
@@ -264,7 +393,14 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
 
   若debezium-connector-mysql所在路径为：/data/debezium_kafka/plugin/debezium-connector-mysql
 
-  则配置plugin.path=share/java,/data/debezium_kafka/plugin
+  则配置其上一层目录，即plugin.path=share/java,/data/debezium_kafka/plugin
+
+  connect-standalone的默认端口是8083，对应参数rest.port=8083。
+
+  若端口冲突，需要修改端口号，则同步修改以下文件对应参数：
+  ```
+  confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties------rest.port=8083
+  ```
 
 - mysql-source.properties
 
@@ -320,6 +456,13 @@ cd confluent-5.5.1
 ```
 说明：source端和sink端的两个配置文件connect-avro-standalone.properties和connect-avro-standalone-1.properties的差异点在于rest.port参数的不同，默认为8083，即两个文件中设置不同的端口号，即可启动多个kafka-connect，实现sink端和source端独立工作。
 
+步骤(4)和(5)示例source端和sink端分开启动，推荐分开启动方式。两者也可以同时启动，同时启动的命令为：
+
+```
+cd confluent-5.5.1
+./bin/connect-standalone etc/schema-registry/connect-avro-standalone.properties etc/kafka/mysql-source.properties etc/kafka/mysql-sink.properties
+```
+
 其他命令：
 
 （1）查看topic
@@ -341,6 +484,128 @@ cd kafka_2.13-3.2.3
 ```
 cd confluent-5.5.1
 ./bin/kafka-avro-console-consumer --bootstrap-server 127.0.0.1:9092 --topic topic_name --from-beginning
+```
+
+### 全量与增量迁移的配合
+
+(1) 启动全量迁移
+
+全量迁移使用[chameleon](https://gitee.com/opengauss/openGauss-tools-chameleon)完成，可实现表，数据，函数，存储过程，视图，触发器的
+离线迁移，使用指南请参考[使用指南](https://gitee.com/opengauss/openGauss-tools-chameleon/blob/master/chameleon%E4%BD%BF%E7%94%A8%E6%8C%87%E5%8D%97.md)
+
+全量迁移启动后，可在openGauss端的表sch_chameleon.t_replica_batch中查询到全量迁移的快照点，单个表的快照点存储在
+sch_chameleon.t_replica_tables中。
+
+(2) 启动source端
+
+启动source端开始前，需首先启动zookeeper，kafka，并注册schema。
+
+查询到全量迁移的快照点后，即可在source端的配置文件mysql-source.properties中配置全量迁移的快照点，并启动source端，无需等待全量迁移结束后
+才可启动source端。全量迁移启动后，即可启动source端，这样可以尽可能减少source端的时延，以达到减少迁移延迟的目的。
+
+当然，也可以等待全量迁移结束后启动source端。
+
+启动source端后，针对全量迁移的表，若对其的DML事务位于表的快照点之前，将跳过对应的DML操作，避免数据出现重复，可保证迁移过程中数据不丢失，不重复。
+
+(3) 全量迁移结束，启动sink端
+
+等待全量迁移结束后，即可启动sink端回放数据。
+
+若在全量迁移未结束时，就启动sink端，将会导致数据乱序，属于不合理的操作步骤，实际操作过程应避免不合理的操作。
+
+### 性能测试
+
+#### 性能指标
+
+利用sysbench进行测试，在openEuler arm操作系统2p Kunpeng-920机器，针对混合IUD场景，10张表50个线程（insert-30线程，update-10线程，delete-10线程），性能可达3w tps。
+
+#### 配置条件
+(1) mysql
+
+- mysql参数配置：
+  ```
+  log_bin=on
+  binlog_format=row
+  binglog_row_image=full
+  gtid_mode=on
+  ```
+- binlog位置、安装目录、数据目录分别部署在3个不同的NVME盘
+  
+- mysql高性能配置
+
+(2) openGauss
+
+- pg_xlog、安装目录、数据目录分别部署在3个不同的NVME盘
+  
+- openGauss高性能配置
+
+(3) 在线迁移工具Debezium mysql connector
+
+- source端参数配置：
+  ```
+  parallel.parse.event=true
+  ```
+- 修改Java heap space参数，否则可能出现OutOfMemory问题。
+  
+  kafka connect进程启动时默认参数为-Xms256M -Xmx2G，将该参数值调大，
+  修改为-Xms25G -Xmx25G，修改的文件位置为：
+  ```
+  confluent-5.5.1/bin/connect-standalone 58行 export KAFKA_HEAP_OPTS="-Xms25G -Xmx25G"
+  ```
+- 在java11环境上运行在线迁移工具
+
+- 设置kafka-connect日志级别为WARN
+
+  默认的日志级别为INFO，INFO级别的日志会输出回放的事务信息，为减少日志刷屏，
+  建议将日志级别修改为WARN，此时只显示迁移效率日志。
+  
+  修改的文件位置为：
+  ```
+  confluent-5.5.1/etc/kafka/connect-log4j.properties 16行
+  log4j.rootLogger=WARN, stdout, connectAppender
+  ```
+
+#### 测试步骤
+
+(1) sysbench执行prepare命令，为mysql端准备数据
+
+(2) 通过chameleon离线迁移数据至openGauss端
+
+(3) 开启在线复制
+
+启动zookeeper，kafka，注册schema
+
+绑核启动source端
+```
+cd confluent-5.5.1
+numactl -C 32-63 -m 0 ./bin/connect-standalone etc/schema-registry/connect-avro-standalone.properties etc/kafka/mysql-source.properties
+```
+
+绑核启动sink端
+```
+cd confluent-5.5.1
+numactl -C 64-95 -m 0 ./bin/connect-standalone etc/schema-registry/connect-avro-standalone-1.properties etc/kafka/mysql-sink.properties
+```
+(4) sysbench执行run命令，给mysql压入数据
+
+混合IUD场景，10张表50个线程（insert-30线程，update-10线程，delete-10线程）
+
+(5) 统计迁移工具日志，得到迁移效率
+
+### FAQ
+
+(1) schema-registry报错: Schema being registered is incompatible with an earlier schema
+
+解决方案：
+停止schema-registry进程，执行下面curl命令，并重新启动schema-registry和kafka-connect
+
+可根据实际配置修改ip:localhost和端口:8081
+```
+curl -X GET http://localhost:8081/config
+
+curl -X PUT -H "Content-Type: application/vnd.schemaregistry.v1+json" \
+  --data '{"compatibility": "NONE"}' \
+  http://localhost:8081/config
 ```
 
 ## Debezium opengauss connector
@@ -368,7 +633,7 @@ connector.class=io.debezium.connector.opengauss.sink.OpengaussSinkConnector
 | max_thread_count           | String | 自定义Sink端按表回放时的最大并发线程数（不能为0）                                                                                                                                                                                                                                                                                                                        |
 | mysql.username             | String | MySQL用户名                                                                                                                                                                                                                                                                                                                                           |
 | mysql.password             | String | MySQL用户密码                                                                                                                                                                                                                                                                                                                                          |
-| masql.url                  | String | MySQL连接url                                                                                                                                                                                                                                                                                                                                         |
+| mysql.url                  | String | MySQL连接url                                                                                                                                                                                                                                                                                                                                         |
 | schema.mappings            | String | openGauss的schema与MySQL的映射关系，与全量迁移chameleon配置相反，用；区分不同的映射关系，用：区分openGauss的schema与MySQL的database<br>例如chameleon的配置<br>schema_mappings:<br/>      mysql_database1: opengauss_schema1<br/>      mysql_database2: opengauss_schema2<br/>则sink端的schema.mappings参数需配置为schema.mappings=opengauss_schema1:mysql_database1;opengauss_schema2:mysql_database2 |
 
 
