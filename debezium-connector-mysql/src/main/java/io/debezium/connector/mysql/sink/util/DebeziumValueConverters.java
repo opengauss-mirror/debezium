@@ -69,6 +69,7 @@ public class DebeziumValueConverters {
             put("date", (columnName, value) -> convertDate(columnName, value));
             put("time without time zone", (columnName, value) -> convertTime(columnName, value));
             put("timestamp without time zone", (columnName, value) -> convertTimestamp(columnName, value));
+            put("timestamp with time zone", (columnName, value) -> convertTimestamp(columnName, value));
             put("bit", ((columnName, value) -> convertBit(columnName, value)));
         }
     };
