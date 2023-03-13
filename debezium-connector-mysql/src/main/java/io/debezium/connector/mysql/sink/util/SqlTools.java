@@ -100,7 +100,7 @@ public class SqlTools {
         String columnType;
         for (ColumnMetaData columnMetaData : columnMetaDataList) {
             singleValue = DebeziumValueConverters.getValue(columnMetaData, after);
-            columnName = columnMetaData.getColumnName();
+            columnName = "\"" + columnMetaData.getColumnName() + "\"";
             columnType = columnMetaData.getColumnType();
             switch (operation) {
                 case CREATE:

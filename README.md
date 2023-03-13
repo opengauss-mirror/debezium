@@ -181,11 +181,12 @@ kafka，zookeeper，confluent community，debezium-connector-mysql
 
 ### 原理
 
-debezium mysql connector的source端，监控mysql数据库的binlog日志，并将数据以AVRO格式写入到kafka；debezium mysql connector的sink端，从kafka读取AVRO格式数据，并组装为事务，在openGauss端按照事务粒度并行回放，从而完成数据从mysql在线迁移至openGauss端。
+debezium mysql connector的source端，监控mysql数据库的binlog日志，并将数据以AVRO格式写入到kafka；debezium mysql connector的sink端，从kafka读取AVRO格式数据，并组装为事务，在openGauss端按照事务粒度并行回放，从而完成数据从mysql在线迁移至openGauss端。由于该方案严格保证事务的顺序性，因此将DDL和DML路由在kafka的一个topic下，且该topic的分区数只能为1(参数num.partitions=1)，从而保证source端推送到kafka，和sink端从kafka拉取数据都是严格保序的。
 
 ### 约束及限制
 
 (1) MySQL5.7及以上版本；
+
 (2) MySQL参数配置：
 
 ```
@@ -195,6 +196,7 @@ binglog_row_image=full
 gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放，会降低在线迁移性能
 ```
 (3) 在线迁移直接透传DDL，对于openGauss和MySQL不兼容的语法，DDL迁移会报错；
+
 (4) Kafka中以AVRO格式存储数据，AVRO字段名称[命名规则](https://avro.apache.org/docs/1.11.1/specification/#names)为：
 ```
 - 以[A-Za-z_]开头
@@ -243,6 +245,8 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
   ```
   配置文件位置：/kafka_2.13-3.2.3/config/server.properties
   ```
+
+  注意topic的分区数必须为1，因此需设置参数num.partitions=1，该参数默认值即为1，因此无需单独修改该参数。
 
 - schema-registry
 
@@ -325,7 +329,14 @@ cd kafka_2.13-3.2.3
 ./bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list
 ```
 
-（2）查看topic的内容
+（2）查看topic的信息
+
+```
+cd kafka_2.13-3.2.3
+./bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --describe --topic topic_name
+```
+
+（3）查看topic的内容
 
 ```
 cd confluent-5.5.1
