@@ -6,6 +6,8 @@
 package io.debezium.connector.mysql.sink.util;
 
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -87,12 +89,31 @@ public class DebeziumValueConverters {
         if (dataTypeConverterMap.containsKey(columnType)) {
             return dataTypeConverterMap.get(columnType).convert(columnName, value);
         }
+        if ("numeric".equals(columnType)) {
+            Integer scale = columnMetaData.getScale();
+            return convertNumeric(columnName, value, scale);
+        }
         return convertChar(columnName, value);
     }
 
     private static String convertInteger(String columnName, Struct value) {
         Object object = value.get(columnName);
         return object == null ? null : object.toString();
+    }
+
+    private static String convertNumeric(String columnName, Struct value, Integer scale) {
+        Object object = value.get(columnName);
+        if (object == null) {
+            return null;
+        }
+        String valueStr = object.toString();
+        String decimalStr = valueStr.substring(valueStr.indexOf("."));
+        if (decimalStr.length() > scale) {
+            BigDecimal decimal = new BigDecimal(valueStr);
+            BigDecimal result = decimal.setScale(scale, RoundingMode.HALF_UP);
+            return result.toString();
+        }
+        return object.toString();
     }
 
     private static String convertChar(String columnName, Struct value) {

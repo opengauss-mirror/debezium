@@ -17,7 +17,7 @@ import org.junit.Test;
 public class ColumnMetaDataTest {
     @Test
     public void test() {
-        ColumnMetaData columnMetaData = new ColumnMetaData("id", "int");
+        ColumnMetaData columnMetaData = new ColumnMetaData("id", "int", 0);
         Assert.assertEquals("id", columnMetaData.getColumnName());
         Assert.assertEquals("int", columnMetaData.getColumnType());
         columnMetaData.setColumnName("name");
