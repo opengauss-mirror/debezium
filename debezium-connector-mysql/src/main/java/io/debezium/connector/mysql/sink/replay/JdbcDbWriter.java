@@ -203,7 +203,7 @@ public class JdbcDbWriter {
                 sinkRecordObject.setSourceField(sourceField);
                 DataOperation dataOperation = null;
                 if (isSkippedEvent(sourceField)) {
-                    skipNum ++;
+                    skipNum++;
                     LOGGER.warn("Skip one record: " + sinkRecordObject);
                     continue;
                 }
