@@ -39,7 +39,7 @@ public class SqlTools {
 
     public TableMetaData getTableMetaData(String schemaName, String tableName) {
         List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
-        String sql = String.format(Locale.ENGLISH, "select column_name, data_type from " +
+        String sql = String.format(Locale.ENGLISH, "select column_name, data_type, numeric_scale from " +
                 "information_schema.columns where table_schema = '%s' and table_name = '%s'" +
                 " order by ordinal_position;",
                 schemaName, tableName);
@@ -48,7 +48,7 @@ public class SqlTools {
                 ResultSet rs = statement.executeQuery(sql)) {
             while (rs.next()) {
                 columnMetaDataList.add(new ColumnMetaData(rs.getString("column_name"),
-                        rs.getString("data_type")));
+                        rs.getString("data_type"), rs.getInt("numeric_scale")));
             }
             tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
         }

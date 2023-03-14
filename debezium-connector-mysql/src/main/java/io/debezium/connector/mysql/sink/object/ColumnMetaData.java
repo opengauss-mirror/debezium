@@ -13,16 +13,19 @@ package io.debezium.connector.mysql.sink.object;
 public class ColumnMetaData {
     private String columnName;
     private String columnType;
+    private Integer scale;
 
     /**
      * Constructor
      *
      * @param String the column name
      * @param String the column type
+     * @param Integer the column scale
      */
-    public ColumnMetaData(String columnName, String columnType) {
+    public ColumnMetaData(String columnName, String columnType, Integer scale) {
         this.columnName = columnName;
         this.columnType = columnType;
+        this.scale = scale;
     }
 
     /**
@@ -41,6 +44,15 @@ public class ColumnMetaData {
      */
     public void setColumnName(String columnName) {
         this.columnName = columnName;
+    }
+
+    /**
+     * Gets column numeric_scale
+     *
+     * @return String the column numeric_scale
+     */
+    public Integer getScale() {
+        return scale;
     }
 
     /**
