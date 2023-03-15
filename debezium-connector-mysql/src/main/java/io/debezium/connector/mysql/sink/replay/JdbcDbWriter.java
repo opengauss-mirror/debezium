@@ -197,7 +197,8 @@ public class JdbcDbWriter {
             catch (DataException exp) {
                 SinkRecordObject sinkRecordObject = new SinkRecordObject();
                 SourceField sourceField = new SourceField(value);
-                if (sourceField.getGtid() == null) {
+                String snapshot = sourceField.getSnapshot();
+                if ("true".equals(snapshot) || "last".equals(snapshot)) {
                     continue;
                 }
                 sinkRecordObject.setSourceField(sourceField);
@@ -230,7 +231,6 @@ public class JdbcDbWriter {
 
     private void constructDdl(SinkRecordObject sinkRecordObject) {
         SourceField sourceField = sinkRecordObject.getSourceField();
-        String currentGtid = sourceField.getGtid();
         transaction.setSourceField(sourceField);
         DdlOperation ddlOperation = (DdlOperation) sinkRecordObject.getDataOperation();
         String schemaName = sourceField.getDatabase();
@@ -346,6 +346,9 @@ public class JdbcDbWriter {
                 break;
         }
         sqlList.add(sql);
+        if (currentGtid == null) {
+            currentGtid = dmlOperation.getTransactionId();
+        }
         if (sqlList.size() == dmlEventCountMap.getOrDefault(currentGtid, (long) -1)) {
             dmlEventCountMap.remove(currentGtid);
             transaction.setSqlList(sqlList);

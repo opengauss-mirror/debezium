@@ -82,7 +82,7 @@ mvn clean package -P quick,skip-integration-tests,oracle,jdk11,assembly,xstream,
 
 - Source端支持并行解析event事件；
 - Source端支持自定义配置快照点；
-- 配置gtid_mode=on，source端支持解析last_committed和sequence_num字段，并存入kafka；
+- 配置gtid_mode=on，source端支持解析last_committed和sequence_number字段，并存入kafka；
 - 基于Debezium connector（Kafka Connect）框架，增加sink端能力，可用于从kafka抽取数据并在openGauss端按照事务粒度并行回放。
 
 ### 新增配置参数说明
