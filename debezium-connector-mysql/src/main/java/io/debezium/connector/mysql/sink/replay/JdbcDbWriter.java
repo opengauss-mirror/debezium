@@ -197,13 +197,14 @@ public class JdbcDbWriter {
             catch (DataException exp) {
                 SinkRecordObject sinkRecordObject = new SinkRecordObject();
                 SourceField sourceField = new SourceField(value);
-                if (sourceField.getGtid() == null) {
+                String snapshot = sourceField.getSnapshot();
+                if ("true".equals(snapshot) || "last".equals(snapshot)) {
                     continue;
                 }
                 sinkRecordObject.setSourceField(sourceField);
                 DataOperation dataOperation = null;
                 if (isSkippedEvent(sourceField)) {
-                    skipNum ++;
+                    skipNum++;
                     LOGGER.warn("Skip one record: " + sinkRecordObject);
                     continue;
                 }
@@ -230,7 +231,6 @@ public class JdbcDbWriter {
 
     private void constructDdl(SinkRecordObject sinkRecordObject) {
         SourceField sourceField = sinkRecordObject.getSourceField();
-        String currentGtid = sourceField.getGtid();
         transaction.setSourceField(sourceField);
         DdlOperation ddlOperation = (DdlOperation) sinkRecordObject.getDataOperation();
         String schemaName = sourceField.getDatabase();
@@ -346,6 +346,9 @@ public class JdbcDbWriter {
                 break;
         }
         sqlList.add(sql);
+        if (currentGtid == null) {
+            currentGtid = dmlOperation.getTransactionId();
+        }
         if (sqlList.size() == dmlEventCountMap.getOrDefault(currentGtid, (long) -1)) {
             dmlEventCountMap.remove(currentGtid);
             transaction.setSqlList(sqlList);
@@ -366,7 +369,7 @@ public class JdbcDbWriter {
     }
 
     private void getTableSnapshot() {
-        Connection conn = openGaussConnection.createMysqlConnection();
+        Connection conn = openGaussConnection.createOpenGaussConnection();
         try {
             PreparedStatement ps = conn.prepareStatement("select v_schema_name, v_table_name, t_binlog_name," +
                     " i_binlog_position from sch_chameleon.t_replica_tables;");
@@ -375,8 +378,9 @@ public class JdbcDbWriter {
                 String schemaName = rs.getString("v_schema_name");
                 String tableName = rs.getString("v_table_name");
                 String binlog_name = rs.getString("t_binlog_name");
-                String binloig_position = rs.getString("i_binlog_position");
-                tableSnapshotHashmap.put(schemaMappingMap.getOrDefault(schemaName, schemaName) + "." + tableName, binlog_name + ":" + binloig_position);
+                String binlog_position = rs.getString("i_binlog_position");
+                tableSnapshotHashmap.put(schemaMappingMap.getOrDefault(schemaName, schemaName) + "." + tableName,
+                        binlog_name + ":" + binlog_position);
             }
         }
         catch (SQLException exp) {
@@ -390,12 +394,12 @@ public class JdbcDbWriter {
         String fullName = schemaMappingMap.getOrDefault(schemaName, schemaName) + "." + tableName;
         if (tableSnapshotHashmap.containsKey(fullName)) {
             String binlogFile = sourceField.getFile();
-            Long fileIndex = Long.valueOf(binlogFile.split("\\.")[1]);
-            Long binlogPosition = sourceField.getPosition();
+            long fileIndex = Long.valueOf(binlogFile.split("\\.")[1]);
+            long binlogPosition = sourceField.getPosition();
             String snapshotPoint = tableSnapshotHashmap.get(fullName);
             String snapshotBinlogFile = snapshotPoint.split(":")[0];
-            Long snapshotFileIndex = Long.valueOf(snapshotBinlogFile.split("\\.")[1]);
-            Long snapshotBinlogPosition = Long.valueOf(snapshotPoint.split(":")[1]);
+            long snapshotFileIndex = Long.valueOf(snapshotBinlogFile.split("\\.")[1]);
+            long snapshotBinlogPosition = Long.valueOf(snapshotPoint.split(":")[1]);
             if (fileIndex < snapshotFileIndex ||
                     (fileIndex == snapshotFileIndex && binlogPosition <= snapshotBinlogPosition)) {
                 String skipInfo = String.format("Table %s snapshot is %s, current position is %s, which is less than " +

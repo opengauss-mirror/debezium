@@ -6,6 +6,8 @@
 package io.debezium.connector.mysql.sink.util;
 
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -69,6 +71,7 @@ public class DebeziumValueConverters {
             put("date", (columnName, value) -> convertDate(columnName, value));
             put("time without time zone", (columnName, value) -> convertTime(columnName, value));
             put("timestamp without time zone", (columnName, value) -> convertTimestamp(columnName, value));
+            put("timestamp with time zone", (columnName, value) -> convertTimestamp(columnName, value));
             put("bit", ((columnName, value) -> convertBit(columnName, value)));
         }
     };
@@ -86,12 +89,31 @@ public class DebeziumValueConverters {
         if (dataTypeConverterMap.containsKey(columnType)) {
             return dataTypeConverterMap.get(columnType).convert(columnName, value);
         }
+        if ("numeric".equals(columnType)) {
+            Integer scale = columnMetaData.getScale();
+            return convertNumeric(columnName, value, scale);
+        }
         return convertChar(columnName, value);
     }
 
     private static String convertInteger(String columnName, Struct value) {
         Object object = value.get(columnName);
         return object == null ? null : object.toString();
+    }
+
+    private static String convertNumeric(String columnName, Struct value, Integer scale) {
+        Object object = value.get(columnName);
+        if (object == null) {
+            return null;
+        }
+        String valueStr = object.toString();
+        String decimalStr = valueStr.substring(valueStr.indexOf(".") + 1);
+        if (decimalStr.length() > scale) {
+            BigDecimal decimal = new BigDecimal(valueStr);
+            BigDecimal result = decimal.setScale(scale, RoundingMode.HALF_UP);
+            return result.toString();
+        }
+        return object.toString();
     }
 
     private static String convertChar(String columnName, Struct value) {
@@ -242,7 +264,7 @@ public class DebeziumValueConverters {
         String schemaName = field.schema().name();
         Object object = value.get(columnName);
         Instant instant;
-        if (schemaName != null) {
+        if (schemaName != null && object != null) {
             LocalTime localTime;
             switch (schemaName) {
                 case "io.debezium.time.Date":

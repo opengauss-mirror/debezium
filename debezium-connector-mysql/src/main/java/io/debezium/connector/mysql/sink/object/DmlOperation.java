@@ -34,6 +34,11 @@ public class DmlOperation extends DataOperation {
     public static final String TRANSACTION = "transaction";
 
     /**
+     * Transaction id
+     */
+    public static final String ID = "id";
+
+    /**
      * Timestamp_milliseconds
      */
     public static final String TIMESTAMP_MS = "ts_ms";
@@ -41,7 +46,7 @@ public class DmlOperation extends DataOperation {
     private Struct before;
     private Struct after;
     private String operation;
-    private String Transaction;
+    private String transactionId;
     private String timestamp;
 
     /**
@@ -56,20 +61,8 @@ public class DmlOperation extends DataOperation {
         this.operation = value.getString(DmlOperation.OPERATION);
         this.before = value.getStruct(DmlOperation.BEFORE);
         this.after = value.getStruct(DmlOperation.AFTER);
-        setIsDml(true);
-    }
-
-    /**
-     * Constructor
-     *
-     * @param Struct the before value
-     * @param Struct the after value
-     * @param Struct the operation
-     */
-    public DmlOperation(Struct before, Struct after, String operation) {
-        this.before = before;
-        this.after = after;
-        this.operation = operation;
+        this.transactionId = value.getStruct(DmlOperation.TRANSACTION)
+                .getString(DmlOperation.ID);
         setIsDml(true);
     }
 
@@ -132,8 +125,8 @@ public class DmlOperation extends DataOperation {
      *
      * @return String the transaction
      */
-    public String getTransaction() {
-        return Transaction;
+    public String getTransactionId() {
+        return transactionId;
     }
 
     /**
@@ -141,8 +134,8 @@ public class DmlOperation extends DataOperation {
      *
      * @param String the transaction
      */
-    public void setTransaction(String transaction) {
-        Transaction = transaction;
+    public void setTransactionId(String transactionId) {
+        transactionId = transactionId;
     }
 
     /**
@@ -170,7 +163,7 @@ public class DmlOperation extends DataOperation {
                 ", before=" + before +
                 ", after=" + after +
                 ", operation='" + operation + '\'' +
-                ", Transaction='" + Transaction + '\'' +
+                ", transactionId='" + transactionId + '\'' +
                 ", timestamp='" + timestamp + '\'' +
                 '}';
     }

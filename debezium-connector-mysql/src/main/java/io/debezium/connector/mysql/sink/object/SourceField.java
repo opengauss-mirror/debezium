@@ -23,6 +23,10 @@ public class SourceField implements Cloneable {
     public static final String SOURCE = "source";
 
     /**
+     * Snapshot
+     */
+    public static final String SNAPSHOT = "snapshot";
+    /**
      * Database
      */
     public static final String DATABASE = "db";
@@ -57,6 +61,7 @@ public class SourceField implements Cloneable {
      */
     public static final String POSITION = "pos";
 
+    private String snapshot;
     private String database;
     private String table;
     private String gtid;
@@ -78,6 +83,7 @@ public class SourceField implements Cloneable {
         if (source == null) {
             throw new IllegalArgumentException("source can't be null!");
         }
+        this.snapshot = source.getString(SourceField.SNAPSHOT);
         this.database = source.getString(SourceField.DATABASE);
         this.table = source.getString(SourceField.TABLE);
         this.gtid = source.getString(SourceField.GTID);
@@ -85,6 +91,24 @@ public class SourceField implements Cloneable {
         this.sequenceNumber = source.getInt64(SourceField.SEQUENCE_NUMBER);
         this.file = source.getString(SourceField.FILE);
         this.position = source.getInt64(SourceField.POSITION);
+    }
+
+    /**
+     * Gets snapshot
+     *
+     * @return String the snapshot
+     */
+    public String getSnapshot() {
+        return snapshot;
+    }
+
+    /**
+     * Sets snapshot
+     *
+     * @param String the snapshot
+     */
+    public void setSnapshot(String snapshot) {
+        this.snapshot = snapshot;
     }
 
     /**
@@ -216,7 +240,8 @@ public class SourceField implements Cloneable {
     @Override
     public String toString() {
         return "SourceField{" +
-                "database='" + database + '\'' +
+                "snapshot='" + snapshot + '\'' +
+                ", database='" + database + '\'' +
                 ", table='" + table + '\'' +
                 ", gtid='" + gtid + '\'' +
                 ", lastCommitted=" + lastCommitted +

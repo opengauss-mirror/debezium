@@ -109,22 +109,28 @@ public class WorkThread extends Thread {
                     for (String sql : txn.getSqlList()) {
                         statement.execute(sql);
                     }
-                    if (!txn.getIsDml() && SqlTools.isCreateOrAlterTableStatement(txn.getSqlList().get(1))) {
-                        String schemaName = txn.getSourceField().getDatabase();
-                        String tableName = txn.getSourceField().getTable();
-                        String tableFullName = schemaName + "." + tableName;
-                        feedBackQueue.add(tableFullName);
-                    }
                 }
                 catch (SQLException exp) {
                     LOGGER.error(String.format("SQL exception occurred, the SQL statement executed is: %s," +
                             " and the cause of the exception is %s",
                             txn.getSqlList(), exp.getMessage()));
                 }
+                finally {
+                    feedBackModifiedTable();
+                }
             }
         }
         catch (SQLException exp) {
             LOGGER.error("SQL exception occurred in work thread", exp);
+        }
+    }
+
+    private void feedBackModifiedTable() {
+        if (!txn.getIsDml() && SqlTools.isCreateOrAlterTableStatement(txn.getSqlList().get(1))) {
+            String schemaName = txn.getSourceField().getDatabase();
+            String tableName = txn.getSourceField().getTable();
+            String tableFullName = schemaName + "." + tableName;
+            feedBackQueue.add(tableFullName);
         }
     }
 }
