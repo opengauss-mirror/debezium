@@ -90,7 +90,11 @@ public class TransactionDispatcher {
             if (selectedTransaction == null) {
                 txn = transactionQueueList.get(queueIndex).poll();
                 if (txn != null) {
-                    LOGGER.info("Ready to replay the transaction: " + txn.toString());
+                    if (LOGGER.isInfoEnabled()) {
+                        String txnString = txn.toString();
+                        LOGGER.info("Ready to replay the transaction: {}",
+                                txnString.substring(0, Math.min(2048, txnString.length())));
+                    }
                     count++;
                     if (count % JdbcDbWriter.MAX_VALUE == 0) {
                         queueIndex++;
