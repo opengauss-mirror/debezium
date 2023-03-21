@@ -11,8 +11,6 @@ import io.debezium.data.geometry.Point;
 import io.debezium.util.HexConverter;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
-import org.apache.kafka.connect.errors.DataException;
-
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -33,6 +31,8 @@ import java.util.concurrent.TimeUnit;
  * @date 2023/01/17
  */
 public final class DebeziumValueConverters {
+    private static final String HEX_PREFIX = "x";
+    private static final String HEX_FORMAT_PREFIX = "00000000";
     private DebeziumValueConverters(){}
 
     private static HashMap<String, ValueConverter> dataTypeConverterMap = new HashMap<String, ValueConverter>() {
@@ -268,7 +268,7 @@ public final class DebeziumValueConverters {
         if ("io.debezium.data.geometry.Point".equals(schemaName)) {
             bytes = struct.getBytes(Point.WKB_FIELD);
         }
-        else if ("io.debezium.data.geometry.Geometry".equals(schemaName)) {
+        else if (isGeometry(schemaName)) {
             bytes = struct.getBytes(Geometry.WKB_FIELD);
         }
         else {
@@ -282,6 +282,11 @@ public final class DebeziumValueConverters {
     }
 
     private static String convertLinestring(String columnName, Struct valueStruct) {
+        Field field = valueStruct.schema().field(columnName);
+        String schemaName = field.schema().name();
+        if (isGeometry(schemaName)) {
+            return HEX_PREFIX + convertGeometry(columnName, valueStruct);
+        }
         byte[] bytes = valueStruct.getBytes(columnName);
         if (bytes == null) {
             return null;
@@ -295,6 +300,11 @@ public final class DebeziumValueConverters {
     }
 
     private static String convertPolygon(String columnName, Struct valueStruct) {
+        Field field = valueStruct.schema().field(columnName);
+        String schemaName = field.schema().name();
+        if (isGeometry(schemaName)) {
+            return HEX_PREFIX + convertGeometry(columnName, valueStruct);
+        }
         byte[] bytes = valueStruct.getBytes(columnName);
         if (bytes == null) {
             return null;
@@ -308,76 +318,49 @@ public final class DebeziumValueConverters {
     }
 
     private static String convertMultipoint(String columnName, Struct valueStruct) {
-        byte[] bytes = valueStruct.getBytes(columnName);
-        if (bytes == null) {
-            return null;
+        Field field = valueStruct.schema().field(columnName);
+        String schemaName = field.schema().name();
+        if (isGeometry(schemaName)) {
+            return HEX_PREFIX + convertGeometry(columnName, valueStruct);
         }
-        String[] coordinateArr = getCoordinate(bytes);
-        return formatMultipoint(coordinateArr);
-    }
-
-    private static String formatMultipoint(String[] coordinateArr) {
-        return "ST_GeomFROMtEXT('MULTIPOINT(" + formatCoordinate(coordinateArr) + ")')";
+        return HEX_PREFIX + convertBinary(columnName, valueStruct);
     }
 
     private static String convertMultilinestring(String columnName, Struct valueStruct) {
-        byte[] bytes = valueStruct.getBytes(columnName);
-        if (bytes == null) {
-            return null;
+        Field field = valueStruct.schema().field(columnName);
+        String schemaName = field.schema().name();
+        if (isGeometry(schemaName)) {
+            return HEX_PREFIX + convertGeometry(columnName, valueStruct);
         }
-        return formatMutlinestring(new String(bytes).replaceAll("\\s*", ""));
-    }
-
-    private static String formatMutlinestring(String originalString) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(originalString);
-        for (int i = 0; i < originalString.length(); i++) {
-            if (i > 0 && originalString.charAt(i) == ',' && originalString.charAt(i - 1) != ')' && originalString.charAt(i - 1) != ']') {
-                sb.setCharAt(i, ' ');
-            }
-        }
-        originalString = sb.toString();
-        originalString = originalString.replace("(", "");
-        originalString = originalString.replace(")", "");
-        originalString = originalString.replace('[', '(');
-        originalString = originalString.replace(']', ')');
-        return "ST_GeomFROMtEXT('MULTILINESTRING(" + originalString + ")')";
+        return HEX_PREFIX + convertBinary(columnName, valueStruct);
     }
 
     private static String convertMultipolygon(String columnName, Struct valueStruct) {
-        byte[] bytes = valueStruct.getBytes(columnName);
-        if (bytes == null) {
-            return null;
+        Field field = valueStruct.schema().field(columnName);
+        String schemaName = field.schema().name();
+        if (isGeometry(schemaName)) {
+            return HEX_PREFIX + convertGeometry(columnName, valueStruct);
         }
-        return formatMutipolygon(new String(bytes).replaceAll("\\s*", ""));
-    }
-
-    private static String formatMutipolygon(String originalString) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(originalString);
-        for (int i = 0; i < originalString.length(); i++) {
-            if (i > 0 && originalString.charAt(i) == ',' && originalString.charAt(i - 1) != ')' && originalString.charAt(i - 1) != ']') {
-                sb.setCharAt(i, ' ');
-            }
-        }
-        originalString = sb.toString();
-        originalString = originalString.replace("(", "");
-        originalString = originalString.replace(")", "");
-        originalString = originalString.replace("[","((");
-        originalString = originalString.replace("]", "))");
-        return "ST_GeomFROMtEXT('MULTIPOLYGON(" + originalString + ")')";
+        return HEX_PREFIX + convertBinary(columnName, valueStruct);
     }
 
     private static String convertGeometrycollection(String columnName, Struct valueStruct) {
-        byte[] bytes = valueStruct.getBytes(columnName);
+        Field field = valueStruct.schema().field(columnName);
+        String schemaName = field.schema().name();
+        if (isGeometry(schemaName)) {
+            return HEX_PREFIX + convertGeometry(columnName, valueStruct);
+        }
+        return HEX_PREFIX + convertBinary(columnName, valueStruct);
+    }
+
+    private static String convertGeometry(String columnName, Struct valueStruct) {
+        Struct struct = valueStruct.getStruct(columnName);
+        byte[] bytes = struct.getBytes(Geometry.WKB_FIELD);
         if (bytes == null) {
             return null;
         }
-        return formatGeometrycollection(new String(bytes));
-    }
+        return addingSingleQuotation(HEX_FORMAT_PREFIX + convertHexString(bytes));
 
-    private static String formatGeometrycollection(String originalString) {
-        return "ST_GeomFROMtEXT('GEOMETRYCOLLECTION(" + originalString + ")')";
     }
 
     private static String[] getCoordinate(byte[] bytes) {
@@ -406,6 +389,13 @@ public final class DebeziumValueConverters {
         }
         sb = new StringBuilder(sb.substring(0,sb.lastIndexOf(",")));
         return sb.toString();
+    }
+
+    private static boolean isGeometry(String schemaName) {
+        if ("io.debezium.data.geometry.Geometry".equals(schemaName)) {
+            return true;
+        }
+        return false;
     }
 
     private static String addingSingleQuotation(Object originValue) {
