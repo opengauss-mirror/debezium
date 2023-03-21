@@ -113,6 +113,5 @@ public class WorkThread extends Thread {
         }
         return sql;
     }
-
 }
 
