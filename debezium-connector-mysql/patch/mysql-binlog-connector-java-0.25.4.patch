@@ -1,12 +1,12 @@
-From 21a03fc097bc1b6e25e7eed8b4d7810cf30b2097 Mon Sep 17 00:00:00 2001
+From 868cf5aee1c03e18c20eb5cad4acbde89e0507e8 Mon Sep 17 00:00:00 2001
 From: douxin <xdou1995@163.com>
 Date: Tue, 3 Jan 2023 20:04:28 +0800
 Subject: [PATCH] mysql-binlog-connector-java-0.25.4-patch
 
 ---
  pom.xml                                       |   2 +-
- .../shyiko/mysql/binlog/BinaryLogClient.java  | 183 +++++++++++++++++-
- 2 files changed, 183 insertions(+), 2 deletions(-)
+ .../shyiko/mysql/binlog/BinaryLogClient.java  | 184 +++++++++++++++++-
+ 2 files changed, 184 insertions(+), 2 deletions(-)
 
 diff --git a/pom.xml b/pom.xml
 index 5920031..bccbeec 100644
@@ -22,7 +22,7 @@ index 5920031..bccbeec 100644
      <name>mysql-binlog-connector-java</name>
      <description>MySQL Binary Log connector</description>
 diff --git a/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java b/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java
-index d8b8299..b09d88d 100644
+index d8b8299..708b9e7 100644
 --- a/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java
 +++ b/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java
 @@ -67,11 +67,17 @@ import java.net.SocketException;
@@ -81,7 +81,7 @@ index d8b8299..b09d88d 100644
          } finally {
              connectLock.unlock();
              if (notifyWhenDisconnected) {
-@@ -991,6 +1012,166 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
+@@ -991,6 +1012,167 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
          }
      }
  
@@ -189,6 +189,7 @@ index d8b8299..b09d88d 100644
 +                    break;
 +                }
 +                eventQueueList.get(index).add(event);
++                packet = null;
 +            } else {
 +                Thread.sleep(1);
 +            }

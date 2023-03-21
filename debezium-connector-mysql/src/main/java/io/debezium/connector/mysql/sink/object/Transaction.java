@@ -96,8 +96,8 @@ public class Transaction implements Cloneable {
     public String toString() {
         return "Transaction{" +
                 "sourceField=" + sourceField +
-                ", sqlList=" + sqlList +
                 ", isDml=" + isDml +
+                ", sqlList=" + sqlList +
                 '}';
     }
 
