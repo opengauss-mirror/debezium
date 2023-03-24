@@ -5,6 +5,9 @@
  */
 package io.debezium.connector.mysql.sink.replay;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -70,6 +73,7 @@ public class JdbcDbWriter {
     private int queueIndex = 0;
     private ArrayList<String> sqlList = new ArrayList<>();
     private Transaction transaction = new Transaction();
+    private String xlogLocation;
 
     private HashMap<String, Long> dmlEventCountMap = new HashMap<String, Long>();
     private HashMap<String, String> tableSnapshotHashmap = new HashMap<>();
@@ -93,12 +97,29 @@ public class JdbcDbWriter {
         initObject(config);
     }
 
+    /**
+     * Do stop
+     */
+    public void doStop() {
+        String result = sqlTools.getXlogLocation();
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(xlogLocation))) {
+            bw.write("xlog.location=" + result);
+        }
+        catch (IOException exp) {
+            LOGGER.error("Fail to write xlog location {}", result);
+        }
+        sqlTools.closeConnection();
+        LOGGER.info("Online migration from mysql to openGauss has gracefully stopped and current xlog" +
+                "location in openGauss is {}", result);
+    }
+
     private void initObject(MySqlSinkConnectorConfig config) {
         initOpenGaussConnection(config);
         initSchemaMappingMap(config.schemaMappings);
         initTransactionQueueList(TRANSACTION_QUEUE_NUM);
         initSqlTools();
         initTransactionDispatcher(config.parallelReplayThreadNum);
+        initXlogLocation(config.xlogLocation);
     }
 
     private void initOpenGaussConnection(MySqlSinkConnectorConfig config) {
@@ -123,6 +144,10 @@ public class JdbcDbWriter {
 
     private void initSqlTools() {
         sqlTools = new SqlTools(openGaussConnection.createOpenGaussConnection());
+    }
+
+    private void initXlogLocation(String xlogLocation) {
+        this.xlogLocation = xlogLocation;
     }
 
     private void initTransactionDispatcher(int threadNum) {

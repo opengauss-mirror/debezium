@@ -138,4 +138,41 @@ public class SqlTools {
         return sql.toLowerCase(Locale.ROOT).startsWith("create table") ||
                 sql.toLowerCase(Locale.ROOT).startsWith("alter table");
     }
+
+    /**
+     * Get xlog position
+     *
+     * @return String the xlog position
+     */
+    public String getXlogLocation() {
+        String xlogPosition = "";
+        try (Statement statement = connection.createStatement();
+                ResultSet rs = statement.executeQuery("select pg_current_xlog_location();")) {
+            if (rs.next()) {
+                xlogPosition = rs.getString(1);
+            }
+        }
+        catch (SQLException exp) {
+            LOGGER.error("Fail to get current xlog position.");
+        }
+        return xlogPosition;
+    }
+
+    /**
+     * Close the connection
+     */
+    public void closeConnection() {
+        if (connection != null) {
+            try {
+                connection.close();
+            }
+            catch (SQLException exp) {
+                LOGGER.error("Unexpected error while closing the connection, the exception message is {}",
+                        exp.getMessage());
+            }
+            finally {
+                connection = null;
+            }
+        }
+    }
 }

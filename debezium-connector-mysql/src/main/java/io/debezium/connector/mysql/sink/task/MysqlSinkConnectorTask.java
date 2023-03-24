@@ -53,6 +53,6 @@ public class MysqlSinkConnectorTask extends SinkTask {
 
     @Override
     public void stop() {
-
+        jdbcDbWriter.doStop();
     }
 }
