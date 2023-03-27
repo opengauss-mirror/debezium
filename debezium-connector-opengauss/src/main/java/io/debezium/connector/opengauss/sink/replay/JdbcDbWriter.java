@@ -189,7 +189,9 @@ public class JdbcDbWriter {
                     String date = ofPattern.format(LocalDateTime.now());
                     String result = String.format("have replayed %s data, and current time is %s, and current " +
                             "speed is %s", getCurrentCount(), date, delta);
-                    LOGGER.info(result);
+                    if (LOGGER.isInfoEnabled()) {
+                        LOGGER.info(result);
+                    }
                 } catch (InterruptedException exp) {
                     LOGGER.warn("Interrupted exception occurred", exp);
                 }
