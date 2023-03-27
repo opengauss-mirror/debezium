@@ -325,10 +325,10 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
   unzip confluent-community-5.5.1-2.12.zip
   ```
 
-- [debezium-connector-mysql](https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/debezium-connector-mysql-1.8.1.Final-plugin.tar.gz)
+- [debezium-connector-mysql](https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-mysql2openGauss-5.0.0.tar.gz)
 
   ```
-  wget -c https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/debezium-connector-mysql-1.8.1.Final-plugin.tar.gz
+  wget -c https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-mysql2openGauss-5.0.0.tar.gz
   
   tar -zxvf debezium-connector-mysql-1.8.1.Final-plugin.tar.gz
   ```
@@ -654,7 +654,6 @@ openGauss开启逻辑复制功能：
 
     （1）仅限初始用户和拥有REPLICATION权限的用户进行操作。三权分立关闭时数据库管理员可以进行逻辑复制操作，三权分立开启时不允许数据库管理员进行逻辑复制操作。
     （2）openGauss的库与逻辑复制槽一一对应，当待迁移的库改变时，需要配置新的逻辑复制槽的名字
-    （3）openGauss开启逻辑复制槽后，对于没有主键的表，不能直接进行update和delete操作，需要先执行命令：ALTER TABLE table_name REPLICA IDENTITY FULL;
 
 openGauss参数配置：
 
@@ -666,6 +665,8 @@ wal_level=logical
 
     （1）反向迁移sink端按表分发数据，不支持按事务分发，日志中记录的回放条数为实际成功执行的sql语句条数，openGauss分区表执行update操作时，如果更新前的数据和更新后的数据在同一分区，只会执行一条update语句，如果不在同一分区，会以事务的形式先后执行一条delete语句和一条insert语句，这种情形下日志会显示回放了两条数据；
     （2）反向迁移connector端配置连接数据库的用户需要有对应数据库下所有schema以及所有表的操作权限
+    （3）反向迁移目前只支持openGauss 3.1.0及以上版本
+    （4）反向迁移数据类型映射与变色龙的默认数据类型映射相反，当两端数据类型不一致时，只能迁移两端数据类型都支持的数据变更
 
 ### 部署过程
 
@@ -687,10 +688,10 @@ wal_level=logical
   unzip confluent-community-5.5.1-2.12.zip
   ```
 
-- [debezium-connector-opengauss](https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/debezium-connector-opengauss-1.8.1.Final-plugin.tar.gz)
+- [debezium-connector-opengauss](https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-openGauss2mysql-5.0.0.tar.gz)
 
   ```
-  wget -c https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/debezium-connector-opengauss-1.8.1.Final-plugin.tar.gz
+  wget -c https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-openGauss2mysql-5.0.0.tar.gz
   
   tar -zxvf debezium-connector-opengauss-1.8.1.Final-plugin.tar.gz
   ```
@@ -800,10 +801,20 @@ cd confluent-5.5.1
 
 #### 性能测试模型
 
-| 场景                  | 数据量                        | 性能      |
-|---------------------|----------------------------|---------|
-| insert.lua          | 30线程，30张表，每张表1000行数据，50秒   | 3W+ tps |
-| update_index.lua    | 30线程，30张表，每张表10000行数据，50秒  | 2W+ tps |
-| update_non_index.lua | 30线程，30张表，每张表10000行数据，50秒  | 2W+ tps |
-| delete.lua          | 30线程，30张表，每张表100000行数据，5秒  | 3W+ tps |
-| 混合场景                | 50线程，50张表，每张表100000行数据，50秒 | 3W+ tps |
+利用sysbench进行测试，在openEuler arm操作系统2p Kunpeng-920机器，针对混合IUD场景，50张表50个线程（insert-30线程，update-10线程，delete-10线程），性能可达1w tps。
+
+### FAQ
+
+(1) schema-registry报错: Schema being registered is incompatible with an earlier schema
+
+解决方案：
+停止schema-registry进程，执行下面curl命令，并重新启动schema-registry和kafka-connect
+
+可根据实际配置修改ip:localhost和端口:8081
+```
+curl -X GET http://localhost:8081/config
+
+curl -X PUT -H "Content-Type: application/vnd.schemaregistry.v1+json" \
+  --data '{"compatibility": "NONE"}' \
+  http://localhost:8081/config
+```

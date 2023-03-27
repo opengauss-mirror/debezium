@@ -7,6 +7,7 @@
 package io.debezium.connector.opengauss;
 
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -101,7 +102,12 @@ public class OpengaussSchema extends RelationalDatabaseSchema {
     private void printReplicaIdentityInfo(OpengaussConnection connection, TableId tableId) {
         try {
             ServerInfo.ReplicaIdentity replicaIdentity = connection.readReplicaIdentityInfo(tableId);
-            LOGGER.info("REPLICA IDENTITY for '{}' is '{}'; {}", tableId, replicaIdentity, replicaIdentity.description());
+            if (! "FULL".equals(replicaIdentity.toString())) {
+                Statement stmt = connection.connection().createStatement();
+                String sql = String.format("ALTER TABLE %s REPLICA IDENTITY FULL", tableId);
+                stmt.execute(sql);
+                LOGGER.info("REPLICA IDENTITY for '{}' is changed to  FULL, UPDATE AND DELETE events will contain the previous values of all the columns", tableId);
+            }
         }
         catch (SQLException e) {
             LOGGER.warn("Cannot determine REPLICA IDENTITY info for '{}'", tableId);

@@ -65,7 +65,7 @@ public class ConnectionInfo {
      * @return Connection the connection
      */
     public Connection createMysqlConnection(){
-        dbUrl = "jdbc:mysql://" + url + ":" + port + "/mysql?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC";
+        dbUrl = "jdbc:mysql://" + url + ":" + port + "/mysql?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&autoReconnect=true";
         String driver = MYSQL_JDBC_DRIVER;
         Connection connection = null;
         try{
