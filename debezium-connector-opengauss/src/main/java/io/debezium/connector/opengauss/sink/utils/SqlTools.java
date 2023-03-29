@@ -6,6 +6,7 @@
 package io.debezium.connector.opengauss.sink.utils;
 
 import io.debezium.connector.opengauss.sink.object.ColumnMetaData;
+import io.debezium.connector.opengauss.sink.object.ConnectionInfo;
 import io.debezium.connector.opengauss.sink.object.TableMetaData;
 import io.debezium.data.Envelope;
 import org.apache.kafka.connect.data.Struct;
@@ -30,25 +31,16 @@ import java.util.Locale;
  */
 public class SqlTools {
     private static final Logger LOGGER = LoggerFactory.getLogger(SqlTools.class);
-    private Connection connection;
+    private ConnectionInfo connectionInfo;
     private static Map<String, String> primeKeyTableMap = new HashMap<>();
-
-    /**
-     * Gets connection
-     *
-     * @return Connection the connection
-     */
-    public Connection getConnection() {
-        return connection;
-    }
 
     /**
      * Constructor
      *
      * @return Connection the connection
      */
-    public SqlTools(Connection connection) {
-        this.connection = connection;
+    public SqlTools(ConnectionInfo connectionInfo) {
+        this.connectionInfo= connectionInfo;
     }
 
     /**
@@ -65,7 +57,8 @@ public class SqlTools {
                         " order by ordinal_position;",
                 schemaName, tableName);
         TableMetaData tableMetaData = null;
-        try (Statement statement = connection.createStatement();
+        try (Connection connection = connectionInfo.createMysqlConnection();
+             Statement statement = connection.createStatement();
              ResultSet rs = statement.executeQuery(sql)) {
             while (rs.next()) {
                 columnMetaDataList.add(new ColumnMetaData(rs.getString("column_name"),
@@ -83,7 +76,8 @@ public class SqlTools {
         String sql = String.format(Locale.ENGLISH, "SELECT cu.Column_Name FROM  " +
                 "INFORMATION_SCHEMA.`KEY_COLUMN_USAGE` cu  WHERE CONSTRAINT_NAME = 'PRIMARY' AND" +
                 " cu.Table_Name = '%s' AND CONSTRAINT_SCHEMA='%s';", tableName, schemaName);
-        try(PreparedStatement preparedStatement = connection.prepareStatement(sql);
+        try(Connection connection = connectionInfo.createMysqlConnection();
+            PreparedStatement preparedStatement = connection.prepareStatement(sql);
             ResultSet resultSet=preparedStatement.executeQuery(); ){
             while (resultSet.next()){
                 return resultSet.getString("Column_Name");
@@ -104,7 +98,8 @@ public class SqlTools {
     public  List<String> getRelyTableList(String oldTableName, String schemaName){
         String sql = String.format(Locale.ENGLISH, "select TABLE_NAME from INFORMATION_SCHEMA.KEY_COLUMN_USAGE" +
                 "  where REFERENCED_TABLE_NAME='%s' and TABLE_SCHEMA='%s'", oldTableName, schemaName);
-        try(PreparedStatement preparedStatement = connection.prepareStatement(sql);
+        try(Connection connection = connectionInfo.createMysqlConnection();
+            PreparedStatement preparedStatement = connection.prepareStatement(sql);
             ResultSet resultSet=preparedStatement.executeQuery(); ){
             List<String> tableList = new ArrayList<>();
             while (resultSet.next()){

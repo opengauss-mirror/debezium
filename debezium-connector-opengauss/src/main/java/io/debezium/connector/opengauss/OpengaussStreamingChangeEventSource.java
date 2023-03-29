@@ -9,10 +9,12 @@ import java.sql.SQLException;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalLong;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.kafka.connect.errors.ConnectException;
 import org.postgresql.core.BaseConnection;
+import org.postgresql.replication.LogSequenceNumber;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -120,12 +122,18 @@ public class OpengaussStreamingChangeEventSource implements StreamingChangeEvent
 
         try {
             final WalPositionLocator walPosition;
+            final Lsn lsn;
 
             if (hasStartLsnStoredInContext) {
                 // start streaming from the last recorded position in the offset
-                final Lsn lsn = offsetContext.lastCompletelyProcessedLsn() != null ? offsetContext.lastCompletelyProcessedLsn() : offsetContext.lsn();
+                lsn = offsetContext.lastCompletelyProcessedLsn() != null ? offsetContext.lastCompletelyProcessedLsn() : offsetContext.lsn();
                 LOGGER.info("Retrieved latest position from stored offset '{}'", lsn);
                 walPosition = new WalPositionLocator(offsetContext.lastCommitLsn(), lsn);
+                replicationStream.compareAndSet(null, replicationConnection.startStreaming(lsn, walPosition));
+            }
+            else if (connectorConfig.xlogLocation() != null){
+                lsn = Lsn.valueOf(configXLogLocation());
+                walPosition = new WalPositionLocator();
                 replicationStream.compareAndSet(null, replicationConnection.startStreaming(lsn, walPosition));
             }
             else {
@@ -436,5 +444,11 @@ public class OpengaussStreamingChangeEventSource implements StreamingChangeEvent
     @FunctionalInterface
     public static interface PgConnectionSupplier {
         BaseConnection get() throws SQLException;
+    }
+
+    private long configXLogLocation() throws SQLException {
+        AtomicLong result = new AtomicLong(0);
+        result.compareAndSet(0, LogSequenceNumber.valueOf(connectorConfig.xlogLocation()).asLong());
+        return result.get();
     }
 }

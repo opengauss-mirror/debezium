@@ -5,7 +5,12 @@
  */
 package io.debezium.connector.opengauss.sink.replay;
 
-import io.debezium.connector.opengauss.sink.object.*;
+import com.mysql.cj.jdbc.exceptions.CommunicationsException;
+import io.debezium.connector.opengauss.sink.object.ConnectionInfo;
+import io.debezium.connector.opengauss.sink.object.SinkRecordObject;
+import io.debezium.connector.opengauss.sink.object.SourceField;
+import io.debezium.connector.opengauss.sink.object.TableMetaData;
+import io.debezium.connector.opengauss.sink.object.DmlOperation;
 import io.debezium.connector.opengauss.sink.utils.SqlTools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +39,8 @@ public class WorkThread extends Thread {
     private BlockingQueue<SinkRecordObject> sinkRecordQueue = new LinkedBlockingDeque<>();
     private static Map<String, TableMetaData> oldTableMap = new HashMap<>();
     private Map<String, String> schemaMappingMap;
+    private Connection connection;
+    Statement statement;
 
     /**
      *
@@ -49,21 +56,41 @@ public class WorkThread extends Thread {
     @Override
     public void run() {
         SinkRecordObject sinkRecordObject;
-        try (Connection connection = connectionInfo.createMysqlConnection();
-             Statement statement = connection.createStatement()) {
-            while(true){
+        connection = connectionInfo.createMysqlConnection();
+        try {
+            statement = connection.createStatement();
+        } catch (SQLException exp) {
+            LOGGER.error("SQL exception occurred in work thread", exp);
+        }
+        String sql = null;
+            while (true) {
                 try {
                     sinkRecordObject = sinkRecordQueue.take();
-                    String sql = constructSql(sinkRecordObject);
+                    sql = constructSql(sinkRecordObject);
                     if ("".equals(sql)) {
                         continue;
                     }
                     statement.executeUpdate(sql);
                     count++;
+                } catch (CommunicationsException exp) {
+                    updateConnectionAndExecuteSql(sql);
+                } catch (SQLException exp) {
+                    LOGGER.error("SQL exception occurred in work thread", exp);
                 } catch (InterruptedException exp) {
                     LOGGER.warn("Interrupted exception occurred", exp);
                 }
             }
+    }
+
+
+    private void updateConnectionAndExecuteSql(String sql) {
+        try {
+            statement.close();
+            connection.close();
+            connection = connectionInfo.createMysqlConnection();
+            statement = connection.createStatement();
+            statement.executeUpdate(sql);
+            count++;
         } catch (SQLException exp) {
             LOGGER.error("SQL exception occurred in work thread", exp);
         }

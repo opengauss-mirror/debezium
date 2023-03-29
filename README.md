@@ -620,6 +620,43 @@ curl -X PUT -H "Content-Type: application/vnd.schemaregistry.v1+json" \
 
 ### 新增配置参数说明
 
+#### source端
+
+```
+connector.class=io.debezium.connector.opengauss.OpengaussConnector
+```
+
+| 参数            | 类型   | 参数说明         |
+|---------------| ------ |--------------|
+| xlog.location | String | 自定义配置xlog的位置 |
+
+xlog参数详细说明：
+
+- 使用前提
+
+（1）用户已在源端数据库建立逻辑复制槽和发布
+
+```
+SELECT * FROM pg_create_logical_replication_slot('slot_name', 'pgoutput');
+CREATE PUBLICATION dbz_publication FOR ALL TABLES;
+```
+
+（2）删除kafka临时文件里的connect.offsets
+
+- 使用方法
+
+（1）查询当前xlog位置
+
+```
+select * from pg_current_xlog_location();
+```
+
+（2）将查询到的xlog位置配到迁移工具source端的配置文件里
+
+- 说明
+
+若source端无此配置项，工具将从kafka中记录的位置开始迁移，若kafka中没有记录，工具默认从建立逻辑复制槽和发布之后的位置开始迁移
+
 #### Sink端
 
 ```

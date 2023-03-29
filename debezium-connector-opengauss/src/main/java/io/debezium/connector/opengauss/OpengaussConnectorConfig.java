@@ -1071,6 +1071,12 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
             .withDefault(2)
             .withDescription("Number of fractional digits when money type is converted to 'precise' decimal number.");
 
+    public static final Field XLOG_LOCATION = Field.create("xlog.location")
+            .withDisplayName("xlog location")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("xlog location");
+
     private final TruncateHandlingMode truncateHandlingMode;
     private final LogicalDecodingMessageFilter logicalDecodingMessageFilter;
     private final HStoreHandlingMode hStoreHandlingMode;
@@ -1116,6 +1122,8 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
     protected String slotName() {
         return getConfig().getString(SLOT_NAME);
     }
+
+    public String xlogLocation() {return getConfig().getString(XLOG_LOCATION);}
 
     protected boolean dropSlotOnStop() {
         if (getConfig().hasKey(DROP_SLOT_ON_STOP.name())) {
@@ -1221,6 +1229,7 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
                     DATABASE_NAME,
                     PLUGIN_NAME,
                     SLOT_NAME,
+                    XLOG_LOCATION,
                     PUBLICATION_NAME,
                     PUBLICATION_AUTOCREATE_MODE,
                     DROP_SLOT_ON_STOP,
