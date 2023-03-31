@@ -10,16 +10,21 @@ import java.util.Map;
 
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.mysql.Module;
 import io.debezium.connector.mysql.sink.replay.JdbcDbWriter;
 
 /**
  * Description: MysqlSinkConnectorTask class
+ *
  * @author douxin
- * @date 2022/10/17
+ * @since 2022/10/17
  **/
 public class MysqlSinkConnectorTask extends SinkTask {
+    private static final Logger LOGGER = LoggerFactory.getLogger(MysqlSinkConnectorTask.class);
+
     private MySqlSinkConnectorConfig config;
     private JdbcDbWriter jdbcDbWriter;
 
@@ -37,6 +42,14 @@ public class MysqlSinkConnectorTask extends SinkTask {
 
     @Override
     public void put(Collection<SinkRecord> records) {
+        while (jdbcDbWriter.getShouldTrafficLimit()) {
+            try {
+                Thread.sleep(50);
+            }
+            catch (InterruptedException exp) {
+                LOGGER.warn("Receive interrupted exception while put records from kafka.", exp.getMessage());
+            }
+        }
         if (records == null || records.isEmpty()) {
             return;
         }

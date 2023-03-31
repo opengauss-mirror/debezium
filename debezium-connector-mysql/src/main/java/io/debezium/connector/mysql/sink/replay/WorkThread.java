@@ -114,36 +114,52 @@ public class WorkThread extends Thread {
                 Statement statement = connection.createStatement()) {
             while (true) {
                 pauseThread();
-                boolean isSuccess = true;
-                statement.execute(BEGIN);
-                for (String sql : txn.getSqlList()) {
-                    try {
-                        statement.execute(sql);
-                    }
-                    catch (SQLException exp) {
-                        isSuccess = false;
-                        LOGGER.error("SQL exception occurred in transaction {}, the SQL statement executed is: {}," +
-                                " and the cause of the exception is {}", txn.getSourceField(), sql, exp.getMessage());
-                    }
-                    finally {
-                        feedBackModifiedTable();
-                    }
-                }
-                if (isSuccess) {
-                    statement.execute(COMMIT);
-                    successCount++;
-                }
-                else {
-                    statement.execute(ROLLBACK);
-                    failCount++;
-                    failSqlList.addAll(txn.getSqlList());
-                }
+                replayTransaction(statement);
             }
         }
         catch (Throwable exp) {
             LOGGER.error("Exception occurred in work thread {} and the exp message is {}",
                     this.getName(), exp.getMessage());
         }
+    }
+
+    private void replayTransaction(Statement statement) throws SQLException {
+        boolean shouldStartTransaction = txn.getSqlList().size() > 1;
+        if (shouldStartTransaction) {
+            statement.execute(BEGIN);
+        }
+        boolean isSuccess = executeTxnSql(statement);
+        if (isSuccess) {
+            if (shouldStartTransaction) {
+                statement.execute(COMMIT);
+            }
+            successCount++;
+        }
+        else {
+            if (shouldStartTransaction) {
+                statement.execute(ROLLBACK);
+            }
+            failCount++;
+            failSqlList.addAll(txn.getSqlList());
+        }
+    }
+
+    private boolean executeTxnSql(Statement statement) {
+        for (String sql : txn.getSqlList()) {
+            try {
+                statement.execute(sql);
+            }
+            catch (SQLException exp) {
+                LOGGER.error("SQL exception occurred in transaction {}", txn.getSourceField());
+                LOGGER.error("The error SQL statement executed is: {}", sql);
+                LOGGER.error("the cause of the exception is {}", exp.getMessage());
+                return false;
+            }
+            finally {
+                feedBackModifiedTable();
+            }
+        }
+        return true;
     }
 
     /**

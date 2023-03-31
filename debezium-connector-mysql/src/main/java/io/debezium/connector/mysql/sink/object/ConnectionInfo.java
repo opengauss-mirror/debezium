@@ -26,11 +26,6 @@ public class ConnectionInfo {
      */
     private static final String OPENGAUSS_JDBC_DRIVER = "org.opengauss.Driver";
 
-    /**
-     * The mysql JDBC driver class
-     */
-    private static final String MYSQL_JDBC_SRIVER = "com.mysql.cj.jdbc.Driver";
-
     private String host;
     private int port;
     private String database;
@@ -180,24 +175,6 @@ public class ConnectionInfo {
         }
         catch (ClassNotFoundException | SQLException exp) {
             LOGGER.error("Create openGauss connection failed.", exp);
-        }
-        return connection;
-    }
-
-    /**
-     * Create mysql connection
-     *
-     * @return Connection the Connection
-     */
-    public Connection createMysqlConnection() {
-        String driver = MYSQL_JDBC_SRIVER;
-        Connection connection = null;
-        try {
-            Class.forName(driver);
-            connection = DriverManager.getConnection(url, username, password);
-        }
-        catch (ClassNotFoundException | SQLException exp) {
-            LOGGER.error("Create mysql connection failed.", exp);
         }
         return connection;
     }
