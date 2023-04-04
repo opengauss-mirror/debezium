@@ -16,7 +16,6 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.sql.Connection;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -53,7 +52,7 @@ public class JdbcDbWriter {
     public JdbcDbWriter(OpengaussSinkConnectorConfig config) {
         initSchemaMappingMap(config.schemaMappings);
         mysqlConnection = new ConnectionInfo(config.mysqlUrl, config.mysqlUsername, config.mysqlPassword, config.port);
-        sqlTools = new SqlTools(mysqlConnection.createMysqlConnection());
+        sqlTools = new SqlTools(mysqlConnection);
         this.threadCount = config.maxThreadCount;
         for (int i = 0; i < threadCount; i++) {
             WorkThread workThread = new WorkThread(schemaMappingMap, mysqlConnection, sqlTools);
@@ -180,18 +179,14 @@ public class JdbcDbWriter {
     private void statTask() {
         new Thread(() -> {
             int before = getCurrentCount();
-            int delta = 0;
             while (true) {
                 try {
                     Thread.sleep(1000);
-                    delta = getCurrentCount() - before;
-                    before = getCurrentCount();
-                    String date = ofPattern.format(LocalDateTime.now());
-                    String result = String.format("have replayed %s data, and current time is %s, and current " +
-                            "speed is %s", getCurrentCount(), date, delta);
                     if (LOGGER.isInfoEnabled()) {
-                        LOGGER.info(result);
+                        LOGGER.info("have replayed {} data, and current time is {}, and current " +
+                                "speed is {}", getCurrentCount(), ofPattern.format(LocalDateTime.now()), getCurrentCount() - before);
                     }
+                    before = getCurrentCount();
                 } catch (InterruptedException exp) {
                     LOGGER.warn("Interrupted exception occurred", exp);
                 }
