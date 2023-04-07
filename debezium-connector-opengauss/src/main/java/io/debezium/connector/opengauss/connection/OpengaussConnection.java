@@ -328,7 +328,6 @@ public class OpengaussConnection extends JdbcConnection {
      * @return {@code true} if the slot was dropped, {@code false} otherwise
      */
     public boolean dropReplicationSlot(String slotName) {
-        dropPublication("dbz_publication");
         final int ATTEMPTS = 3;
         for (int i = 0; i < ATTEMPTS; i++) {
             try {

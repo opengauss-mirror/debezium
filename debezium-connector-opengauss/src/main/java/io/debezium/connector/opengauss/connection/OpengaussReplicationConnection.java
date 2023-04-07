@@ -37,7 +37,6 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -74,6 +73,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
     private Lsn defaultStartingPos;
     private SlotCreationResult slotCreationInfo;
     private boolean hasInitedSlot;
+    private Connection connection;
 
     /**
      * Creates a new replication connection with the given params.
@@ -120,6 +120,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
         this.streamParams = streamParams;
         this.slotCreationInfo = null;
         this.hasInitedSlot = false;
+        this.connection = config.getConnection(config);
     }
 
     private ServerInfo.ReplicationSlot getSlotInfo() throws SQLException, InterruptedException {
@@ -135,7 +136,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
             LOGGER.info("Initializing PgOutput logical decoder publication");
             try {
                 String selectPublication = String.format("SELECT COUNT(1) FROM pg_publication WHERE pubname = '%s'", publicationName);
-                try (Statement stmt = pgConnection().createStatement();ResultSet rs = stmt.executeQuery(selectPublication)) {
+                try (Statement stmt = connection.createStatement();ResultSet rs = stmt.executeQuery(selectPublication)) {
                     if (rs.next()) {
                         Long count = rs.getLong(1);
                         if (count == 0L) {
@@ -632,6 +633,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
             // we're dropping the replication slot via a regular - i.e. not a replication - connection
             try (OpengaussConnection connection = new OpengaussConnection(originalConfig.getJdbcConfig())) {
                 connection.dropReplicationSlot(slotName);
+                connection.dropPublication(publicationName);
             }
             catch (Throwable e) {
                 LOGGER.error("Unexpected error while dropping replication slot", e);

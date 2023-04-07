@@ -6,6 +6,10 @@
 
 package io.debezium.connector.opengauss;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.Statement;
+import java.sql.ResultSet;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -1077,6 +1081,12 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
             .withImportance(Importance.MEDIUM)
             .withDescription("xlog location");
 
+    public static final Field WAL_SENDER_TIMEOUT = Field.create("wal.sender.timeout")
+            .withDisplayName("wal sender timeout")
+            .withType(Type.INT)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("wal sender timeout");
+
     private final TruncateHandlingMode truncateHandlingMode;
     private final LogicalDecodingMessageFilter logicalDecodingMessageFilter;
     private final HStoreHandlingMode hStoreHandlingMode;
@@ -1111,8 +1121,16 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
         return getConfig().getInteger(PORT);
     }
 
+    private String user() {
+        return getConfig().getString(USER);
+    }
+
     public String databaseName() {
         return getConfig().getString(DATABASE_NAME);
+    }
+
+    private String password() {
+        return getConfig().getString(PASSWORD);
     }
 
     protected LogicalDecoder plugin() {
@@ -1124,6 +1142,13 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
     }
 
     public String xlogLocation() {return getConfig().getString(XLOG_LOCATION);}
+
+    private Integer walSenderTimeout() {
+        if (getConfig().hasKey(WAL_SENDER_TIMEOUT.name())) {
+            return getConfig().getInteger(WAL_SENDER_TIMEOUT);
+        }
+        return null;
+    }
 
     protected boolean dropSlotOnStop() {
         if (getConfig().hasKey(DROP_SLOT_ON_STOP.name())) {
@@ -1230,6 +1255,7 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
                     PLUGIN_NAME,
                     SLOT_NAME,
                     XLOG_LOCATION,
+                    WAL_SENDER_TIMEOUT,
                     PUBLICATION_NAME,
                     PUBLICATION_AUTOCREATE_MODE,
                     DROP_SLOT_ON_STOP,
@@ -1332,6 +1358,28 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
             return 1;
         }
         return 0;
+    }
+
+    public Connection getConnection(OpengaussConnectorConfig config) {
+        String sourceURL = "jdbc:postgresql://" + hostname() + ":" + port() + "/" +config.databaseName();
+        Connection connection = null;
+        try {
+            connection = DriverManager.getConnection(sourceURL, user(), password());
+            Statement statement = connection.createStatement();
+            statement.execute("set session_timeout = 0");
+            ResultSet rs = statement.executeQuery("select version()");
+            String version = null;
+            while (rs.next()) {
+               version = rs.getString(1).split(" ")[1];
+            }
+            assert version != null;
+            if (version.startsWith("3.0.")) {
+                statement.execute("alter system set wal_sender_timeout = " + (walSenderTimeout() == null ? 12000 : walSenderTimeout()));
+            }
+        } catch(Exception exp) {
+            LOGGER.error("Create openGauss connection failed.", exp);
+        }
+        return connection;
     }
 
     @Override
