@@ -266,6 +266,7 @@ connector.class=io.debezium.connector.mysql.sink.MysqlSinkConnector
 | opengauss.password         | String | openGauss用户密码                                            |
 | opengauss.url              | String | openGauss连接url                                             |
 | parallel.replay.thread.num | int    | 并行回放默认线程数量，默认为30                               |
+| xlog.location              | String | 增量迁移停止时openGauss端lsn的存储文件路径                   |
 | schema.mappings            | String | mysql和openGauss的schema映射关系，与全量迁移chameleon配置相对应，用；区分不同的映射关系，用：区分mysql的database和openGauss的schema<br>例如chameleon的配置<br>schema_mappings:<br/>      mysql_database1: opengauss_schema1<br/>      mysql_database2: opengauss_schema2<br/>则sink端的schema.mappings参数需配置为schema.mappings=mysql_database1:opengauss_schema1;mysql_database2:opengauss_schema2 |
 
 ## 基于Debezium mysql connector进行在线迁移
@@ -363,7 +364,7 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
 
   若端口冲突，需要修改端口号，则同步修改以下文件对应参数：
   ```
-  kafka_2.13-3.2.3/config/server.properties:34------listeners=PLAINTEXT://:9092
+  kafka_2.13-3.2.3/config/server.properties------listeners=PLAINTEXT://:9092
   confluent-5.5.1/etc/schema-registry/schema-registry.properties------kafkastore.bootstrap.servers=PLAINTEXT://localhost:9092
   confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties------bootstrap.servers=localhost:9092
   confluent-5.5.1/etc/kafka/mysql-source.properties------database.history.kafka.bootstrap.servers=127.0.0.1:9092
