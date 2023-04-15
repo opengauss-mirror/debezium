@@ -38,6 +38,7 @@ import mil.nga.sf.wkt.GeometryWriter;
  **/
 public class DebeziumValueConverters {
     private static final char ESCAPE_CHARACTER = 'E';
+    private static final String SINGLE_QUOTE = "'";
     private static final String HEX_PREFIX = "\\x";
     private static final String POLYGON_PREFIX = "POLYGON ";
     private static final String LINESTRING_PREFIX = "LINESTRING ";
@@ -122,7 +123,8 @@ public class DebeziumValueConverters {
     }
 
     public static String addingSingleQuotation(Object originValue) {
-        return "'" + originValue.toString() + "'";
+        return SINGLE_QUOTE + originValue.toString().replaceAll(SINGLE_QUOTE, SINGLE_QUOTE + SINGLE_QUOTE)
+                + SINGLE_QUOTE;
     }
 
     private static String convertBinary(String columnName, Struct value) {
