@@ -9,6 +9,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 
 import org.slf4j.Logger;
@@ -20,27 +21,35 @@ import io.debezium.connector.mysql.sink.util.SqlTools;
 
 /**
  * Description: WorkThread class
+ *
  * @author douxin
- * @date 2022/11/01
+ * @since 2022-11-01
  **/
 public class WorkThread extends Thread {
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkThread.class);
+    private static final String BEGIN = "begin";
+    private static final String COMMIT = "commit";
+    private static final String ROLLBACK = "rollback";
 
     private ConnectionInfo connectionInfo;
+    private int successCount;
+    private int failCount;
     private Transaction txn = null;
     private final Object lock = new Object();
     private ArrayList<String> changedTableNameList;
     private BlockingQueue<String> feedBackQueue;
+    private List<String> failSqlList = new ArrayList<>();
 
     /**
      * Constructor
      *
-     * @param ConnectionInfo the connection info
-     * @param ArrayList<String> the changed table name list
-     * @param BlockingQueue<String> the feed back queue
+     * @param connectionInfo Connection the connection
+     * @param changedTableNameList ArrayList<String> the changedTableNameList
+     * @param feedBackQueue BlockingQueue<String> the feedBackQueue
+     * @param index int the index
      */
     public WorkThread(ConnectionInfo connectionInfo, ArrayList<String> changedTableNameList,
-                      BlockingQueue<String> feedBackQueue, int index) {
+                        BlockingQueue<String> feedBackQueue, int index) {
         super("work-thread-" + index);
         this.connectionInfo = connectionInfo;
         this.changedTableNameList = changedTableNameList;
@@ -50,7 +59,7 @@ public class WorkThread extends Thread {
     /**
      * Sets transaction
      *
-     * @param Transaction the transaction
+     * @param transaction Transaction the transaction
      */
     public void setTransaction(Transaction transaction) {
         this.txn = transaction;
@@ -75,12 +84,12 @@ public class WorkThread extends Thread {
     /**
      * Resume thread
      *
-     * @param Transaction the transaction
+     * @param transaction Transaction the transaction
      */
     public void resumeThread(Transaction transaction) {
         synchronized (lock) {
             setTransaction(transaction);
-            lock.notify();
+            lock.notifyAll();
         }
     }
 
@@ -92,8 +101,7 @@ public class WorkThread extends Thread {
             try {
                 cleanTransaction();
                 lock.wait();
-            }
-            catch (InterruptedException exp) {
+            } catch (InterruptedException exp) {
                 LOGGER.error("Interrupted exception occurred", exp);
             }
         }
@@ -102,27 +110,69 @@ public class WorkThread extends Thread {
     @Override
     public void run() {
         try (Connection connection = connectionInfo.createOpenGaussConnection();
-                Statement statement = connection.createStatement()) {
+            Statement statement = connection.createStatement()) {
             while (true) {
                 pauseThread();
-                try {
-                    for (String sql : txn.getSqlList()) {
+                boolean isSuccess = true;
+                statement.execute(BEGIN);
+                for (String sql : txn.getSqlList()) {
+                    try {
                         statement.execute(sql);
+                    } catch (SQLException exp) {
+                        isSuccess = false;
+                        LOGGER.error(String.format("SQL exception occurred, the SQL statement executed is: %s,"
+                                        + " and the cause of the exception is %s",
+                                txn.getSqlList(), exp.getMessage()));
+                    } finally {
+                        feedBackModifiedTable();
                     }
                 }
-                catch (SQLException exp) {
-                    LOGGER.error(String.format("SQL exception occurred, the SQL statement executed is: %s," +
-                            " and the cause of the exception is %s",
-                            txn.getSqlList(), exp.getMessage()));
-                }
-                finally {
-                    feedBackModifiedTable();
+                if (isSuccess) {
+                    statement.execute(COMMIT);
+                    successCount++;
+                } else {
+                    statement.execute(ROLLBACK);
+                    failCount++;
+                    failSqlList.addAll(txn.getSqlList());
                 }
             }
-        }
-        catch (SQLException exp) {
+        } catch (SQLException exp) {
             LOGGER.error("SQL exception occurred in work thread", exp);
         }
+    }
+
+    /**
+     * get success count
+     *
+     * @return count of replayed successfully
+     */
+    public int getSuccessCount() {
+        return this.successCount;
+    }
+
+    /**
+     * get fail sql list
+     *
+     * @return List the fail sql list
+     */
+    public List<String> getFailSqlList() {
+        return failSqlList;
+    }
+
+    /**
+     * clear fail sql list
+     */
+    public void clearFailSqlList() {
+        failSqlList.clear();
+    }
+
+    /**
+     * get fail count
+     *
+     * @return int the fail count
+     */
+    public int getFailCount() {
+        return failCount;
     }
 
     private void feedBackModifiedTable() {

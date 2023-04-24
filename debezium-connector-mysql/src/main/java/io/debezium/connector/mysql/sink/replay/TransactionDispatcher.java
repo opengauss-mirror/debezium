@@ -8,11 +8,17 @@ package io.debezium.connector.mysql.sink.replay;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import io.debezium.connector.mysql.process.MysqlProcessCommitter;
+import io.debezium.connector.mysql.process.MysqlSinkProcessInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,8 +27,9 @@ import io.debezium.connector.mysql.sink.object.Transaction;
 
 /**
  * Description: TransactionDispatcher class
+ *
  * @author douxin
- * @date 2022/11/02
+ * @since 2022-11-02
  **/
 public class TransactionDispatcher {
     /**
@@ -37,10 +44,13 @@ public class TransactionDispatcher {
     private ConnectionInfo connectionInfo;
     private Transaction selectedTransaction = null;
     private ArrayList<WorkThread> threadList = new ArrayList<>();
+    private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(1, 1, 100,
+            TimeUnit.SECONDS, new LinkedBlockingQueue<>(3));
     private final DateTimeFormatter ofPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
     private ArrayList<String> changedTableNameList;
     private BlockingQueue<String> feedBackQueue;
     private ArrayList<ConcurrentLinkedQueue<Transaction>> transactionQueueList;
+    private MysqlProcessCommitter processCommitter;
 
     /**
      * Constructor
@@ -78,11 +88,21 @@ public class TransactionDispatcher {
     }
 
     /**
+     * Sets processCommitter
+     *
+     * @param failSqlPath String the fail sql path
+     */
+    public void initProcessCommitter(String failSqlPath, int fileSizeLimit) {
+        this.processCommitter = new MysqlProcessCommitter(failSqlPath, fileSizeLimit);
+    }
+
+    /**
      * Dispatcher
      */
     public void dispatcher() {
         createThreads();
         statTask();
+        statReplayTask();
         Transaction txn = null;
         int freeThreadIndex = -1;
         int queueIndex = 0;
@@ -125,6 +145,48 @@ public class TransactionDispatcher {
                     threadList.get(freeThreadIndex).resumeThread(txn);
                 }
             }
+        }
+    }
+
+    private int[] getSuccessAndFailCount() {
+        int successCount = 0;
+        int failCount = 0;
+        for (WorkThread workThread : threadList) {
+            successCount += workThread.getSuccessCount();
+            failCount += workThread.getFailCount();
+        }
+        return new int[]{successCount, failCount, successCount + failCount};
+    }
+
+    private void statReplayTask() {
+        threadPool.execute(() -> {
+            while (true) {
+                MysqlSinkProcessInfo.SINK_PROCESS_INFO.setSuccessCount(getSuccessAndFailCount()[0]);
+                MysqlSinkProcessInfo.SINK_PROCESS_INFO.setFailCount(getSuccessAndFailCount()[1]);
+                MysqlSinkProcessInfo.SINK_PROCESS_INFO.setReplayedCount(getSuccessAndFailCount()[2]);
+                List<String> failSqlList = collectFailSql();
+                if (failSqlList.size() > 0) {
+                    commitFailSql(failSqlList);
+                }
+            }
+        });
+    }
+
+    private List<String> collectFailSql() {
+        List<String> failSqlList = new ArrayList<>();
+        for (WorkThread workThread : threadList) {
+            if (workThread.getFailSqlList().size() != 0) {
+                failSqlList.addAll(workThread.getFailSqlList());
+                workThread.clearFailSqlList();
+            }
+        }
+        return failSqlList;
+    }
+
+    private void commitFailSql(List<String> failSqlList) {
+        for (String sql : failSqlList) {
+            sql = LocalDateTime.now() + ": " + sql;
+            processCommitter.commitFailSql(sql);
         }
     }
 

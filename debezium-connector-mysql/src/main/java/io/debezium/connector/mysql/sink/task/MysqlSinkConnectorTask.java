@@ -10,8 +10,6 @@ import java.util.Map;
 
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.mysql.Module;
 import io.debezium.connector.mysql.sink.replay.JdbcDbWriter;
@@ -22,10 +20,7 @@ import io.debezium.connector.mysql.sink.replay.JdbcDbWriter;
  * @date 2022/10/17
  **/
 public class MysqlSinkConnectorTask extends SinkTask {
-    private static final Logger LOGGER = LoggerFactory.getLogger(MysqlSinkConnectorTask.class);
-
     private int remainRetries = 0;
-
     private MySqlSinkConnectorConfig config;
     private JdbcDbWriter jdbcDbWriter;
 

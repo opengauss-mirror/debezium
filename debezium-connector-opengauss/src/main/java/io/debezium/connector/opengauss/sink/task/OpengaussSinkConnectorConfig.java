@@ -1,11 +1,11 @@
-/**
+/*
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
  */
 package io.debezium.connector.opengauss.sink.task;
 
-import org.apache.kafka.common.config.AbstractConfig;
+import io.debezium.config.SinkConnectorConfig;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
@@ -17,44 +17,11 @@ import java.util.TreeMap;
 
 /**
  * Description: OpengaussSinkConnectorConfig class
+ *
  * @author wangzhengyuan
  * @date 2022/11/04
  */
-public class OpengaussSinkConnectorConfig extends AbstractConfig {
-    private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussSinkConnectorConfig.class);
-    private final Map<String, Object> values;
-
-    public final String topics;
-    public final Integer maxRetries;
-    public final Integer maxThreadCount;
-    public final String schemaMappings;
-
-    public final String mysqlUsername;
-    public final String mysqlPassword;
-    public final String mysqlUrl;
-    public final Integer port;
-
-    public OpengaussSinkConnectorConfig(Map<?, ?> props){
-        super(CONFIG_DEF, props, false);
-        this.topics = getString(TOPICS);
-        this.maxRetries = getInt(MAX_RETRIES);
-        this.maxThreadCount = getInt(MAX_THREAD_COUNT);
-        this.schemaMappings = getString(SCHEMA_MAPPINGS);
-
-        this.mysqlUsername = getString(MYSQL_USERNAME);
-        this.mysqlPassword = getString(MYSQL_PASSWORD);
-        this.mysqlUrl = getString(MYSQL_URL);
-        this.port = getInt(PORT);
-
-        this.values = (Map<String, Object>) props;
-        logAll();
-    }
-
-    /**
-     * Topics
-     */
-    public static final String TOPICS = "topics";
-
+public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
     /**
      * Max retries
      */
@@ -86,19 +53,63 @@ public class OpengaussSinkConnectorConfig extends AbstractConfig {
     public static final String PORT = "mysql.port";
 
     /**
-     * schema mappings
+     * ConfigDef
      */
-    public static final String SCHEMA_MAPPINGS = "schema.mappings";
-
-    public static ConfigDef CONFIG_DEF = new ConfigDef()
-            .define(TOPICS, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "topics")
-            .define(MAX_RETRIES, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "max retries")
+    public static final ConfigDef CONFIG_DEF = getConfigDef()
+            .define(MAX_RETRIES, ConfigDef.Type.INT, 1, ConfigDef.Importance.HIGH, "max retries")
             .define(MAX_THREAD_COUNT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "max thread count")
             .define(MYSQL_USERNAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "mysql username")
             .define(MYSQL_PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "mysql password")
             .define(MYSQL_URL, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "mysql url")
-            .define(PORT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "mysql port")
-            .define(SCHEMA_MAPPINGS, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "schema mappings");
+            .define(PORT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "mysql port");
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussSinkConnectorConfig.class);
+
+    /**
+     * maxRetires
+     */
+    public final Integer maxRetries;
+
+    /**
+     * maxThreadCount
+     */
+    public final Integer maxThreadCount;
+
+    /**
+     * mysqlUsername
+     */
+    public final String mysqlUsername;
+
+    /**
+     * mysqlPassword
+     */
+    public final String mysqlPassword;
+
+    /**
+     * mysqlUrl
+     */
+    public final String mysqlUrl;
+
+    /**
+     * port
+     */
+    public final Integer port;
+
+    private final Map<String, Object> values;
+
+    public OpengaussSinkConnectorConfig(Map<?, ?> props){
+        super(CONFIG_DEF, props);
+        this.maxRetries = getInt(MAX_RETRIES);
+        this.maxThreadCount = getInt(MAX_THREAD_COUNT);
+
+        this.mysqlUsername = getString(MYSQL_USERNAME);
+        this.mysqlPassword = getString(MYSQL_PASSWORD);
+        this.mysqlUrl = getString(MYSQL_URL);
+        this.port = getInt(PORT);
+
+        this.values = (Map<String, Object>) props;
+        logAll();
+    }
 
     private void logAll() {
         StringBuilder b = new StringBuilder();

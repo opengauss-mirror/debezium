@@ -5,6 +5,7 @@
  */
 package io.debezium.relational;
 
+import java.io.File;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.Collections;
@@ -579,9 +580,98 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
             .withDescription("Specify the constant that will be provided by Debezium to indicate that " +
                     "the original value is unavailable and not provided by the database.");
 
+    /**
+     * commit process while running
+     */
+    public static final Field COMMIT_PROCESS_WHILE_RUNNING = Field.create("commit.process.while.running")
+            .withDisplayName("commit process while running")
+            .withType(Type.BOOLEAN)
+            .withWidth(Width.MEDIUM)
+            .withDefault(false)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("commit process while running");
+
+    /**
+     * source process file path
+     */
+    public static final Field PROCESS_FILE_PATH = Field.create("source.process.file.path")
+            .withDisplayName("source process file path")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDefault(getCurrentPluginPath() + "source" + File.separator)
+            .withDescription("source process file path");
+
+    /**
+     * commit time interval
+     */
+    public static final Field COMMIT_TIME_INTERVAL = Field.create("commit.time.interval")
+            .withDisplayName("commit time interval")
+            .withType(Type.INT)
+            .withImportance(Importance.MEDIUM)
+            .withDefault(1)
+            .withDescription("commit time interval");
+
+    /**
+     * create count info path
+     */
+    public static final Field CREATE_COUNT_INFO_PATH = Field.create("create.count.info.path")
+            .withDisplayName("create count information path")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDefault(getCurrentPluginPath())
+            .withDescription("source create information file path");
+
+    /**
+     * process file count limit
+     */
+    public static final Field PROCESS_FILE_COUNT_LIMIT = Field.create("process.file.count.limit")
+            .withDisplayName("process file count limit")
+            .withType(Type.INT)
+            .withImportance(Importance.MEDIUM)
+            .withDefault(10)
+            .withDescription("process file count limit");
+
+    /**
+     * process file count limit
+     */
+    public static final Field PROCESS_FILE_TIME_LIMIT = Field.create("process.file.time.limit")
+            .withDisplayName("process file time limit")
+            .withType(Type.INT)
+            .withImportance(Importance.MEDIUM)
+            .withDefault(168)
+            .withDescription("process file time limit");
+
+    /**
+     * append write
+     */
+    public static final Field APPEND_WRITE = Field.create("append.write")
+            .withDisplayName("append write")
+            .withType(Type.BOOLEAN)
+            .withImportance(Importance.MEDIUM)
+            .withDefault(false)
+            .withDescription("append write");
+
+    /**
+     * file size limit
+     */
+    public static final Field FILE_SIZE_LIMIT = Field.create("file.size.limit")
+            .withDisplayName("file size limit")
+            .withType(Type.INT)
+            .withImportance(Importance.MEDIUM)
+            .withDefault(10)
+            .withDescription("file size limit");
+
     protected static final ConfigDefinition CONFIG_DEFINITION = CommonConnectorConfig.CONFIG_DEFINITION.edit()
             .type(
-                    SERVER_NAME)
+                    SERVER_NAME,
+                    COMMIT_PROCESS_WHILE_RUNNING,
+                    PROCESS_FILE_PATH,
+                    COMMIT_TIME_INTERVAL,
+                    CREATE_COUNT_INFO_PATH,
+                    PROCESS_FILE_COUNT_LIMIT,
+                    PROCESS_FILE_TIME_LIMIT,
+                    APPEND_WRITE,
+                    FILE_SIZE_LIMIT)
             .connector(
                     DECIMAL_HANDLING_MODE,
                     TIME_PRECISION_MODE,
@@ -723,6 +813,78 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
         return getConfig().getBoolean(SNAPSHOT_FULL_COLUMN_SCAN_FORCE);
     }
 
+    /**
+     * commit process
+     *
+     * @return Boolean the isCommitProcess
+     */
+    public Boolean isCommitProcess() {
+        return getConfig().getBoolean(COMMIT_PROCESS_WHILE_RUNNING);
+    }
+
+    /**
+     * file path
+     *
+     * @return String the file path
+     */
+    public String filePath() {
+        return getConfig().getString(PROCESS_FILE_PATH);
+    }
+
+    /**
+     * commit time interval
+     *
+     * @return Integer the commit time interval
+     */
+    public Integer commitTimeInterval() {
+        return getConfig().getInteger(COMMIT_TIME_INTERVAL);
+    }
+
+    /**
+     * create count information path
+     *
+     * @return String the create count information path
+     */
+    public String createCountInfoPath() {
+        return getConfig().getString(CREATE_COUNT_INFO_PATH);
+    }
+
+    /**
+     * process file count limit
+     *
+     * @return Integer the process file count limit
+     */
+    public Integer processFileCountLimit() {
+        return getConfig().getInteger(PROCESS_FILE_COUNT_LIMIT);
+    }
+
+    /**
+     * process file time limit
+     *
+     * @return Integer the process file time limit
+     */
+    public Integer processFileTimeLimit() {
+        return getConfig().getInteger(PROCESS_FILE_TIME_LIMIT);
+    }
+
+    /**
+     * append write
+     *
+     * @return Boolean the append write
+     */
+    public Boolean appendWrite() {
+        return getConfig().getBoolean(APPEND_WRITE);
+    }
+
+    /**
+     * file size limit
+     *
+     * @return Integer the file size limit
+     */
+    public Integer fileSizeLimit() {
+        return getConfig().getInteger(FILE_SIZE_LIMIT);
+    }
+
     private static int validateColumnBlacklist(Configuration config, Field field, Field.ValidationOutput problems) {
         String blacklist = config.getFallbackStringPropertyWithWarning(COLUMN_INCLUDE_LIST, COLUMN_WHITELIST);
         String whitelist = config.getFallbackStringPropertyWithWarning(COLUMN_EXCLUDE_LIST, COLUMN_BLACKLIST);
@@ -743,6 +905,17 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
             return 1;
         }
         return 0;
+    }
+
+    private static String getCurrentPluginPath() {
+        String path = RelationalDatabaseConnectorConfig.class.getProtectionDomain()
+                .getCodeSource().getLocation().getPath();
+        StringBuilder sb = new StringBuilder();
+        String[] paths = path.split(File.separator);
+        for (int i = 0; i < paths.length - 2; i++) {
+            sb.append(paths[i]).append(File.separator);
+        }
+        return sb.toString();
     }
 
     @Override

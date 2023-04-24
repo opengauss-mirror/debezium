@@ -17,6 +17,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import io.debezium.connector.opengauss.process.OgSourceProcessInfo;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.postgresql.core.BaseConnection;
@@ -49,6 +50,8 @@ import io.debezium.util.Strings;
 public class OpengaussChangeRecordEmitter extends RelationalChangeRecordEmitter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussChangeRecordEmitter.class);
+    private static long convertCount;
+    private static long pollCount;
 
     private final ReplicationMessage message;
     private final OpengaussSchema schema;
@@ -95,6 +98,12 @@ public class OpengaussChangeRecordEmitter extends RelationalChangeRecordEmitter 
     public void emitChangeRecords(DataCollectionSchema schema, Receiver receiver) throws InterruptedException {
         schema = synchronizeTableSchema(schema);
         super.emitChangeRecords(schema, receiver);
+        if (getOperation().name().equals("CREATE") || getOperation().name().equals("UPDATE")
+                || getOperation().name().equals("DELETE")) {
+            pollCount++;
+            OgSourceProcessInfo.SOURCE_PROCESS_INFO.setPollCount(pollCount);
+        }
+
     }
 
     @Override
@@ -112,6 +121,8 @@ public class OpengaussChangeRecordEmitter extends RelationalChangeRecordEmitter 
                 case UPDATE:
                     return columnValues(message.getOldTupleList(), tableId, true, message.hasTypeMetadata(), true, true);
                 default:
+                    convertCount++;
+                    OgSourceProcessInfo.SOURCE_PROCESS_INFO.setConvertCount(convertCount);
                     return columnValues(message.getOldTupleList(), tableId, true, message.hasTypeMetadata(), false, true);
             }
         }
@@ -123,6 +134,8 @@ public class OpengaussChangeRecordEmitter extends RelationalChangeRecordEmitter 
     @Override
     protected Object[] getNewColumnValues() {
         try {
+            convertCount++;
+            OgSourceProcessInfo.SOURCE_PROCESS_INFO.setConvertCount(convertCount);
             switch (getOperation()) {
                 case CREATE:
                     return columnValues(message.getNewTupleList(), tableId, true, message.hasTypeMetadata(), false, false);
