@@ -10,8 +10,12 @@ import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import io.debezium.connector.opengauss.process.OgProcessCommitter;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.source.SourceRecord;
@@ -53,6 +57,9 @@ public class OpengaussConnectorTask extends BaseSourceTask<OpengaussPartition, O
     private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussConnectorTask.class);
     private static final String CONTEXT_NAME = "postgres-connector-task";
 
+    private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(1, 1, 100,
+            TimeUnit.SECONDS, new LinkedBlockingQueue<>(1));
+
     private volatile OpengaussTaskContext taskContext;
     private volatile ChangeEventQueue<DataChangeEvent> queue;
     private volatile OpengaussConnection jdbcConnection;
@@ -66,6 +73,11 @@ public class OpengaussConnectorTask extends BaseSourceTask<OpengaussPartition, O
         final TopicSelector<TableId> topicSelector = OpengaussTopicSelector.create(connectorConfig);
         final Snapshotter snapshotter = connectorConfig.getSnapshotter();
         final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
+
+        if (connectorConfig.isCommitProcess()) {
+            OgProcessCommitter processCommitter = new OgProcessCommitter(connectorConfig);
+            statCommit(processCommitter);
+        }
 
         if (snapshotter == null) {
             throw new ConnectException("Unable to load snapshotter, if using custom snapshot mode, double check your settings");
@@ -308,5 +320,9 @@ public class OpengaussConnectorTask extends BaseSourceTask<OpengaussPartition, O
 
     public OpengaussTaskContext getTaskContext() {
         return taskContext;
+    }
+
+    private void statCommit(OgProcessCommitter processCommitter) {
+        threadPool.execute(processCommitter::commitSourceProcessInfo);
     }
 }

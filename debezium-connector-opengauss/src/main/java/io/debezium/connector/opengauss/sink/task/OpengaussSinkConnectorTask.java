@@ -28,7 +28,6 @@ public class OpengaussSinkConnectorTask extends SinkTask {
     public void start(Map<String, String> props) {
         config = new OpengaussSinkConnectorConfig(props);
         jdbcDbWriter = new JdbcDbWriter(config);
-        remainRetires = config.maxRetries;
         jdbcDbWriter.createWorkThread();
     }
 

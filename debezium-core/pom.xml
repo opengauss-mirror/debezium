@@ -60,6 +60,12 @@
             <scope>provided</scope>
         </dependency>
 
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>fastjson</artifactId>
+            <version>1.2.75</version>
+        </dependency>
+
         <!-- Testing -->
         <dependency>
             <groupId>org.slf4j</groupId>
