@@ -23,14 +23,9 @@ import java.util.TreeMap;
  */
 public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
     /**
-     * Max retries
-     */
-    public static final String MAX_RETRIES = "max_retries";
-
-    /**
      * Max thread count
      */
-    public static final String MAX_THREAD_COUNT = "max_thread_count";
+    public static final String MAX_THREAD_COUNT = "max.thread.count";
 
     /**
      * Mysql username
@@ -56,7 +51,6 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
      * ConfigDef
      */
     public static final ConfigDef CONFIG_DEF = getConfigDef()
-            .define(MAX_RETRIES, ConfigDef.Type.INT, 1, ConfigDef.Importance.HIGH, "max retries")
             .define(MAX_THREAD_COUNT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "max thread count")
             .define(MYSQL_USERNAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "mysql username")
             .define(MYSQL_PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "mysql password")
@@ -64,11 +58,6 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
             .define(PORT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "mysql port");
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussSinkConnectorConfig.class);
-
-    /**
-     * maxRetires
-     */
-    public final Integer maxRetries;
 
     /**
      * maxThreadCount
@@ -99,7 +88,6 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
 
     public OpengaussSinkConnectorConfig(Map<?, ?> props){
         super(CONFIG_DEF, props);
-        this.maxRetries = getInt(MAX_RETRIES);
         this.maxThreadCount = getInt(MAX_THREAD_COUNT);
 
         this.mysqlUsername = getString(MYSQL_USERNAME);

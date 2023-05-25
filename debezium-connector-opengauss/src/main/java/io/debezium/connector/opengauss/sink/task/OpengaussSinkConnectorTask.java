@@ -16,7 +16,6 @@ import java.util.Map;
  */
 public class OpengaussSinkConnectorTask extends SinkTask {
     private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussSinkConnectorTask.class);
-    private int remainRetires = 0;
     private OpengaussSinkConnectorConfig config;
     private JdbcDbWriter jdbcDbWriter;
     @Override

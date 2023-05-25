@@ -20,7 +20,6 @@ import io.debezium.connector.mysql.sink.replay.JdbcDbWriter;
  * @date 2022/10/17
  **/
 public class MysqlSinkConnectorTask extends SinkTask {
-    private int remainRetries = 0;
     private MySqlSinkConnectorConfig config;
     private JdbcDbWriter jdbcDbWriter;
 
@@ -34,7 +33,6 @@ public class MysqlSinkConnectorTask extends SinkTask {
         config = new MySqlSinkConnectorConfig(props);
         jdbcDbWriter = new JdbcDbWriter(config);
         jdbcDbWriter.createWorkThreads();
-        remainRetries = config.maxRetries;
     }
 
     @Override
