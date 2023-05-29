@@ -31,7 +31,6 @@ public class SinkConnectorConfig extends AbstractConfig {
     /**
      * commit process while running
      */
-
     public static final String COMMIT_PROCESS_WHILE_RUNNING = "commit.process.while.running";
 
     /**
