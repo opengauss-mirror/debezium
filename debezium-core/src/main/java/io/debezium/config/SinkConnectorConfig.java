@@ -89,7 +89,7 @@ public class SinkConnectorConfig extends AbstractConfig {
             .define(COMMIT_TIME_INTERVAL, ConfigDef.Type.INT, 1, ConfigDef.Importance.HIGH, "commit time interval")
             .define(CREATE_COUNT_INFO_PATH, ConfigDef.Type.STRING, getCurrentPluginPath(),
                     ConfigDef.Importance.HIGH, "create count information path")
-            .define(PROCESS_FILE_COUNT_LIMIT, ConfigDef.Type.INT, 100,
+            .define(PROCESS_FILE_COUNT_LIMIT, ConfigDef.Type.INT, 10,
                     ConfigDef.Importance.HIGH, "process file count limit")
             .define(PROCESS_FILE_TIME_LIMIT, ConfigDef.Type.INT, 168,
                     ConfigDef.Importance.HIGH, "process file time limit")
