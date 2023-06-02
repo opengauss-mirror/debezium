@@ -444,20 +444,6 @@ public class OpengaussConnection extends JdbcConnection {
                 serverInfo.withServer(rs.getString(1)).withUsername(rs.getString(2)).withDatabase(rs.getString(3));
             }
         });
-        String username = serverInfo.username();
-        if (username != null) {
-            query("SELECT oid, rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication FROM pg_roles " +
-                    "WHERE pg_has_role('" + username + "', oid, 'member')",
-                    rs -> {
-                        while (rs.next()) {
-                            String roleInfo = "superuser: " + rs.getBoolean(3) + ", replication: " + rs.getBoolean(8) +
-                                    ", inherit: " + rs.getBoolean(4) + ", create role: " + rs.getBoolean(5) +
-                                    ", create db: " + rs.getBoolean(6) + ", can log in: " + rs.getBoolean(7);
-                            String roleName = rs.getString(2);
-                            serverInfo.addRole(roleName, roleInfo);
-                        }
-                    });
-        }
         return serverInfo;
     }
 
