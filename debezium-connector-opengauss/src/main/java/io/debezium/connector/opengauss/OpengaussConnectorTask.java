@@ -75,8 +75,7 @@ public class OpengaussConnectorTask extends BaseSourceTask<OpengaussPartition, O
         final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
 
         if (connectorConfig.isCommitProcess()) {
-            OgProcessCommitter processCommitter = new OgProcessCommitter(connectorConfig);
-            statCommit(processCommitter);
+            statCommit(connectorConfig);
         }
 
         if (snapshotter == null) {
@@ -322,7 +321,10 @@ public class OpengaussConnectorTask extends BaseSourceTask<OpengaussPartition, O
         return taskContext;
     }
 
-    private void statCommit(OgProcessCommitter processCommitter) {
-        threadPool.execute(processCommitter::commitSourceProcessInfo);
+    private void statCommit(OpengaussConnectorConfig connectorConfig) {
+        threadPool.execute(() -> {
+            OgProcessCommitter processCommitter = new OgProcessCommitter(connectorConfig);
+            processCommitter.commitSourceProcessInfo();
+        });
     }
 }
