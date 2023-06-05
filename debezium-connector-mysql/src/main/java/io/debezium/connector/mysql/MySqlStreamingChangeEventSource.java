@@ -916,9 +916,7 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
                 effectiveOffsetContext.setCompletedGtidSet(filteredGtidSetStr);
                 gtidSet = new com.github.shyiko.mysql.binlog.GtidSet(filteredGtidSetStr);
                 if (connectorConfig.isCommitProcess()) {
-                    final MysqlProcessCommitter processCommitter = new MysqlProcessCommitter(connectorConfig,
-                            filteredGtidSetStr, connection);
-                    statCommit(processCommitter);
+                    statCommit(filteredGtidSetStr);
                 }
             }
             else {
@@ -1261,8 +1259,12 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
         }
     }
 
-    private void statCommit(MysqlProcessCommitter processCommitter) {
-        threadPool.execute(processCommitter::commitSourceProcessInfo);
+    private void statCommit(String filteredGtidSetStr) {
+        threadPool.execute(() -> {
+            final MysqlProcessCommitter processCommitter = new MysqlProcessCommitter(connectorConfig,
+                    filteredGtidSetStr, connection);
+            processCommitter.commitSourceProcessInfo();
+        });
     }
 
     @FunctionalInterface

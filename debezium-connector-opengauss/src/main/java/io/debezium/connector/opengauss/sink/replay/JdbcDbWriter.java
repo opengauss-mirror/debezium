@@ -103,8 +103,7 @@ public class JdbcDbWriter {
         parseSinkRecordThread();
         statTask();
         if (config.isCommitProcess) {
-            OgProcessCommitter processCommitter = new OgProcessCommitter(config);
-            statCommit(processCommitter);
+            statCommit();
         }
         statReplayTask();
     }
@@ -218,8 +217,11 @@ public class JdbcDbWriter {
         });
     }
 
-    private void statCommit(OgProcessCommitter processCommitter) {
-        threadPool.execute(processCommitter::commitSinkProcessInfo);
+    private void statCommit() {
+        threadPool.execute(() -> {
+            OgProcessCommitter processCommitter = new OgProcessCommitter(config);
+            processCommitter.commitSinkProcessInfo();
+        });
     }
 
     private void statReplayTask() {

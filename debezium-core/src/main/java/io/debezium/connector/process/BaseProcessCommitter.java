@@ -158,7 +158,7 @@ public abstract class BaseProcessCommitter {
      * @param isAppend Boolean the isAppend
      */
     protected void commit(String string, boolean isAppend) {
-        if (isAppend && currentFile != null && currentFile.length() > fileSizeLimit * 1024L * 1024L) {
+        if (isAppend && currentFile.exists() && currentFile.length() > fileSizeLimit * 1024L * 1024L) {
             fileFullPath = initFileFullPath(file + File.separator + filePrefix);
             currentFile = new File(fileFullPath);
         }
@@ -219,6 +219,9 @@ public abstract class BaseProcessCommitter {
      */
     protected void deleteRedundantFiles(String processFilePath, int processFileCountLimit, int processFileTimeLimit) {
         File dir = new File(processFilePath);
+        if (!dir.exists()) {
+            return;
+        }
         File[] files = dir.listFiles();
         File redundantFile;
         while (files.length > processFileCountLimit - 1) {

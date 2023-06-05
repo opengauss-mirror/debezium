@@ -192,8 +192,7 @@ public class JdbcDbWriter {
         transactionDispatcherThread();
         statTask();
         if (config.isCommitProcess) {
-            MysqlProcessCommitter processCommitter = new MysqlProcessCommitter(config);
-            statCommit(processCommitter);
+            statCommit();
         }
     }
 
@@ -492,8 +491,11 @@ public class JdbcDbWriter {
         timer.schedule(task, 1000, 1000);
     }
 
-    private void statCommit(MysqlProcessCommitter processCommitter) {
-        threadPool.execute(processCommitter::commitSinkProcessInfo);
+    private void statCommit() {
+        threadPool.execute(() -> {
+            MysqlProcessCommitter processCommitter = new MysqlProcessCommitter(config);
+            processCommitter.commitSinkProcessInfo();
+        });
     }
 
     private void statExtractCount() {
