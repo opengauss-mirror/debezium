@@ -162,7 +162,7 @@ public abstract class BaseProcessCommitter {
             fileFullPath = initFileFullPath(file + File.separator + filePrefix);
             currentFile = new File(fileFullPath);
         }
-        if (file != null) {
+        if (file.exists()) {
             try(FileWriter fileWriter = new FileWriter(fileFullPath, isAppend)) {
                 fileWriter.write(string + Utils.NL);
             } catch (IOException exp) {

@@ -118,7 +118,7 @@ public class OgProcessCommitter extends BaseProcessCommitter {
         long fileTimeMillis = inputCreateCount(createCountInfoPath + File.separator
                 + CREATE_COUNT_INFO_NAME, true);
         long currentMillis = System.currentTimeMillis();
-        while (fileTimeMillis < currentMillis) {
+        while (fileTimeMillis != -1L && fileTimeMillis < currentMillis) {
             fileTimeMillis = inputCreateCount(createCountInfoPath + File.separator
                     + CREATE_COUNT_INFO_NAME, true);
         }
