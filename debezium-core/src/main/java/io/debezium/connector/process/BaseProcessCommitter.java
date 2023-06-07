@@ -136,7 +136,7 @@ public abstract class BaseProcessCommitter {
                 Files.createDirectories(Paths.get(processFilePath));
             }
         } catch (IOException exp) {
-            LOGGER.warn("IO exception occurred while building file, there will not be process or fail sql file", exp);
+            LOGGER.warn("Failed to create directors, please check file path.", exp);
         }
         return processFile;
     }
@@ -250,13 +250,11 @@ public abstract class BaseProcessCommitter {
      *              the effective create count of reverse migration tool
      */
     protected void outputCreateCountInfo(String filePath, long number) {
-        if (file != null) {
-            try(FileWriter fileWriter = new FileWriter(filePath)) {
-                fileWriter.write(System.currentTimeMillis() + ":" + number + "");
-            } catch (IOException exp) {
-                LOGGER.warn("IO exception occurred while output source create count,"
-                        + " the overallPipe will always be 0", exp);
-            }
+        try (FileWriter fileWriter = new FileWriter(filePath)) {
+            fileWriter.write(System.currentTimeMillis() + ":" + number + "");
+        } catch (IOException exp) {
+            LOGGER.warn("IO exception occurred while output source create count,"
+                    + " the overallPipe will always be 0", exp);
         }
     }
 

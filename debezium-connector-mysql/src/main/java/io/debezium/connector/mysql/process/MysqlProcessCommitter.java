@@ -14,6 +14,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.sql.SQLException;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -35,6 +38,8 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
     private static final String CREATE_COUNT_INFO_NAME = "start-event-index.txt";
     private static final String GTID = "Executed_Gtid_Set";
 
+    private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(1, 1, 100,
+            TimeUnit.SECONDS, new LinkedBlockingQueue<>(1));
     private MysqlSourceProcessInfo sourceProcessInfo;
     private MysqlSinkProcessInfo sinkProcessInfo;
     private MySqlConnection mysqlConnection;
@@ -53,8 +58,7 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
         super(connectorConfig, FORWARD_SOURCE_PROCESS_PREFIX);
         this.mysqlConnection = connection;
         this.startEventIndex = initStartEventIndex(originGtidSet);
-        outputCreateCountInfo(connectorConfig.createCountInfoPath() + File.separator + CREATE_COUNT_INFO_NAME,
-                startEventIndex);
+        executeOutPutThread(connectorConfig.createCountInfoPath() + File.separator);
     }
 
     /**
@@ -178,5 +182,18 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
             }
         }
         return gtids[0];
+    }
+
+    private void executeOutPutThread(String dirPath) {
+        threadPool.execute(() -> {
+            if (!initFile(dirPath).exists()) {
+                LOGGER.warn("Failed to output source create count, the sink overallPipe will always be 0.");
+                threadPool.shutdown();
+                return;
+            }
+            outputCreateCountInfo(dirPath + CREATE_COUNT_INFO_NAME,
+                    startEventIndex);
+            threadPool.shutdown();
+        });
     }
 }
