@@ -41,8 +41,7 @@ public class OgProcessCommitter extends BaseProcessCommitter {
      */
     public OgProcessCommitter(OpengaussConnectorConfig connectorConfig) {
         super(connectorConfig, REVERSE_SOURCE_PROCESS_PREFIX);
-        outputCreateCountThread(connectorConfig.createCountInfoPath() + File.separator
-                + CREATE_COUNT_INFO_NAME);
+        outputCreateCountThread(connectorConfig.createCountInfoPath() + File.separator);
     }
 
     /**
@@ -100,16 +99,19 @@ public class OgProcessCommitter extends BaseProcessCommitter {
 
     private void outputCreateCountThread(String filePath) {
         threadPool.execute(() -> {
+            if (!initFile(filePath).exists()) {
+                LOGGER.warn("Failed to output source create count, the sink overallPipe will always be 0.");
+                threadPool.shutdown();
+                return;
+            }
             while (true) {
                 try {
                     Thread.sleep(1000);
                 } catch (InterruptedException exp) {
                     LOGGER.error("Interrupted exception occurred while thread sleeping", exp);
                 }
-                if (sourceProcessInfo != null) {
-                    outputCreateCountInfo(filePath, sourceProcessInfo.getCreateCount()
-                            - sourceProcessInfo.getSkippedExcludeCount());
-                }
+                outputCreateCountInfo(filePath + CREATE_COUNT_INFO_NAME, sourceProcessInfo.getCreateCount()
+                        - sourceProcessInfo.getSkippedExcludeCount());
             }
         });
     }
