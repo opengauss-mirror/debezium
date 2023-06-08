@@ -689,6 +689,14 @@ connector.class=io.debezium.connector.opengauss.OpengaussConnector
 | append.write | boolean | 进度文件写入方式，true表示追加写入，false表示覆盖写入，默认值为false                           |
 | file.size.limit | int     | 文件大小限制，超过该限制值工具会另启新文件写入，默认为10，单位：兆                                  |
 
+##### 全量数据迁移新增参数
+
+| 参数                           | 类型     | 参数说明                                                                |
+|------------------------------|--------|---------------------------------------------------------------------|
+| export.csv.path            | String | 全量数据采集后写入文件的位置                                                        |
+| export.file.size           | String | 全量数据文件大小划分配置，支持K、M、G大小配置，没有单位默认按照M单位处理，默认值为 2M        |
+| export.csv.path.size           | String | 文件夹大小控制 支持K、M、G大小配置，没有单位时默认按照G单位处理，默认值为null        |
+
 xlog参数详细说明：
 
 - 使用前提
@@ -758,6 +766,12 @@ connector.class=io.debezium.connector.opengauss.sink.OpengaussSinkConnector
 | open.flow.control.threshold | double | 流量控制参数，double类型，默认值为0.8，当存储kafka记录的队列或某一个按表并发线程中预处理数据的队列长度>最大长度max.queue.size*该门限值时，将启用流量控制，暂停从kafka抽取数据                                                                                                                                                                                                                                           |
 | close.flow.control.threshold | double | 流量控制参数，double类型，默认值为0.7，当存储kafka记录的队列和所有按表并发线程中预处理数据的队列长度<最大长度max.queue.size*该门限值时，将关闭流量控制，继续从kafka抽取数据                                                                                                                                                                                                                                            |
 
+##### 全量数据迁移新增参数
+
+| 参数                           | 类型   | 参数说明                                                                                                                                                                                                                                                                                                                                               |
+|------------------------------| ------ |----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| delete.full.csv.file                       | boolean | 控制在全量数据迁移处理完csv文件后是否删除文件，默认值false.                                                                                                                                                                                                                                                                                                                              |
+
 ### 迁移进度上报信息说明
 
 ### source端
@@ -785,6 +799,32 @@ connector.class=io.debezium.connector.opengauss.sink.OpengaussSinkConnector
 | speed           | sink端处理速度（每秒处理的数据量）
 | overallPipe           | 当前时间片处于迁移管道中的数据总数
 
+### 全量数据迁移进度上报
+
+```
+{
+    // 各表进度信息
+    "table": [
+        {
+            "name": "sbtest1",  // 迁移表的名称
+            "percent": 1.0,     // 迁移百分比，1.0代表迁移完成，0.5代表迁移了50%
+            "status": 3         // 迁移状态
+        },
+        {
+            "name": "sbtest2",
+            "percent": 1.0,
+            "status": 3
+        }
+    ],
+    "total": {              // 总体进度
+        "record": 500000,   // 总记录数，迁移全量数据的总行数
+        "data": "184.00",   // 迁移总大小，默认单位 M。
+        "time": 19,         // 迁移时间，默认单位 s。
+        "speed": "10.22"    // 迁移的速率，默认单位 MB/s。
+    }
+}
+```
+
 ## 基于Debezium opengauss connector进行反向迁移
 
 ### 环境依赖
@@ -794,6 +834,10 @@ kafka， zookeeper，confluent community，debezium-connector-opengauss
 ### 原理
 
 debezium opengauss connector的source端，监控openGauss数据库的逻辑日志，并将数据写入到kafka；debezium opengauss connector的sink端，从kafka读取数据，并组装为sql语句，在MySQL端按表并行回放，从而完成数据从openGauss在线迁移至MySQL端。
+
+#### 全量数据迁移原理
+
+debezium opengauss connector的source端，采集表的全量数据，按照数据量划分数据写入文件，将文件路径及其表信息推送到kafka中；debezium opengauss connector的sink端，消费kafka中的消息，读取信息，将文件数据加载进内存进行数据转换，并组装为sql语句，在MySQL端按表并行回放，从而完成数据从openGauss迁移至MySQL端。
 
 ### 前置条件
 
@@ -878,6 +922,10 @@ wal_level=logical
 
   ```
   配置文件位置：/confluent-5.5.1/etc/kafka/opengauss-source.properties
+  反向增量迁移开关
+  snapshot.mode=never
+  全量数据迁移开关
+  snapshot.mode=always
   ```
 
   示例详见[opengauss-source.properties](https://gitee.com/opengauss/debezium/blob/master/debezium-connector-opengauss/patch/opengauss-source.properties)

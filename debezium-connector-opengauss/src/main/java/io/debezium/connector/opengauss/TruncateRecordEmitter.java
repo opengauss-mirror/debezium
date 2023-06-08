@@ -1,0 +1,40 @@
+/*
+ * Copyright Debezium Authors.
+ *
+ * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
+ */
+
+package io.debezium.connector.opengauss;
+
+import io.debezium.connector.opengauss.connection.OpengaussConnection;
+import io.debezium.connector.opengauss.connection.ReplicationMessage;
+import io.debezium.pipeline.spi.OffsetContext;
+import io.debezium.pipeline.spi.Partition;
+import io.debezium.relational.TableId;
+import io.debezium.util.Clock;
+
+/**
+ * Description: Message to clear table data
+ *
+ * @author czy
+ * @date 2023/06/02
+ */
+public class TruncateRecordEmitter extends OpengaussChangeRecordEmitter {
+    /**
+     * Constructor
+     *
+     * @param partition Partition
+     * @param offset OffsetContext
+     * @param clock Clock
+     * @param connectorConfig OpengaussConnectorConfig
+     * @param schema OpengaussSchema
+     * @param connection OpengaussConnection
+     * @param tableId TableId
+     * @param message ReplicationMessage
+     */
+    public TruncateRecordEmitter(Partition partition, OffsetContext offset, Clock clock,
+        OpengaussConnectorConfig connectorConfig, OpengaussSchema schema,
+        OpengaussConnection connection, TableId tableId, ReplicationMessage message) {
+        super(partition, offset, clock, connectorConfig, schema, connection, tableId, message);
+    }
+}

@@ -17,15 +17,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import io.debezium.connector.opengauss.process.OgSourceProcessInfo;
-import org.apache.kafka.connect.data.Struct;
-import org.apache.kafka.connect.errors.ConnectException;
-import org.postgresql.core.BaseConnection;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.debezium.connector.opengauss.connection.OpengaussConnection;
 import io.debezium.connector.opengauss.connection.ReplicationMessage;
+import io.debezium.connector.opengauss.process.OgSourceProcessInfo;
 import io.debezium.data.Envelope.Operation;
 import io.debezium.function.Predicates;
 import io.debezium.pipeline.spi.ChangeRecordEmitter;
@@ -41,6 +35,11 @@ import io.debezium.relational.TableSchema;
 import io.debezium.schema.DataCollectionSchema;
 import io.debezium.util.Clock;
 import io.debezium.util.Strings;
+import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.errors.ConnectException;
+import org.postgresql.core.BaseConnection;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Emits change data based on a logical decoding event coming as protobuf or JSON message.
@@ -108,8 +107,9 @@ public class OpengaussChangeRecordEmitter extends RelationalChangeRecordEmitter 
 
     @Override
     protected void emitTruncateRecord(Receiver receiver, TableSchema tableSchema) throws InterruptedException {
+        Struct key = tableSchema.keySchema() == null ? null : new Struct(tableSchema.keySchema());
         Struct envelope = tableSchema.getEnvelopeSchema().truncate(getOffset().getSourceInfo(), getClock().currentTimeAsInstant());
-        receiver.changeRecord(getPartition(), tableSchema, Operation.TRUNCATE, null, envelope, getOffset(), null);
+        receiver.changeRecord(getPartition(), tableSchema, Operation.TRUNCATE, key, envelope, getOffset(), null);
     }
 
     @Override

@@ -646,6 +646,22 @@ public class OpengaussConnection extends JdbcConnection {
         }
     }
 
+    /**
+     * Create a statement for the database session
+     *
+     * @param connectorConfig opengauss source config
+     * @param connection opengauss Connection
+     * @return Statement
+     * @throws SQLException createStatement exception
+     */
+    public Statement readTableStatementOpengauss(OpengaussConnectorConfig connectorConfig, Connection connection)
+            throws SQLException {
+        int fetchSize = connectorConfig.getSnapshotFetchSize();
+        final Statement statement = connection.createStatement(); // the default cursor is FORWARD_ONLY
+        statement.setFetchSize(fetchSize);
+        return statement;
+    }
+
     @FunctionalInterface
     public interface PostgresValueConverterBuilder {
         OpengaussValueConverter build(TypeRegistry registry);

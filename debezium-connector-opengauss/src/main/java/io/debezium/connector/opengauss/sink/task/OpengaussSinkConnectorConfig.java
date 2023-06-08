@@ -63,9 +63,16 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
     public static final String CLOSE_FLOW_CONTROL_THRESHOLD = "close.flow.control.threshold";
 
     /**
+     * Whether to delete the csv file
+     */
+    public static final String DELETE_FULL_CSV_FILE = "delete.full.csv.file";
+
+    /**
      * ConfigDef
      */
     public static final ConfigDef CONFIG_DEF = getConfigDef()
+            .define(DELETE_FULL_CSV_FILE, ConfigDef.Type.BOOLEAN, false, ConfigDef.Importance.HIGH,
+            "whether to delete the csv file")
             .define(MAX_THREAD_COUNT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "max thread count")
             .define(MYSQL_USERNAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "mysql username")
             .define(MYSQL_PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "mysql password")
@@ -75,7 +82,7 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
             .define(OPEN_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.8, ConfigDef.Importance.HIGH,
                     "open flow control threshold")
             .define(CLOSE_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.7, ConfigDef.Importance.HIGH,
-                    "close flow control threshold");;
+                    "close flow control threshold");
     private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussSinkConnectorConfig.class);
 
     /**
@@ -118,6 +125,11 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
      */
     public final double closeFlowControlThreshold;
 
+    /**
+     * isDelCsv
+     */
+    public final boolean isDelCsv;
+
     private final Map<String, Object> values;
 
     public OpengaussSinkConnectorConfig(Map<?, ?> props){
@@ -132,6 +144,7 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
         this.maxQueueSize = getInt(MAX_QUEUE_SIZE);
         this.openFlowControlThreshold = getDouble(OPEN_FLOW_CONTROL_THRESHOLD);
         this.closeFlowControlThreshold = getDouble(CLOSE_FLOW_CONTROL_THRESHOLD);
+        this.isDelCsv = getBoolean(DELETE_FULL_CSV_FILE);
 
         this.values = (Map<String, Object>) props;
         logAll();

@@ -5,17 +5,23 @@
  */
 package io.debezium.connector.opengauss.process;
 
+import com.alibaba.fastjson.JSON;
 import io.debezium.connector.opengauss.OpengaussConnectorConfig;
 import io.debezium.connector.opengauss.sink.task.OpengaussSinkConnectorConfig;
-
 import io.debezium.connector.process.BaseProcessCommitter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Description: OgProcessCommitter
@@ -24,6 +30,10 @@ import java.util.concurrent.TimeUnit;
  * @since 2023-03-20
  */
 public class OgProcessCommitter extends BaseProcessCommitter {
+    /**
+     *  full progress report file suffix
+     */
+    public static final String REVERSE_FULL_PROCESS_SUFFIX = "full.txt";
     private static final Logger LOGGER = LoggerFactory.getLogger(OgProcessCommitter.class);
     private static final String REVERSE_SOURCE_PROCESS_PREFIX = "reverse-source-process-";
     private static final String REVERSE_SINK_PROCESS_PREFIX = "reverse-sink-process-";
@@ -33,6 +43,7 @@ public class OgProcessCommitter extends BaseProcessCommitter {
             TimeUnit.SECONDS, new LinkedBlockingQueue<>(1));
     private OgSourceProcessInfo sourceProcessInfo;
     private OgSinkProcessInfo sinkProcessInfo;
+    private String sharePath;
 
     /**
      * Constructor
@@ -40,7 +51,12 @@ public class OgProcessCommitter extends BaseProcessCommitter {
      * @param connectorConfig OpengaussConnectorConfig the connectorConfig
      */
     public OgProcessCommitter(OpengaussConnectorConfig connectorConfig) {
-        super(connectorConfig, REVERSE_SOURCE_PROCESS_PREFIX);
+        super(connectorConfig, REVERSE_SINK_PROCESS_PREFIX);
+        this.fileFullPath = initFileFullPath(file + File.separator + REVERSE_SOURCE_PROCESS_PREFIX);
+        this.currentFile = new File(fileFullPath);
+        this.isAppendWrite = connectorConfig.appendWrite();
+        deleteRedundantFiles(connectorConfig.filePath(),
+                connectorConfig.processFileCountLimit(), connectorConfig.processFileTimeLimit());
         outputCreateCountThread(connectorConfig.createCountInfoPath() + File.separator);
     }
 
@@ -51,6 +67,37 @@ public class OgProcessCommitter extends BaseProcessCommitter {
      */
     public OgProcessCommitter(OpengaussSinkConnectorConfig connectorConfig) {
         super(connectorConfig, REVERSE_SINK_PROCESS_PREFIX);
+        this.fileFullPath = initFileFullPath(file + File.separator + REVERSE_SOURCE_PROCESS_PREFIX);
+        this.currentFile = new File(fileFullPath);
+        this.isAppendWrite = connectorConfig.isAppend();
+        this.createCountInfoPath = connectorConfig.getCreateCountInfoPath();
+        deleteRedundantFiles(connectorConfig.getSinkProcessFilePath(),
+                connectorConfig.getProcessFileCountLimit(), connectorConfig.getProcessFileTimeLimit());
+    }
+
+    /**
+     * Constructor
+     *
+     * @param connectorConfig OpengaussConnectorConfig the connectorConfig
+     * @param suffix file suffix
+     */
+    public OgProcessCommitter(OpengaussConnectorConfig connectorConfig, String suffix) {
+        super(connectorConfig, REVERSE_SOURCE_PROCESS_PREFIX);
+        this.fileFullPath = file + File.separator + REVERSE_SOURCE_PROCESS_PREFIX + suffix;
+        this.currentFile = new File(fileFullPath);
+    }
+
+    /**
+     * Constructor
+     *
+     * @param connectorConfig OpengaussSinkConnectorConfig the connectorConfig
+     * @param suffix file suffix
+     */
+    public OgProcessCommitter(OpengaussSinkConnectorConfig connectorConfig, String suffix) {
+        super(connectorConfig, REVERSE_SINK_PROCESS_PREFIX);
+        this.fileFullPath = file + File.separator + REVERSE_SOURCE_PROCESS_PREFIX + suffix;
+        this.currentFile = new File(fileFullPath);
+        this.sharePath = connectorConfig.getCreateCountInfoPath();
     }
 
     /**
@@ -61,6 +108,54 @@ public class OgProcessCommitter extends BaseProcessCommitter {
      */
     public OgProcessCommitter(String failSqlPath, int fileSize) {
         super(failSqlPath, fileSize);
+    }
+
+    /**
+     * Obtain all information about the source end
+     *
+     * @return OgFullSourceProcessInfo
+     */
+    public OgFullSourceProcessInfo getSourceFileJson() {
+        String fileFullPath = getSourceFullFilePath();
+        try (Stream<String> stream = Files.lines(Paths.get(fileFullPath));) {
+            List<String> list = stream.collect(Collectors.toList());
+            if (list.size() == 1) {
+                return JSON.parseObject(list.get(0), OgFullSourceProcessInfo.class);
+            }
+        } catch (IOException e) {
+            LOGGER.error("Progress report get source file failure.", e);
+        }
+        return new OgFullSourceProcessInfo();
+    }
+
+    /**
+     * Whether the file contains information
+     *
+     * @return boolean
+     */
+    public boolean hasMessage() {
+        String fileFullPath = getSourceFullFilePath();
+        File file = new File(fileFullPath);
+        if (file.exists()) {
+            return false;
+        }
+        return file.length() > 0;
+    }
+
+    /**
+     * commit source Table process information
+     */
+    public void commitSourceTableProcessInfo(OgFullSourceProcessInfo ogFullSourceProcessInfo) {
+        String json = JSON.toJSONString(ogFullSourceProcessInfo);
+        commit(json, false);
+    }
+
+    /**
+     * commit sink Table process information
+     */
+    public void commitSinkTableProcessInfo(OgFullSinkProcessInfo ogFullSinkProcessInfo) {
+        String json = JSON.toJSONString(ogFullSinkProcessInfo);
+        commit(json, false);
     }
 
     /**
@@ -100,6 +195,11 @@ public class OgProcessCommitter extends BaseProcessCommitter {
         return sinkProcessInfo;
     }
 
+    private String getSourceFullFilePath() {
+        File file = new File(sharePath);
+        return file + File.separator + REVERSE_SOURCE_PROCESS_PREFIX + REVERSE_FULL_PROCESS_SUFFIX + ".txt";
+    }
+
     private void outputCreateCountThread(String filePath) {
         threadPool.execute(() -> {
             if (!initFile(filePath).exists()) {
@@ -117,6 +217,16 @@ public class OgProcessCommitter extends BaseProcessCommitter {
                         - sourceProcessInfo.getSkippedExcludeCount());
             }
         });
+    }
+
+    private void waitSuitableTime() {
+        long fileTimeMillis = inputCreateCount(createCountInfoPath + File.separator
+                + CREATE_COUNT_INFO_NAME);
+        long currentMillis = System.currentTimeMillis();
+        while (fileTimeMillis != -1L && fileTimeMillis < currentMillis) {
+            fileTimeMillis = inputCreateCount(createCountInfoPath + File.separator
+                    + CREATE_COUNT_INFO_NAME);
+        }
     }
 
     private long waitTimeInterval(boolean isSource) {

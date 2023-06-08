@@ -14,15 +14,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Description: SqlTools class
@@ -161,6 +161,44 @@ public class SqlTools {
         sb.append("delete from ").append(tableMetaData.getSchemaName()).append(".")
                 .append(tableMetaData.getTableName()).append(" where ");
         return sb + getWhereCondition(tableMetaData, before, columnMetaDataList);
+    }
+
+    /**
+     * Full data type conversion
+     *
+     * @param tableMetaData TableMetaData the table meta data
+     * @param data old data
+     * @param columnString string
+     * @return new data
+     */
+    public List<String> conversionFullData(TableMetaData tableMetaData, List<String> data, String columnString,
+        Struct after) {
+        List<ColumnMetaData> columnList = tableMetaData.getColumnList();
+        List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
+        String[] columns = columnString.split(",");
+        for (String column : columns) {
+            for (ColumnMetaData columnMetaData : columnList) {
+                if (columnMetaData.getColumnName().equals(column)) {
+                    columnMetaDataList.add(columnMetaData);
+                }
+            }
+        }
+        List<String> result = new ArrayList<>();
+        for (String datum : data) {
+            StringBuilder sb = new StringBuilder();
+            String[] colDatas = datum.split(",");
+            for (int i = 0; i < colDatas.length; i++) {
+                String colData = colDatas[i];
+                ColumnMetaData columnMetaData = columnMetaDataList.get(i);
+                String value = FullDataConverters.getValue(columnMetaData, colData, after);
+                sb.append(value);
+                if (i != colDatas.length - 1) {
+                    sb.append(",");
+                }
+            }
+            result.add(sb.toString());
+        }
+        return result;
     }
 
     private String getWhereCondition(TableMetaData tableMetaData, Struct before, List<ColumnMetaData> columnMetaDataList) {

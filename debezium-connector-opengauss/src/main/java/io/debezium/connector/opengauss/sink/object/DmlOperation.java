@@ -28,9 +28,15 @@ public class DmlOperation {
      */
     public static final String OPERATION = "op";
 
+    /**
+     * CSV
+     */
+    public static final String CSV = "csv";
+
     private Struct before;
     private Struct after;
     private String operation;
+    private String csv;
 
     /**
      * Constructor
@@ -41,6 +47,33 @@ public class DmlOperation {
         this.operation = value.getString(DmlOperation.OPERATION);
         this.before = value.getStruct(DmlOperation.BEFORE);
         this.after = value.getStruct(DmlOperation.AFTER);
+        this.csv = value.getString(DmlOperation.CSV);
+    }
+
+    /**
+     * Gets path
+     *
+     * @return String the path
+     */
+    public String getPath() {
+        if (csv != null) {
+            String[] split = csv.split("\\|");
+            return split[0];
+        }
+        return "";
+    }
+
+    /**
+     * Gets ColumnString
+     *
+     * @return String the ColumnString
+     */
+    public String getColumnString() {
+        if (csv != null) {
+            String[] split = csv.split("\\|");
+            return split[1];
+        }
+        return "";
     }
 
     /**

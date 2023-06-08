@@ -5,18 +5,17 @@
  */
 package io.debezium.data;
 
-import java.time.Instant;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
-
+import io.debezium.pipeline.txmetadata.TransactionMonitor;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 
-import io.debezium.pipeline.txmetadata.TransactionMonitor;
+import java.time.Instant;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * An immutable descriptor for the structure of Debezium message envelopes. An {@link Envelope} can be created for each message
@@ -35,6 +34,10 @@ public final class Envelope {
          * The operation that read the current state of a record, most typically during snapshots.
          */
         READ("r"),
+        /**
+         * Full migration records table information and the address where the data is stored。
+         */
+        PATH("p"),
         /**
          * An operation that resulted in a new record being created in the source.
          */
@@ -105,6 +108,10 @@ public final class Envelope {
          * The optional metadata information associated with transaction - like transaction id.
          */
         public static final String TRANSACTION = "transaction";
+        /**
+         * This type passes the location where the csv file is stored.
+         */
+        public static final String CSV = "csv";
         /**
          * The {@code ts_ms} field is used to store the information about the local time at which the connector
          * processed/generated the event. The timestamp values are the number of milliseconds past epoch (January 1, 1970), and
@@ -227,9 +234,11 @@ public final class Envelope {
             @Override
             public Envelope build() {
                 builder.field(FieldName.OPERATION, OPERATION_REQUIRED ? Schema.STRING_SCHEMA : Schema.OPTIONAL_STRING_SCHEMA);
+                builder.field(FieldName.CSV, Schema.OPTIONAL_STRING_SCHEMA);
                 builder.field(FieldName.TIMESTAMP, Schema.OPTIONAL_INT64_SCHEMA);
                 builder.field(FieldName.TRANSACTION, TransactionMonitor.TRANSACTION_BLOCK_SCHEMA);
                 checkFieldIsDefined(FieldName.OPERATION);
+                checkFieldIsDefined(FieldName.CSV);
                 checkFieldIsDefined(FieldName.BEFORE);
                 checkFieldIsDefined(FieldName.AFTER);
                 checkFieldIsDefined(FieldName.SOURCE);
@@ -279,6 +288,29 @@ public final class Envelope {
         Struct struct = new Struct(schema);
         struct.put(FieldName.OPERATION, Operation.READ.code());
         struct.put(FieldName.AFTER, record);
+        if (source != null) {
+            struct.put(FieldName.SOURCE, source);
+        }
+        if (timestamp != null) {
+            struct.put(FieldName.TIMESTAMP, timestamp.toEpochMilli());
+        }
+        return struct;
+    }
+
+    /**
+     * Generate a {@link Operation#PATH path} message with the given information.
+     *
+     * @param record the state of the record as path; may not be null
+     * @param after Source end data object; may not be null
+     * @param source the information about the source that was path; may be null
+     * @param timestamp the timestamp for this message; may be null
+     * @return the read message; never null
+     */
+    public Struct path(Object record, Object after, Struct source, Instant timestamp) {
+        Struct struct = new Struct(schema);
+        struct.put(FieldName.OPERATION, Operation.PATH.code());
+        struct.put(FieldName.AFTER, after);
+        struct.put(FieldName.CSV, record);
         if (source != null) {
             struct.put(FieldName.SOURCE, source);
         }

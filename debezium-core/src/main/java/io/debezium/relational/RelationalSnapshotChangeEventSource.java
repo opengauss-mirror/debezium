@@ -5,25 +5,6 @@
  */
 package io.debezium.relational;
 
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.OptionalLong;
-import java.util.Set;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-
-import org.apache.kafka.connect.errors.ConnectException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.debezium.DebeziumException;
 import io.debezium.jdbc.JdbcConnection;
 import io.debezium.pipeline.EventDispatcher;
@@ -42,6 +23,24 @@ import io.debezium.util.ColumnUtils;
 import io.debezium.util.Strings;
 import io.debezium.util.Threads;
 import io.debezium.util.Threads.Timer;
+import org.apache.kafka.connect.errors.ConnectException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.OptionalLong;
+import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Base class for {@link SnapshotChangeEventSource} for relational databases with or without a schema history.
@@ -74,6 +73,15 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
         this.dispatcher = dispatcher;
         this.clock = clock;
         this.snapshotProgressListener = snapshotProgressListener;
+    }
+
+    /**
+     * Get snapshotProgressListener
+     *
+     * @return SnapshotProgressListener
+     */
+    public SnapshotProgressListener getSnapshotProgressListener() {
+        return snapshotProgressListener;
     }
 
     @Override
@@ -287,7 +295,7 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
                                                              Table table)
             throws Exception;
 
-    private void createDataEvents(ChangeEventSourceContext sourceContext,
+    protected void createDataEvents(ChangeEventSourceContext sourceContext,
                                   RelationalSnapshotContext<P, O> snapshotContext)
             throws Exception {
         SnapshotReceiver snapshotReceiver = dispatcher.getSnapshotChangeEventReceiver();
@@ -404,7 +412,7 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
         return OptionalLong.empty();
     }
 
-    private Timer getTableScanLogTimer() {
+    protected Timer getTableScanLogTimer() {
         return Threads.timer(clock, LOG_INTERVAL);
     }
 
@@ -424,7 +432,7 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
      * @param tableId the table to generate a query for
      * @return a valid query string or empty if table will not be snapshotted
      */
-    private Optional<String> determineSnapshotSelect(RelationalSnapshotContext<P, O> snapshotContext, TableId tableId) {
+    public Optional<String> determineSnapshotSelect(RelationalSnapshotContext<P, O> snapshotContext, TableId tableId) {
         String overriddenSelect = connectorConfig.getSnapshotSelectOverridesByTable().get(tableId);
 
         // try without catalog id, as this might or might not be populated based on the given connector

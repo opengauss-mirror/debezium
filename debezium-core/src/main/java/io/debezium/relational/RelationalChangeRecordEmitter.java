@@ -5,10 +5,6 @@
  */
 package io.debezium.relational;
 
-import org.apache.kafka.connect.data.Struct;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.debezium.data.Envelope.Operation;
 import io.debezium.pipeline.AbstractChangeRecordEmitter;
 import io.debezium.pipeline.spi.ChangeRecordEmitter;
@@ -16,6 +12,11 @@ import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Partition;
 import io.debezium.schema.DataCollectionSchema;
 import io.debezium.util.Clock;
+import org.apache.kafka.connect.data.Struct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Arrays;
 
 /**
  * Base class for {@link ChangeRecordEmitter} implementations based on a relational database.
@@ -39,6 +40,9 @@ public abstract class RelationalChangeRecordEmitter extends AbstractChangeRecord
         Operation operation = getOperation();
 
         switch (operation) {
+            case PATH:
+                emitPathRecord(receiver, tableSchema);
+                break;
             case CREATE:
                 emitCreateRecord(receiver, tableSchema);
                 break;
@@ -57,6 +61,20 @@ public abstract class RelationalChangeRecordEmitter extends AbstractChangeRecord
             default:
                 throw new IllegalArgumentException("Unsupported operation: " + operation);
         }
+    }
+
+    private void emitPathRecord(Receiver receiver, TableSchema tableSchema)
+            throws InterruptedException {
+        Object[] values = getNewColumnValues();
+        Struct key = tableSchema.keySchema() == null ? null : new Struct(tableSchema.keySchema());
+        String[] value = (String[]) Arrays.asList(values).toArray(new String[0]);
+        String data = String.join("|", value);
+        Object value1 = values[1];
+        int length = value1.toString().split(",").length;
+        Struct after = tableSchema.valueFromColumnData(new Object[length]);
+        Struct envelope = tableSchema.getEnvelopeSchema().path(data, after, getOffset().getSourceInfo(),
+                getClock().currentTimeAsInstant());
+        receiver.changeRecord(getPartition(), tableSchema, Operation.PATH, key, envelope, getOffset(), null);
     }
 
     @Override

@@ -13,9 +13,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.FileWriter;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -48,14 +48,22 @@ public abstract class BaseProcessCommitter {
     protected String createCountInfoPath;
 
     /**
+     * fileFullPath
+     */
+    protected String fileFullPath;
+
+    /**
+     * currentFile
+     */
+    protected File currentFile;
+
+    /**
      * file
      */
     protected final File file;
     private final String processFilePath;
     private final String filePrefix;
     private final int fileSizeLimit;
-    private String fileFullPath;
-    private File currentFile;
     private final DateTimeFormatter ofPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH:mm:ss");
 
     /**
@@ -68,13 +76,8 @@ public abstract class BaseProcessCommitter {
         this.processFilePath = sourceConnectorConfig.filePath();
         this.file = initFile(processFilePath);
         this.filePrefix = prefix;
-        this.fileFullPath = initFileFullPath(file + File.separator + filePrefix);
-        this.currentFile = new File(fileFullPath);
         this.commitTimeInterval = sourceConnectorConfig.commitTimeInterval();
-        this.isAppendWrite = sourceConnectorConfig.appendWrite();
         this.fileSizeLimit = sourceConnectorConfig.fileSizeLimit();
-        deleteRedundantFiles(sourceConnectorConfig.filePath(),
-                sourceConnectorConfig.processFileCountLimit(), sourceConnectorConfig.processFileTimeLimit());
     }
 
     /**
@@ -87,14 +90,8 @@ public abstract class BaseProcessCommitter {
         this.processFilePath = sinkConnectorConfig.getSinkProcessFilePath();
         this.file = initFile(processFilePath);
         this.filePrefix = prefix;
-        this.fileFullPath = initFileFullPath(file + File.separator + filePrefix);
-        this.currentFile = new File(fileFullPath);
-        this.createCountInfoPath = sinkConnectorConfig.getCreateCountInfoPath();
-        this.isAppendWrite = sinkConnectorConfig.isAppend();
-        this.fileSizeLimit = sinkConnectorConfig.getFileSizeLimit();
         this.commitTimeInterval = sinkConnectorConfig.getCommitTimeInterval();
-        deleteRedundantFiles(sinkConnectorConfig.getSinkProcessFilePath(),
-                sinkConnectorConfig.getProcessFileCountLimit(), sinkConnectorConfig.getProcessFileTimeLimit());
+        this.fileSizeLimit = sinkConnectorConfig.getFileSizeLimit();
     }
 
     /**
@@ -110,6 +107,15 @@ public abstract class BaseProcessCommitter {
         this.fileFullPath = initFileFullPath(file + File.separator + filePrefix);
         this.currentFile = new File(fileFullPath);
         this.fileSizeLimit = fileSize;
+    }
+
+    /**
+     * Get
+     *
+     * @return file
+     */
+    public File getFile() {
+        return file;
     }
 
     /**

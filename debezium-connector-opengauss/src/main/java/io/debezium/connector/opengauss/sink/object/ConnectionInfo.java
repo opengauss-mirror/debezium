@@ -21,10 +21,9 @@ public class ConnectionInfo {
     public static final String MYSQL_JDBC_DRIVER = "com.mysql.cj.jdbc.Driver";
 
     private Integer port;
-    private String username;
-    private String password;
-    private String url;
-    private String dbUrl;
+    private final String username;
+    private final String password;
+    private final String url;
 
     /**
      * Constructor
@@ -65,13 +64,13 @@ public class ConnectionInfo {
      * @return Connection the connection
      */
     public Connection createMysqlConnection(){
-        dbUrl = "jdbc:mysql://" + url + ":" + port + "/mysql?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC";
-        String driver = MYSQL_JDBC_DRIVER;
+        String dbUrl = "jdbc:mysql://" + url + ":" + port + "/mysql?useSSL=false&allowPublicKeyRetrieval=true&"
+                + "rewriteBatchedStatements=true&allowLoadLocalInfile=true&serverTimezone=UTC";
         Connection connection = null;
-        try{
-            Class.forName(driver);
-            connection = DriverManager.getConnection(dbUrl, username,password);
-        } catch (ClassNotFoundException | SQLException exp){
+        try {
+            Class.forName(MYSQL_JDBC_DRIVER);
+            connection = DriverManager.getConnection(dbUrl, username, password);
+        } catch (ClassNotFoundException | SQLException exp) {
             exp.printStackTrace();
         }
         return connection;
