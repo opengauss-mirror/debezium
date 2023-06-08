@@ -75,6 +75,7 @@ public class OpengaussConnectorTask extends BaseSourceTask<OpengaussPartition, O
         final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
 
         if (connectorConfig.isCommitProcess()) {
+            connectorConfig.rectifyParameter();
             statCommit(connectorConfig);
         }
 

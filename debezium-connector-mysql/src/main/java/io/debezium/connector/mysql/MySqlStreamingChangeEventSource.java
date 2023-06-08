@@ -916,6 +916,7 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
                 effectiveOffsetContext.setCompletedGtidSet(filteredGtidSetStr);
                 gtidSet = new com.github.shyiko.mysql.binlog.GtidSet(filteredGtidSetStr);
                 if (connectorConfig.isCommitProcess()) {
+                    connectorConfig.rectifyParameter();
                     statCommit(filteredGtidSetStr);
                 }
             }

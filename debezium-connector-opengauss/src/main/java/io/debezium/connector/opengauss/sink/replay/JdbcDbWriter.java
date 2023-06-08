@@ -71,7 +71,7 @@ public class JdbcDbWriter {
             WorkThread workThread = new WorkThread(schemaMappingMap, mysqlConnection, sqlTools, i);
             threadList.add(workThread);
         }
-        this.failSqlCommitter = new OgProcessCommitter(config.failSqlPath, config.fileSizeLimit);
+        this.failSqlCommitter = new OgProcessCommitter(config.getFailSqlPath(), config.getFileSizeLimit());
     }
 
     private void initSchemaMappingMap(String schemaMappings) {
@@ -102,7 +102,7 @@ public class JdbcDbWriter {
     public void createWorkThread() {
         parseSinkRecordThread();
         statTask();
-        if (config.isCommitProcess) {
+        if (config.isCommitProcess()) {
             statCommit();
         }
         statReplayTask();
@@ -251,7 +251,6 @@ public class JdbcDbWriter {
 
     private void commitFailSql(List<String> failSqlList) {
         for (String sql : failSqlList) {
-            sql = LocalDateTime.now() + ": " + sql;
             failSqlCommitter.commitFailSql(sql);
         }
     }

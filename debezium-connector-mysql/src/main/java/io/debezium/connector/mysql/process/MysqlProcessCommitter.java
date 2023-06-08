@@ -131,7 +131,8 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
         }
         this.uuid = uuidSet.get();
         String validGtid = getValidGtid(originGtidSet.split(","));
-        return Long.parseLong(validGtid.split("-")[validGtid.split("-").length - 1]);
+        String tid = validGtid.split(":")[validGtid.split(":").length - 1];
+        return Long.parseLong(tid.split("-")[tid.split("-").length - 1]);
     }
 
     private String getCurrentGtid() throws SQLException {
@@ -152,7 +153,8 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
             return -1L;
         }
         if (!"".equals(gtid)) {
-            return Long.parseLong(gtid.split("-")[gtid.split("-").length - 1]);
+            String tid = gtid.split(":")[gtid.split(":").length - 1];
+            return Long.parseLong(tid.split("-")[tid.split("-").length - 1]);
         }
         return -1L;
     }

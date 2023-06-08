@@ -35,6 +35,8 @@ import io.debezium.relational.Selectors.TableIdToStringMapper;
 import io.debezium.relational.Tables.ColumnNameFilter;
 import io.debezium.relational.Tables.ColumnNameFilterFactory;
 import io.debezium.relational.Tables.TableFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Configuration options shared across the relational CDC connectors.
@@ -42,7 +44,7 @@ import io.debezium.relational.Tables.TableFilter;
  * @author Gunnar Morling
  */
 public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorConfig {
-
+    private static final Logger LOGGER = LoggerFactory.getLogger(RelationalDatabaseConnectorConfig.class);
     protected static final String SCHEMA_INCLUDE_LIST_NAME = "schema.include.list";
     protected static final String SCHEMA_EXCLUDE_LIST_NAME = "schema.exclude.list";
     protected static final String DATABASE_WHITELIST_NAME = "database.whitelist";
@@ -585,9 +587,9 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      */
     public static final Field COMMIT_PROCESS_WHILE_RUNNING = Field.create("commit.process.while.running")
             .withDisplayName("commit process while running")
-            .withType(Type.BOOLEAN)
+            .withType(Type.STRING)
             .withWidth(Width.MEDIUM)
-            .withDefault(false)
+            .withDefault("false")
             .withImportance(Importance.MEDIUM)
             .withDescription("commit process while running");
 
@@ -606,9 +608,9 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      */
     public static final Field COMMIT_TIME_INTERVAL = Field.create("commit.time.interval")
             .withDisplayName("commit time interval")
-            .withType(Type.INT)
+            .withType(Type.STRING)
             .withImportance(Importance.MEDIUM)
-            .withDefault(1)
+            .withDefault("1")
             .withDescription("commit time interval");
 
     /**
@@ -626,9 +628,9 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      */
     public static final Field PROCESS_FILE_COUNT_LIMIT = Field.create("process.file.count.limit")
             .withDisplayName("process file count limit")
-            .withType(Type.INT)
+            .withType(Type.STRING)
             .withImportance(Importance.MEDIUM)
-            .withDefault(10)
+            .withDefault("10")
             .withDescription("process file count limit");
 
     /**
@@ -636,9 +638,9 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      */
     public static final Field PROCESS_FILE_TIME_LIMIT = Field.create("process.file.time.limit")
             .withDisplayName("process file time limit")
-            .withType(Type.INT)
+            .withType(Type.STRING)
             .withImportance(Importance.MEDIUM)
-            .withDefault(168)
+            .withDefault("168")
             .withDescription("process file time limit");
 
     /**
@@ -646,9 +648,9 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      */
     public static final Field APPEND_WRITE = Field.create("append.write")
             .withDisplayName("append write")
-            .withType(Type.BOOLEAN)
+            .withType(Type.STRING)
             .withImportance(Importance.MEDIUM)
-            .withDefault(false)
+            .withDefault("false")
             .withDescription("append write");
 
     /**
@@ -656,9 +658,9 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      */
     public static final Field FILE_SIZE_LIMIT = Field.create("file.size.limit")
             .withDisplayName("file size limit")
-            .withType(Type.INT)
+            .withType(Type.STRING)
             .withImportance(Importance.MEDIUM)
-            .withDefault(10)
+            .withDefault("10")
             .withDescription("file size limit");
 
     protected static final ConfigDefinition CONFIG_DEFINITION = CommonConnectorConfig.CONFIG_DEFINITION.edit()
@@ -710,6 +712,13 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
     private final TableIdToStringMapper tableIdMapper;
     private final Configuration jdbcConfig;
     private final String heartbeatActionQuery;
+    private String processFilePath = getCurrentPluginPath() + "source" + File.separator;
+    private String countInfoPath = getCurrentPluginPath();
+    private boolean isAppend = false;
+    private int timeInterval = 1;
+    private int countLimit = 10;
+    private int timeLimit = 168;
+    private int sizeLimit = 10;
 
     protected RelationalDatabaseConnectorConfig(Configuration config, String logicalName, TableFilter systemTablesFilter,
                                                 TableIdToStringMapper tableIdMapper, int defaultSnapshotFetchSize,
@@ -819,6 +828,10 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      * @return Boolean the isCommitProcess
      */
     public Boolean isCommitProcess() {
+        if (!isBooleanValid("commit.process.while.running",
+                getConfig().getString(COMMIT_PROCESS_WHILE_RUNNING))) {
+            return false;
+        }
         return getConfig().getBoolean(COMMIT_PROCESS_WHILE_RUNNING);
     }
 
@@ -828,7 +841,7 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      * @return String the file path
      */
     public String filePath() {
-        return getConfig().getString(PROCESS_FILE_PATH);
+        return processFilePath;
     }
 
     /**
@@ -837,7 +850,7 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      * @return Integer the commit time interval
      */
     public Integer commitTimeInterval() {
-        return getConfig().getInteger(COMMIT_TIME_INTERVAL);
+        return timeInterval;
     }
 
     /**
@@ -846,7 +859,7 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      * @return String the create count information path
      */
     public String createCountInfoPath() {
-        return getConfig().getString(CREATE_COUNT_INFO_PATH);
+        return countInfoPath;
     }
 
     /**
@@ -855,7 +868,7 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      * @return Integer the process file count limit
      */
     public Integer processFileCountLimit() {
-        return getConfig().getInteger(PROCESS_FILE_COUNT_LIMIT);
+        return countLimit;
     }
 
     /**
@@ -864,7 +877,7 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      * @return Integer the process file time limit
      */
     public Integer processFileTimeLimit() {
-        return getConfig().getInteger(PROCESS_FILE_TIME_LIMIT);
+        return timeLimit;
     }
 
     /**
@@ -873,7 +886,7 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      * @return Boolean the append write
      */
     public Boolean appendWrite() {
-        return getConfig().getBoolean(APPEND_WRITE);
+        return isAppend;
     }
 
     /**
@@ -882,7 +895,72 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      * @return Integer the file size limit
      */
     public Integer fileSizeLimit() {
-        return getConfig().getInteger(FILE_SIZE_LIMIT);
+        return sizeLimit;
+    }
+
+    /**
+     * rectify parameter
+     */
+    public void rectifyParameter() {
+        if (isBooleanValid("append.write", getConfig().getString(APPEND_WRITE))) {
+            isAppend = getConfig().getBoolean(APPEND_WRITE);
+        }
+        if (isFilePathValid("source.process.file.path", getConfig().getString(PROCESS_FILE_PATH),
+                processFilePath)) {
+            processFilePath = getConfig().getString(PROCESS_FILE_PATH);
+        }
+        if (isFilePathValid("create.count.info.path", getConfig().getString(CREATE_COUNT_INFO_PATH),
+                countInfoPath)) {
+            countInfoPath = getConfig().getString(CREATE_COUNT_INFO_PATH);
+        }
+        if (isNumberValid("commit.time.interval", getConfig().getString(COMMIT_TIME_INTERVAL),
+                timeInterval)) {
+            timeInterval = getConfig().getInteger(COMMIT_TIME_INTERVAL);
+        }
+        if (isNumberValid("process.file.time.limit", getConfig().getString(PROCESS_FILE_TIME_LIMIT),
+                timeLimit)) {
+            timeLimit = getConfig().getInteger(PROCESS_FILE_TIME_LIMIT);
+        }
+        if (isNumberValid("process.file.count.limit", getConfig().getString(PROCESS_FILE_COUNT_LIMIT),
+                countLimit)) {
+            countLimit = getConfig().getInteger(PROCESS_FILE_COUNT_LIMIT);
+        }
+        if (isNumberValid("file.size.limit", getConfig().getString(FILE_SIZE_LIMIT), sizeLimit)) {
+            sizeLimit = getConfig().getInteger(FILE_SIZE_LIMIT);
+        }
+    }
+
+    private boolean isFilePathValid(String parameterName, String value, String defaultValue) {
+        if ("".equals(value) || value.charAt(0) != File.separatorChar) {
+            LOGGER.warn("The parameter " + parameterName + " is invalid, it must be absolute path,"
+                    + " will adopt it's default value: " + defaultValue);
+            return false;
+        }
+        return true;
+    }
+
+    private Boolean isNumberValid(String parameterName, String value, int defaultValue) {
+        try {
+            if (Integer.parseInt(value) < 1) {
+                LOGGER.warn("The parameter " + parameterName + " is invalid, it must be greater than or equal to 1,"
+                        + " will adopt it's default value: " + defaultValue);
+                return false;
+            }
+        } catch (NumberFormatException e) {
+            LOGGER.warn("The parameter " + parameterName + " is invalid, it must be integer,"
+                    + " will adopt it's default value: " + defaultValue);
+            return false;
+        }
+        return true;
+    }
+
+    private Boolean isBooleanValid(String parameterName, String value) {
+        if (!value.equals("false") && !value.equals("true")) {
+            LOGGER.warn("The parameter " + parameterName + " is invalid, it must be true or false,"
+                    + " will adopt it's default value: false.");
+            return false;
+        }
+        return true;
     }
 
     private static int validateColumnBlacklist(Configuration config, Field field, Field.ValidationOutput problems) {
