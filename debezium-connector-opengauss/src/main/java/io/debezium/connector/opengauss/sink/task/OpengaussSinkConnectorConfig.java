@@ -56,7 +56,6 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
             .define(MYSQL_PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "mysql password")
             .define(MYSQL_URL, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "mysql url")
             .define(PORT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "mysql port");
-
     private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussSinkConnectorConfig.class);
 
     /**
@@ -107,11 +106,11 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
         Iterator set = (new TreeMap(this.values)).entrySet().iterator();
 
         while(set.hasNext()) {
-            Map.Entry<String, Object> entry = (Map.Entry)set.next();
+            Map.Entry<String, Object> entry = (Map.Entry) set.next();
             b.append('\t');
             b.append(entry.getKey());
             b.append(" = ");
-            if (MYSQL_PASSWORD.equals(entry.getKey())){
+            if (MYSQL_PASSWORD.equals(entry.getKey())) {
                 b.append("*******");
             } else {
                 b.append(entry.getValue());

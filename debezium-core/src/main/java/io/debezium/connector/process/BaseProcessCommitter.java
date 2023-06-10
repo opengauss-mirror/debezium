@@ -58,6 +58,7 @@ public abstract class BaseProcessCommitter {
     private String fileFullPath;
     private File currentFile;
     private final DateTimeFormatter ofPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH:mm:ss");
+    private final DateTimeFormatter sqlPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH:mm:ss.SSS");
 
     /**
      * Constructor
@@ -74,8 +75,8 @@ public abstract class BaseProcessCommitter {
         this.commitTimeInterval = sourceConnectorConfig.commitTimeInterval();
         this.isAppendWrite = sourceConnectorConfig.appendWrite();
         this.fileSizeLimit = sourceConnectorConfig.fileSizeLimit();
-        deleteRedundantFiles(sourceConnectorConfig.filePath(), sourceConnectorConfig.processFileCountLimit(),
-                sourceConnectorConfig.processFileTimeLimit());
+        deleteRedundantFiles(sourceConnectorConfig.filePath(),
+                sourceConnectorConfig.processFileCountLimit(), sourceConnectorConfig.processFileTimeLimit());
     }
 
     /**
@@ -85,17 +86,17 @@ public abstract class BaseProcessCommitter {
      * @param prefix String the prefix
      */
     public BaseProcessCommitter(SinkConnectorConfig sinkConnectorConfig, String prefix) {
-        this.processFilePath = sinkConnectorConfig.sinkProcessFilePath;
+        this.processFilePath = sinkConnectorConfig.getSinkProcessFilePath();
         this.file = initFile(processFilePath);
         this.filePrefix = prefix;
         this.fileFullPath = initFileFullPath(file + File.separator + filePrefix);
         this.currentFile = new File(fileFullPath);
-        this.createCountInfoPath = sinkConnectorConfig.createCountInfoPath;
-        this.isAppendWrite = sinkConnectorConfig.isAppendWrite;
-        this.fileSizeLimit = sinkConnectorConfig.fileSizeLimit;
-        this.commitTimeInterval = sinkConnectorConfig.commitTimeInterval;
-        deleteRedundantFiles(sinkConnectorConfig.sinkProcessFilePath, sinkConnectorConfig.processFileCountLimit,
-                sinkConnectorConfig.processFileTimeLimit);
+        this.createCountInfoPath = sinkConnectorConfig.getCreateCountInfoPath();
+        this.isAppendWrite = sinkConnectorConfig.isAppend();
+        this.fileSizeLimit = sinkConnectorConfig.getFileSizeLimit();
+        this.commitTimeInterval = sinkConnectorConfig.getCommitTimeInterval();
+        deleteRedundantFiles(sinkConnectorConfig.getSinkProcessFilePath(),
+                sinkConnectorConfig.getProcessFileCountLimit(), sinkConnectorConfig.getProcessFileTimeLimit());
     }
 
     /**
@@ -119,7 +120,7 @@ public abstract class BaseProcessCommitter {
      * @param failSql String the sql which replayed failed
      */
     public void commitFailSql(String failSql) {
-        commit(failSql, true);
+        commit(sqlPattern.format(LocalDateTime.now()) + ": " + failSql, true);
     }
 
     /**

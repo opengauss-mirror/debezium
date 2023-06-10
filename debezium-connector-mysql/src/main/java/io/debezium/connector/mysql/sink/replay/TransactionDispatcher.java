@@ -185,7 +185,6 @@ public class TransactionDispatcher {
 
     private void commitFailSql(List<String> failSqlList) {
         for (String sql : failSqlList) {
-            sql = LocalDateTime.now() + ": " + sql;
             processCommitter.commitFailSql(sql);
         }
     }

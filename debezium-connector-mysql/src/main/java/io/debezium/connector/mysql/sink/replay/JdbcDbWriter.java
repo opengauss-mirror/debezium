@@ -171,7 +171,7 @@ public class JdbcDbWriter {
             transactionDispatcher = new TransactionDispatcher(openGaussConnection, transactionQueueList,
                     changedTableNameList, feedBackQueue);
         }
-        transactionDispatcher.initProcessCommitter(config.failSqlPath, config.fileSizeLimit);
+        transactionDispatcher.initProcessCommitter(config.getFailSqlPath(), config.getFileSizeLimit());
     }
 
     /**
@@ -191,7 +191,7 @@ public class JdbcDbWriter {
         parseSinkRecordThread();
         transactionDispatcherThread();
         statTask();
-        if (config.isCommitProcess) {
+        if (config.isCommitProcess()) {
             statCommit();
         }
     }
