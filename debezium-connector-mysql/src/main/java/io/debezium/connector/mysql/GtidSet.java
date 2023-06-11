@@ -220,10 +220,23 @@ public final class GtidSet {
         return gtidSet;
     }
 
+    /**
+     * Modify gtid if different way.
+     * @param gtid like: 6eca988-a77e-11ec-8eec-fa163e3d2519:1-50458530 or 6eca988-a77e-11ec-8eec-fa163e3d2519:1
+     * @param modifiedValue sub value
+     * @return new gtid str
+     */
     private static String modifiedMaxTransactionId(String gtid, int modifiedValue) {
-        int index = gtid.lastIndexOf("-");
-        long transactionId = Long.parseLong(gtid.substring(index + 1)) + modifiedValue;
-        return gtid.substring(0, index + 1) + transactionId;
+        int index = gtid.indexOf(":");
+        String[] values = gtid.substring(index + 1).split("-");
+        if (values.length == 1) {
+            // if start with no sub grid, just change to uuid:1-1
+            return gtid + "-" + values[0];
+        } else {
+            // if start with sub grid, just change to uuid:1-($value-modifiedValue)
+            long transactionId = Long.parseLong(values[1]) + modifiedValue;
+            return gtid.substring(0, index + 1) + values[0] + "-" + transactionId;
+        }
     }
 
     private static String getTrxRange(String gtid) {
