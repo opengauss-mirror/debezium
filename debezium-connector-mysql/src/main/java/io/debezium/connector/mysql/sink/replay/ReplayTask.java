@@ -52,4 +52,13 @@ public class ReplayTask {
     public boolean isBlock() {
         return false;
     }
+
+    /**
+     * Get the offset of already replayed record
+     *
+     * @return the continuous and maximum offset
+     */
+    public Long getReplayedOffset() {
+        return -1L;
+    }
 }

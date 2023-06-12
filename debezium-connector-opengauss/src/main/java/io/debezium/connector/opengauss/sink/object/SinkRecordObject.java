@@ -7,12 +7,32 @@ package io.debezium.connector.opengauss.sink.object;
 
 /**
  * Description: SinkRecordObject
+ *
  * @author wangzhengyuan
- * @date 2022/11/04
+ * @since 2022/11/04
  */
 public class SinkRecordObject {
     private SourceField sourceField;
     private DmlOperation dmlOperation;
+    private Long kafkaOffset;
+
+    /**
+     * Get kafka offset
+     *
+     * @return Long the kafka offset
+     */
+    public Long getKafkaOffset() {
+        return kafkaOffset;
+    }
+
+    /**
+     * Set kafka offset
+     *
+     * @param kafkaOffset the record kafka offset
+     */
+    public void setKafkaOffset(Long kafkaOffset) {
+        this.kafkaOffset = kafkaOffset;
+    }
 
     /**
      * Gets source field

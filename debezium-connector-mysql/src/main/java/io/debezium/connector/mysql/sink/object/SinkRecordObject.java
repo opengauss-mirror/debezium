@@ -8,11 +8,12 @@ package io.debezium.connector.mysql.sink.object;
 /**
  * Description: SinkRecordObject
  * @author douxin
- * @date 2022/10/31
+ * @since 2022/10/31
  **/
 public class SinkRecordObject {
     private SourceField sourceField;
     private DataOperation dataOperation;
+    private long kafkaOffset;
 
     /**
      * Gets source field
@@ -50,11 +51,30 @@ public class SinkRecordObject {
         this.dataOperation = dataOperation;
     }
 
+    /**
+     * Gets kafkaOffset.
+     *
+     * @return the value of kafkaOffset
+     */
+    public long getKafkaOffset() {
+        return kafkaOffset;
+    }
+
+    /**
+     * Sets the kafkaOffset.
+     *
+     * @param kafkaOffset offset stored in Kafka records
+     */
+    public void setKafkaOffset(long kafkaOffset) {
+        this.kafkaOffset = kafkaOffset;
+    }
+
     @Override
     public String toString() {
-        return "SinkRecordObject{" +
-                "sourceField=" + sourceField +
-                ", dataOperation=" + dataOperation +
-                '}';
+        return "SinkRecordObject{"
+                + "sourceField=" + sourceField
+                + ", dataOperation=" + dataOperation
+                + ", kafkaOffset=" + kafkaOffset
+                + '}';
     }
 }

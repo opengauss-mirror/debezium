@@ -5,9 +5,15 @@
  */
 package io.debezium.connector.mysql.sink.task;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
 import org.slf4j.Logger;
@@ -74,5 +80,27 @@ public class MysqlSinkConnectorTask extends SinkTask {
     @Override
     public void stop() {
         jdbcDbWriter.doStop();
+    }
+
+    @Override
+    public Map<TopicPartition, OffsetAndMetadata> preCommit(Map<TopicPartition, OffsetAndMetadata> currentOffsets) {
+        Collection<OffsetAndMetadata> values = currentOffsets.values();
+        List<OffsetAndMetadata> currentOffsetAndMetadataList = new ArrayList<>(values);
+        OffsetAndMetadata offsetAndMetadata = currentOffsetAndMetadataList.get(0);
+        long currentOffset = offsetAndMetadata.offset();
+        Map<TopicPartition, OffsetAndMetadata> preCommitOffsets = new HashMap<>();
+        Long minReplayedOffset = jdbcDbWriter.getReplayedOffset();
+        if (minReplayedOffset < currentOffset && minReplayedOffset > 0L) {
+            OffsetAndMetadata replayedOffset = new OffsetAndMetadata(minReplayedOffset, "");
+            Set<TopicPartition> topicPartitions = currentOffsets.keySet();
+            TopicPartition topicPartition = topicPartitions.iterator().next();
+            preCommitOffsets.put(topicPartition, replayedOffset);
+        }
+        else {
+            preCommitOffsets = currentOffsets;
+        }
+        LOGGER.info("currentOffsets is {},preCommitOffsets is {}", currentOffsets, preCommitOffsets);
+        this.flush(preCommitOffsets);
+        return preCommitOffsets;
     }
 }

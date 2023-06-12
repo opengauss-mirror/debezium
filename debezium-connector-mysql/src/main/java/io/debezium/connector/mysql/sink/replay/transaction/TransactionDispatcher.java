@@ -14,16 +14,20 @@ import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.debezium.connector.breakpoint.BreakPointRecord;
 import io.debezium.connector.mysql.process.MysqlProcessCommitter;
 import io.debezium.connector.mysql.process.MysqlSinkProcessInfo;
 import io.debezium.connector.mysql.sink.object.ConnectionInfo;
 import io.debezium.connector.mysql.sink.object.Transaction;
+import io.debezium.connector.mysql.sink.object.TableMetaData;
+import io.debezium.connector.mysql.sink.util.SqlTools;
 
 /**
  * Description: TransactionDispatcher class
@@ -38,6 +42,7 @@ public class TransactionDispatcher {
     public static final int MAX_THREAD_COUNT = 30;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TransactionDispatcher.class);
+    private static final int BREAKPOINT_REPEAT_COUNT_LIMIT = 3000;
 
     private int threadCount;
     private int count = 0;
@@ -45,28 +50,33 @@ public class TransactionDispatcher {
     private ConnectionInfo connectionInfo;
     private Transaction selectedTransaction = null;
     private ArrayList<WorkThread> threadList = new ArrayList<>();
-    private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(1, 1, 100,
+    private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(2, 2, 100,
             TimeUnit.SECONDS, new LinkedBlockingQueue<>(3));
     private final DateTimeFormatter ofPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
-    private ArrayList<String> changedTableNameList;
+    private SqlTools sqlTools;
+    private List<Long> txnReplayOffsets = new ArrayList<>();
     private BlockingQueue<String> feedBackQueue;
     private ArrayList<ConcurrentLinkedQueue<Transaction>> transactionQueueList;
     private MysqlProcessCommitter processCommitter;
+    private BreakPointRecord breakPointRecord;
+    private boolean isStop = false;
+    private Boolean isBpCondition = false;
+    private int filterCount = 0;
 
     /**
      * Constructor
      *
      * @param ConnectionInfo the connection info
      * @param ArrayList<ConcurrentLinkedQueue<Transaction>> the transaction queue list
-     * @param ArrayList<String> the changed table name list
+     * @param sqlTools sqlTools SqlTools the sql tools
      * @param BlockingQueue<String> the feed back queue
      */
     public TransactionDispatcher(ConnectionInfo connectionInfo, ArrayList<ConcurrentLinkedQueue<Transaction>> transactionQueueList,
-                                 ArrayList<String> changedTableNameList, BlockingQueue<String> feedBackQueue) {
+                                 SqlTools sqlTools, BlockingQueue<String> feedBackQueue) {
         this.threadCount = MAX_THREAD_COUNT;
         this.connectionInfo = connectionInfo;
         this.transactionQueueList = transactionQueueList;
-        this.changedTableNameList = changedTableNameList;
+        this.sqlTools = sqlTools;
         this.feedBackQueue = feedBackQueue;
     }
 
@@ -76,16 +86,25 @@ public class TransactionDispatcher {
      * @param int threadCount
      * @param ConnectionInfo the connection info
      * @param ArrayList<ConcurrentLinkedQueue<Transaction>> the transaction queue list
-     * @param ArrayList<String> the changed table name list
+     * @param sqlTools SqlTools the sql tools
      * @param BlockingQueue<String> the feed back queue
      */
     public TransactionDispatcher(int threadCount, ConnectionInfo connectionInfo, ArrayList<ConcurrentLinkedQueue<Transaction>> transactionQueueList,
-                                 ArrayList<String> changedTableNameList, BlockingQueue<String> feedBackQueue) {
+                                 SqlTools sqlTools, BlockingQueue<String> feedBackQueue) {
         this.threadCount = threadCount;
         this.connectionInfo = connectionInfo;
         this.transactionQueueList = transactionQueueList;
-        this.changedTableNameList = changedTableNameList;
+        this.sqlTools = sqlTools;
         this.feedBackQueue = feedBackQueue;
+    }
+
+    /**
+     * Sets breakpointRecord
+     *
+     * @param breakPointRecord the breakpoint record
+     */
+    public void initBreakPointRecord(BreakPointRecord breakPointRecord) {
+        this.breakPointRecord = breakPointRecord;
     }
 
     /**
@@ -98,12 +117,30 @@ public class TransactionDispatcher {
     }
 
     /**
+     * Sets the isStop.
+     *
+     * @param isStop boolean invoke stop
+     */
+    public void setIsStop(boolean isStop) {
+        this.isStop = isStop;
+    }
+
+    /**
      * Get count
      *
      * @return int the count
      */
     public int getCount() {
         return this.count;
+    }
+
+    /**
+     * Sets the isBpCondition.
+     *
+     * @param isBpCondition the value of the isBpCondition
+     */
+    public void setIsBpCondition(Boolean isBpCondition) {
+        this.isBpCondition = isBpCondition;
     }
 
     /**
@@ -126,10 +163,11 @@ public class TransactionDispatcher {
         Transaction txn = null;
         int queueIndex = 0;
         WorkThread workThread = null;
-        while (true) {
+        while (!isStop) {
             if (selectedTransaction == null) {
                 txn = transactionQueueList.get(queueIndex).poll();
                 if (txn != null) {
+                    txn = filterByDb(txn);
                     count++;
                     if (count % TransactionReplayTask.MAX_VALUE == 0) {
                         queueIndex++;
@@ -168,12 +206,78 @@ public class TransactionDispatcher {
         }
     }
 
+    private Transaction filterByDb(Transaction txn) {
+        Transaction transaction = txn;
+        if (isBpCondition && filterCount < BREAKPOINT_REPEAT_COUNT_LIMIT) {
+            filterCount++;
+            if (isSkipTxn(txn)) {
+                LOGGER.info("The txn is already replay, "
+                        + "so skip this txn that gtid is {}", txn.getSourceField().getGtid());
+                addReplayedOffset(txn, breakPointRecord.getReplayedOffset());
+                transaction = null;
+            }
+        }
+        return transaction;
+    }
+
     /**
      * Add fail transaction count
      */
     public void addFailTransaction() {
         count++;
         threadList.get(0).addFailTransaction();
+    }
+
+    private boolean isSkipTxn(Transaction txn) {
+        String firstSql = txn.getSqlList().get(0);
+        StringBuilder sb = new StringBuilder();
+        String builtSql;
+        if (txn.getIsDml()) {
+            if (firstSql.contains("insert into")) {
+                sb.append("select * from ");
+                String[] insertSql = firstSql.split(" ");
+                String schemaName = insertSql[2].split("\\.")[0].replace("\"", "");
+                String tableName = insertSql[2].split("\\.")[1].replace("\"", "");
+                sb.append(schemaName).append(".").append(tableName);
+                sb.append(" where ");
+                TableMetaData tableMetaData = sqlTools.getTableMetaData(schemaName, tableName);
+                String valueString = firstSql.substring(firstSql.indexOf("("));
+                String[] columnValueArray = valueString.replace("(", "")
+                        .replace(")", "").split(", ");
+                ArrayList<String> valueList = new ArrayList<>();
+                for (int i = 0; i < columnValueArray.length; i++) {
+                    valueList.add(tableMetaData.getColumnList().get(i).getColumnName() + "=" + columnValueArray[i]);
+                }
+                sb.append(String.join(" and ", valueList));
+                builtSql = sb.toString();
+                return sqlTools.isExistSql(builtSql);
+            } else if (firstSql.contains("update")) {
+                int setIndex = firstSql.indexOf("set");
+                String schemaAndTable = firstSql.substring(7, setIndex);
+                sb.append("select * from ").append(schemaAndTable).append(" where ");
+                int whereIndex = firstSql.indexOf("where");
+                String condition = firstSql.substring(setIndex + 4, whereIndex)
+                        .replace(",", " and")
+                        + "and" + firstSql.substring(whereIndex + 5);
+                sb.append(condition);
+                builtSql = sb.toString();
+                return sqlTools.isExistSql(builtSql);
+            } else if (firstSql.contains("delete from")) {
+                builtSql = firstSql.replace("delete from", "select * from");
+                return sqlTools.isExistSql(builtSql);
+            } else {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private void addReplayedOffset(Transaction txn, PriorityBlockingQueue<Long> txnReplayedOffsets) {
+        for (long i = txn.getTxnBeginOffset(); i <= txn.getTxnEndOffset(); i++) {
+            txnReplayedOffsets.add(i);
+        }
+        txnReplayedOffsets.addAll(txnReplayOffsets);
+        txnReplayOffsets.clear();
     }
 
     private int[] getSuccessAndFailCount() {
@@ -227,7 +331,8 @@ public class TransactionDispatcher {
 
     private void createThreads() {
         for (int i = 0; i < threadCount; i++) {
-            WorkThread workThread = new WorkThread(connectionInfo, changedTableNameList, feedBackQueue, i);
+            WorkThread workThread = new WorkThread(connectionInfo, feedBackQueue,
+                    i, breakPointRecord);
             threadList.add(workThread);
             workThread.start();
         }

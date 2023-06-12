@@ -8,13 +8,17 @@ package io.debezium.connector.mysql.sink.replay.table;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.PriorityBlockingQueue;
 
+import io.debezium.connector.breakpoint.BreakPointObject;
+import io.debezium.connector.breakpoint.BreakPointRecord;
 import org.apache.kafka.connect.errors.DataException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,8 +53,11 @@ public class WorkThread extends Thread {
     private Map<String, String> schemaMappingMap;
     private Connection connection;
     private Statement statement;
+    private BreakPointRecord breakPointRecord;
+    private PriorityBlockingQueue<Long> replayedOffsets;
     private List<String> failSqlList = new ArrayList<>();
     private SinkRecordObject threadSinkRecordObject = null;
+    private boolean isTransaction;
 
     /**
      * Constructor
@@ -59,13 +66,17 @@ public class WorkThread extends Thread {
      * @param connectionInfo ConnectionInfo the connection information
      * @param sqlTools SqlTools the sql tools
      * @param index int the index
+     * @param breakPointRecord the breakpoint
      */
     public WorkThread(Map<String, String> schemaMappingMap, ConnectionInfo connectionInfo,
-                      SqlTools sqlTools, int index) {
+                      SqlTools sqlTools, int index, BreakPointRecord breakPointRecord) {
         super("work-thread-" + index);
         this.schemaMappingMap = schemaMappingMap;
         this.connectionInfo = connectionInfo;
         this.sqlTools = sqlTools;
+        this.breakPointRecord = breakPointRecord;
+        this.replayedOffsets = breakPointRecord.getReplayedOffset();
+        this.isTransaction = false;
     }
 
     /**
@@ -93,16 +104,19 @@ public class WorkThread extends Thread {
                 sinkRecordObject = sinkRecordQueue.take();
                 sql = constructSql(sinkRecordObject);
                 if ("".equals(sql)) {
+                    replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
                     continue;
                 }
                 statement.executeUpdate(sql);
                 successCount++;
+                replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
+                savedBreakPointInfo(sinkRecordObject);
                 if (successCount % 1000 == 0) {
                     threadSinkRecordObject = sinkRecordObject;
                 }
             }
             catch (CommunicationsException exp) {
-                updateConnectionAndExecuteSql(sql);
+                updateConnectionAndExecuteSql(sql, sinkRecordObject);
             }
             catch (SQLException exp) {
                 failCount++;
@@ -195,13 +209,31 @@ public class WorkThread extends Thread {
     }
 
     /**
+     * Gets connection.
+     *
+     * @return the value of connection
+     */
+    public Connection getConnection() {
+        return connection;
+    }
+
+    /**
+     * Sets the connection.
+     *
+     * @param connection the connection
+     */
+    public void setConnection(Connection connection) {
+        this.connection = connection;
+    }
+
+    /**
      * clear fail sql list
      */
     public void clearFailSqlList() {
         failSqlList.clear();
     }
 
-    private void updateConnectionAndExecuteSql(String sql) {
+    private void updateConnectionAndExecuteSql(String sql, SinkRecordObject sinkRecordObject) {
         try {
             statement.close();
             connection.close();
@@ -213,6 +245,7 @@ public class WorkThread extends Thread {
         catch (SQLException exp) {
             LOGGER.error("SQL exception occurred in work thread", exp);
         }
+        savedBreakPointInfo(sinkRecordObject);
     }
 
     /**
@@ -231,5 +264,17 @@ public class WorkThread extends Thread {
      */
     public int getFailCount() {
         return failCount;
+    }
+
+    private void savedBreakPointInfo(SinkRecordObject sinkRecordObject) {
+        BreakPointObject tableBpObject = new BreakPointObject();
+        SourceField sourceField = sinkRecordObject.getSourceField();
+        Long kafkaOffset = sinkRecordObject.getKafkaOffset();
+        tableBpObject.setBeginOffset(kafkaOffset);
+        tableBpObject.setTimeStamp(LocalDateTime.now().toString());
+        if (!sourceField.getGtid().isEmpty()) {
+            tableBpObject.setGtid(sinkRecordObject.getSourceField().getGtid());
+        }
+        breakPointRecord.storeRecord(tableBpObject, isTransaction);
     }
 }
