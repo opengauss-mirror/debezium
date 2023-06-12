@@ -109,6 +109,9 @@ public class DebeziumValueConverters {
         }
         String valueStr = object.toString();
         String decimalStr = valueStr.substring(valueStr.indexOf(".") + 1);
+        if (scale == -1) {
+            return object.toString();
+        }
         if (decimalStr.length() > scale) {
             BigDecimal decimal = new BigDecimal(valueStr);
             BigDecimal result = decimal.setScale(scale, RoundingMode.HALF_UP);

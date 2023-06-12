@@ -960,7 +960,7 @@ public class JdbcValueConverters implements ValueConverterProvider {
             else if (data instanceof Number) {
                 // Includes BigDecimal and other numeric values ...
                 Number value = (Number) data;
-                r.deliver(Double.valueOf(value.doubleValue()));
+                r.deliver(Double.valueOf(value.toString()));
             }
             else if (data instanceof SpecialValueDecimal) {
                 r.deliver(((SpecialValueDecimal) data).toDouble());

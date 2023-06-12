@@ -48,7 +48,8 @@ public class SqlTools {
                 ResultSet rs = statement.executeQuery(sql)) {
             while (rs.next()) {
                 columnMetaDataList.add(new ColumnMetaData(rs.getString("column_name"),
-                        rs.getString("data_type"), rs.getInt("numeric_scale")));
+                        rs.getString("data_type"), rs.getString("numeric_scale") == null ? -1
+                        : rs.getInt("numeric_scale")));
             }
             tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
         }
