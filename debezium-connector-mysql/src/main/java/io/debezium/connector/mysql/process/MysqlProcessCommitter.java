@@ -32,7 +32,11 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
     public static long currentEventIndex;
     private static final Logger LOGGER = LoggerFactory.getLogger(MysqlProcessCommitter.class);
     private static final String SHOW_MASTER_STATUS = "SHOW MASTER STATUS";
+    private static final String SHOW_SLAVE_STATUS = "SHOW SLAVE STATUS";
     private static final String SHOW_UUID = "show global variables like 'server_uuid'";
+    private static final String SHOW_READ_ONLY = "show variables like 'read_only'";
+    private static final String VALUE = "Value";
+    private static final String MASTER_UUID = "Master_UUID";
     private static final String FORWARD_SOURCE_PROCESS_PREFIX = "forward-source-process-";
     private static final String FORWARD_SINK_PROCESS_PREFIX = "forward-sink-process-";
     private static final String CREATE_COUNT_INFO_NAME = "start-event-index.txt";
@@ -119,20 +123,38 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
     }
 
     private long initStartEventIndex(String originGtidSet) {
-        AtomicReference<String> uuidSet = new AtomicReference<>("");
-        try {
-            mysqlConnection.query(SHOW_UUID, rs -> {
-                if (rs.next()) {
-                    uuidSet.set(rs.getString("Value"));
-                }
-            });
-        } catch (SQLException e) {
-            LOGGER.warn("SQL exception while query uuid of mysql", e);
-        }
-        this.uuid = uuidSet.get();
+        initUuid();
         String validGtid = getValidGtid(originGtidSet.split(","));
         String tid = validGtid.split(":")[validGtid.split(":").length - 1];
         return Long.parseLong(tid.split("-")[tid.split("-").length - 1]);
+    }
+
+    private void initUuid() {
+        AtomicReference<String> readOnlySet = new AtomicReference<>("");
+        AtomicReference<String> uuidSet = new AtomicReference<>("");
+        try {
+            mysqlConnection.query(SHOW_READ_ONLY, rs -> {
+                if (rs.next()) {
+                    readOnlySet.set(rs.getString(VALUE));
+                }
+            });
+            if ("OFF".equalsIgnoreCase(readOnlySet.get())) {
+                mysqlConnection.query(SHOW_UUID, rs -> {
+                    if (rs.next()) {
+                        uuidSet.set(rs.getString(VALUE));
+                    }
+                });
+            } else {
+                mysqlConnection.query(SHOW_SLAVE_STATUS, rs -> {
+                    if (rs.next()) {
+                        uuidSet.set(rs.getString(MASTER_UUID));
+                    }
+                });
+            }
+        } catch (SQLException e) {
+            LOGGER.warn("SQL exception occurred.", e);
+        }
+        this.uuid = uuidSet.get();
     }
 
     private String getCurrentGtid() throws SQLException {
