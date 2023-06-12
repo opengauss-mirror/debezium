@@ -208,11 +208,12 @@ public final class GtidSet {
         LOGGER.info("Previous offset is {}", previousOffset);
 
         for (int i = 0; i < multiGtid.length; i++) {
-            String trxRange = getTrxRange(previousMultiGtid[i]);
-            if (!trxRange.equals(getTrxRange(multiGtid[i]))) {
-                LOGGER.info("Gtid before modification is {}", previousMultiGtid[i]);
-                multiGtid[i] = modifiedMaxTransactionId(previousMultiGtid[i], modifiedValue);
-                LOGGER.info("Gtid after modification is {}", multiGtid[i]);
+            for (int j = 0; j < previousMultiGtid.length; j++) {
+                if (needModifiedMaxTransactionId(multiGtid[i], previousMultiGtid[j])) {
+                    LOGGER.info("Gtid before modification is {}", previousMultiGtid[i]);
+                    multiGtid[i] = modifiedMaxTransactionId(previousMultiGtid[i], modifiedValue);
+                    LOGGER.info("Gtid after modification is {}", multiGtid[i]);
+                }
             }
         }
         String gtidSet = String.join(",", Arrays.asList(multiGtid));
@@ -221,7 +222,8 @@ public final class GtidSet {
     }
 
     /**
-     * Modify gtid if different way.
+     * Modify gtid value.
+     *
      * @param gtid like: 6eca988-a77e-11ec-8eec-fa163e3d2519:1-50458530 or 6eca988-a77e-11ec-8eec-fa163e3d2519:1
      * @param modifiedValue sub value
      * @return new gtid str
@@ -229,11 +231,11 @@ public final class GtidSet {
     private static String modifiedMaxTransactionId(String gtid, int modifiedValue) {
         int index = gtid.indexOf(":");
         String[] values = gtid.substring(index + 1).split("-");
-        if (values.length == 1) {
-            // if start with no sub grid, just change to uuid:1-1
-            return gtid + "-" + values[0];
+        if (values.length == 1 && "1".equals(values[0])) {
+            // if max transaction is 1, no modification, return the original uuid:1
+            return gtid;
         } else {
-            // if start with sub grid, just change to uuid:1-($value-modifiedValue)
+            // if max transaction > 1, modify max transaction id, return the uuid:1-($value+modifiedValue)
             long transactionId = Long.parseLong(values[1]) + modifiedValue;
             return gtid.substring(0, index + 1) + values[0] + "-" + transactionId;
         }
@@ -242,6 +244,17 @@ public final class GtidSet {
     private static String getTrxRange(String gtid) {
         int index = gtid.lastIndexOf(":");
         return gtid.substring(index + 1);
+    }
+
+    private static String getUuid(String gtid) {
+        int index = gtid.lastIndexOf(":");
+        return gtid.substring(0, index);
+    }
+
+    private static boolean needModifiedMaxTransactionId(String gtid1, String gtid2) {
+        boolean isUuidEqual = getUuid(gtid1).equals(getUuid(gtid2));
+        boolean isMaxTransactionEqual = getTrxRange(gtid1).equals(getTrxRange(gtid2));
+        return isUuidEqual && !isMaxTransactionEqual;
     }
 
     @Override
