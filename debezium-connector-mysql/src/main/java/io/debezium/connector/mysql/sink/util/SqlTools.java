@@ -23,8 +23,9 @@ import io.debezium.data.Envelope;
 
 /**
  * Description: SqlTools class
+ *
  * @author douxin
- * @date 2022/10/31
+ * @since 2022/10/31
  **/
 public class SqlTools {
     private static final Logger LOGGER = LoggerFactory.getLogger(SqlTools.class);
@@ -44,12 +45,13 @@ public class SqlTools {
                 " order by ordinal_position;",
                 schemaName, tableName);
         TableMetaData tableMetaData = null;
-        try (Statement statement = connection.createStatement();
-                ResultSet rs = statement.executeQuery(sql)) {
+        try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
             while (rs.next()) {
-                columnMetaDataList.add(new ColumnMetaData(rs.getString("column_name"),
+                ColumnMetaData columnMetaData = new ColumnMetaData(rs.getString("column_name"),
                         rs.getString("data_type"), rs.getString("numeric_scale") == null ? -1
-                        : rs.getInt("numeric_scale")));
+                                : rs.getInt("numeric_scale"));
+                columnMetaData.setPrimaryColumn(isColumnPrimary(schemaName, tableName, columnMetaData.getColumnName()));
+                columnMetaDataList.add(columnMetaData);
             }
             tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
         }
@@ -57,6 +59,31 @@ public class SqlTools {
             LOGGER.error("SQL exception occurred, the sql statement is " + sql);
         }
         return tableMetaData;
+    }
+
+    private boolean isColumnPrimary(String schemaName, String tableName, String columnName) {
+        String primaryCloumn = getPrimaryKeyValue(schemaName, tableName);
+        if (primaryCloumn.equals(columnName)) {
+            return true;
+        }
+        return false;
+    }
+
+    private String getPrimaryKeyValue(String schemaName, String tableName) {
+        String sql = String.format(Locale.ENGLISH, "select indexdef from pg_indexes where"
+                + " schemaname = '%s' and tablename = '%s'", schemaName, tableName);
+        try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
+            while (rs.next()) {
+                String indexdef = rs.getString("indexdef");
+                if (!"".equals(indexdef)) {
+                    return indexdef.substring(indexdef.lastIndexOf("(") + 1, indexdef.lastIndexOf(")"));
+                }
+            }
+        }
+        catch (SQLException e) {
+            LOGGER.error("SQL exception occurred in sql tools", e);
+        }
+        return "";
     }
 
     public String getInsertSql(TableMetaData tableMetaData, Struct after) {
@@ -77,9 +104,7 @@ public class SqlTools {
         ArrayList<String> updateSetValueList = getValueList(tableMetaData, after, Envelope.Operation.UPDATE);
         sb.append(String.join(", ", updateSetValueList));
         sb.append(" where ");
-        ArrayList<String> whereConditionValueList = getValueList(tableMetaData, before, Envelope.Operation.DELETE);
-        sb.append(String.join(" and ", whereConditionValueList));
-        sb.append(";");
+        sb.append(getWhereCondition(tableMetaData, before, Envelope.Operation.UPDATE));
         return sb.toString();
     }
 
@@ -87,7 +112,20 @@ public class SqlTools {
         StringBuilder sb = new StringBuilder();
         sb.append("delete from \"").append(tableMetaData.getSchemaName()).append("\".\"")
                 .append(tableMetaData.getTableName()).append("\"").append(" where ");
-        ArrayList<String> whereConditionValueList = getValueList(tableMetaData, before, Envelope.Operation.DELETE);
+        sb.append(getWhereCondition(tableMetaData, before, Envelope.Operation.DELETE));
+        return sb.toString();
+    }
+
+    private String getWhereCondition(TableMetaData tableMetaData, Struct before, Envelope.Operation option) {
+        StringBuilder sb = new StringBuilder();
+        for (ColumnMetaData column : tableMetaData.getColumnList()) {
+            if (column.isPrimaryColumn()) {
+                sb.append(column.getColumnName() + " = ");
+                sb.append(DebeziumValueConverters.getValue(column, before));
+                return sb.toString();
+            }
+        }
+        ArrayList<String> whereConditionValueList = getValueList(tableMetaData, before, option);
         sb.append(String.join(" and ", whereConditionValueList));
         sb.append(";");
         return sb.toString();

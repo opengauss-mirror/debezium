@@ -49,7 +49,7 @@ public class WorkThread extends Thread {
      * @param index int the index
      */
     public WorkThread(ConnectionInfo connectionInfo, ArrayList<String> changedTableNameList,
-                        BlockingQueue<String> feedBackQueue, int index) {
+                      BlockingQueue<String> feedBackQueue, int index) {
         super("work-thread-" + index);
         this.connectionInfo = connectionInfo;
         this.changedTableNameList = changedTableNameList;
@@ -101,7 +101,8 @@ public class WorkThread extends Thread {
             try {
                 cleanTransaction();
                 lock.wait();
-            } catch (InterruptedException exp) {
+            }
+            catch (InterruptedException exp) {
                 LOGGER.error("Interrupted exception occurred", exp);
             }
         }
@@ -110,7 +111,7 @@ public class WorkThread extends Thread {
     @Override
     public void run() {
         try (Connection connection = connectionInfo.createOpenGaussConnection();
-            Statement statement = connection.createStatement()) {
+                Statement statement = connection.createStatement()) {
             while (true) {
                 pauseThread();
                 boolean isSuccess = true;
@@ -118,25 +119,29 @@ public class WorkThread extends Thread {
                 for (String sql : txn.getSqlList()) {
                     try {
                         statement.execute(sql);
-                    } catch (SQLException exp) {
+                    }
+                    catch (SQLException exp) {
                         isSuccess = false;
                         LOGGER.error(String.format("SQL exception occurred, the SQL statement executed is: %s,"
-                                        + " and the cause of the exception is %s",
+                                + " and the cause of the exception is %s",
                                 txn.getSqlList(), exp.getMessage()));
-                    } finally {
+                    }
+                    finally {
                         feedBackModifiedTable();
                     }
                 }
                 if (isSuccess) {
                     statement.execute(COMMIT);
                     successCount++;
-                } else {
+                }
+                else {
                     statement.execute(ROLLBACK);
                     failCount++;
                     failSqlList.addAll(txn.getSqlList());
                 }
             }
-        } catch (SQLException exp) {
+        }
+        catch (SQLException exp) {
             LOGGER.error("SQL exception occurred in work thread", exp);
         }
     }

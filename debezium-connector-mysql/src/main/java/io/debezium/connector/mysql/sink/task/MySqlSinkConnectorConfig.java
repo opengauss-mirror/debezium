@@ -7,11 +7,12 @@ package io.debezium.connector.mysql.sink.task;
 
 import java.util.Map;
 
-import io.debezium.config.SinkConnectorConfig;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.debezium.config.SinkConnectorConfig;
 
 /**
  * Description: MySqlSinkConnectorConfig class

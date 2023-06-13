@@ -28,9 +28,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-
-import io.debezium.connector.mysql.process.MysqlProcessCommitter;
-import io.debezium.connector.mysql.process.MysqlSinkProcessInfo;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -39,6 +36,8 @@ import org.slf4j.LoggerFactory;
 
 import com.mysql.cj.util.StringUtils;
 
+import io.debezium.connector.mysql.process.MysqlProcessCommitter;
+import io.debezium.connector.mysql.process.MysqlSinkProcessInfo;
 import io.debezium.connector.mysql.sink.object.ConnectionInfo;
 import io.debezium.connector.mysql.sink.object.DataOperation;
 import io.debezium.connector.mysql.sink.object.DdlOperation;
@@ -116,12 +115,13 @@ public class JdbcDbWriter {
         String result = sqlTools.getXlogLocation();
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(xlogLocation))) {
             bw.write("xlog.location=" + result);
-        } catch (IOException exp) {
+        }
+        catch (IOException exp) {
             LOGGER.error("Fail to write xlog location {}", result);
         }
         sqlTools.closeConnection();
         LOGGER.info("Online migration from mysql to openGauss has gracefully stopped and current xlog"
-                        + "location in openGauss is {}", result);
+                + "location in openGauss is {}", result);
     }
 
     private void initObject(MySqlSinkConnectorConfig config) {
@@ -167,7 +167,8 @@ public class JdbcDbWriter {
         if (threadNum > 0) {
             transactionDispatcher = new TransactionDispatcher(threadNum, openGaussConnection, transactionQueueList,
                     changedTableNameList, feedBackQueue);
-        } else {
+        }
+        else {
             transactionDispatcher = new TransactionDispatcher(openGaussConnection, transactionQueueList,
                     changedTableNameList, feedBackQueue);
         }
@@ -206,12 +207,14 @@ public class JdbcDbWriter {
         while (true) {
             try {
                 sinkRecord = sinkQueue.take();
-            } catch (InterruptedException e) {
+            }
+            catch (InterruptedException e) {
                 LOGGER.error("Interrupted exception occurred", e);
             }
             if (sinkRecord.value() instanceof Struct) {
                 value = (Struct) sinkRecord.value();
-            } else {
+            }
+            else {
                 value = null;
             }
             if (value == null) {
@@ -220,7 +223,8 @@ public class JdbcDbWriter {
             try {
                 if (TransactionRecordField.BEGIN.equals(value.getString(TransactionRecordField.STATUS))) {
                     sinkRecordsArrayList.clear();
-                } else {
+                }
+                else {
                     dmlEventCountMap.put(value.getString(TransactionRecordField.ID),
                             value.getInt64(TransactionRecordField.EVENT_COUNT) - skipNum);
                     if (value.getInt64(TransactionRecordField.EVENT_COUNT) == 0) {
@@ -243,7 +247,8 @@ public class JdbcDbWriter {
                         skipNum = 0;
                     }
                 }
-            } catch (DataException exp) {
+            }
+            catch (DataException exp) {
                 SinkRecordObject sinkRecordObject = new SinkRecordObject();
                 SourceField sourceField = new SourceField(value);
                 String snapshot = sourceField.getSnapshot();
@@ -264,13 +269,13 @@ public class JdbcDbWriter {
                     dataOperation = new DmlOperation(value);
                     sinkRecordObject.setDataOperation(dataOperation);
                     sinkRecordsArrayList.add(sinkRecordObject);
-                } catch (DataException exception) {
+                }
+                catch (DataException exception) {
                     dataOperation = new DdlOperation(value);
                     sinkRecordObject.setDataOperation(dataOperation);
                     constructDdl(sinkRecordObject);
                     if (value.getStruct(SourceField.SOURCE).getString(SourceField.GTID) != null) {
-                        MysqlProcessCommitter.currentEventIndex = Long.parseLong(value.getStruct(SourceField
-                                .SOURCE).getString(SourceField.GTID).split(":")[1]);
+                        MysqlProcessCommitter.currentEventIndex = Long.parseLong(value.getStruct(SourceField.SOURCE).getString(SourceField.GTID).split(":")[1]);
                     }
                 }
             }
@@ -297,7 +302,8 @@ public class JdbcDbWriter {
         DdlOperation ddlOperation = null;
         if (sinkRecordObject.getDataOperation() instanceof DdlOperation) {
             ddlOperation = (DdlOperation) sinkRecordObject.getDataOperation();
-        } else {
+        }
+        else {
             return;
         }
         String schemaName = sourceField.getDatabase();
@@ -307,7 +313,8 @@ public class JdbcDbWriter {
         sqlList.add("set current_schema to " + newSchemaName);
         if (StringUtils.isNullOrEmpty(tableName)) {
             sqlList.add(ddl);
-        } else {
+        }
+        else {
             String modifiedDdl = null;
             if (ddl.toLowerCase(Locale.ROOT).startsWith("alter table")
                     && ddl.toLowerCase(Locale.ROOT).contains("rename to")
@@ -318,12 +325,15 @@ public class JdbcDbWriter {
                 if (oldFullName.split("\\.").length == 2) {
                     String oldName = oldFullName.split("\\.")[1];
                     modifiedDdl = ddl.replaceFirst(oldFullName, oldName);
-                } else {
+                }
+                else {
                     modifiedDdl = ddl;
                 }
-            } else if (ddl.toLowerCase(Locale.ROOT).startsWith("drop table")) {
+            }
+            else if (ddl.toLowerCase(Locale.ROOT).startsWith("drop table")) {
                 modifiedDdl = ddl.replaceFirst(addingBackquote(schemaName) + ".", "");
-            } else {
+            }
+            else {
                 modifiedDdl = ignoreSchemaName(ddl, schemaName, tableName);
             }
             sqlList.add(modifiedDdl);
@@ -382,13 +392,16 @@ public class JdbcDbWriter {
                         break;
                     }
                 }
-            } catch (InterruptedException exp) {
+            }
+            catch (InterruptedException exp) {
                 LOGGER.error("Interrupted exception occurred", exp);
             }
-        } else if (!tableMetaDataMap.containsKey(tableFullName)) {
+        }
+        else if (!tableMetaDataMap.containsKey(tableFullName)) {
             tableMetaData = sqlTools.getTableMetaData(schemaMappingMap.getOrDefault(schemaName, schemaName), tableName);
             tableMetaDataMap.put(tableFullName, tableMetaData);
-        } else {
+        }
+        else {
             tableMetaData = tableMetaDataMap.get(tableFullName);
         }
         String operation = dmlOperation.getOperation();
@@ -446,7 +459,8 @@ public class JdbcDbWriter {
                 tableSnapshotHashmap.put(schemaMappingMap.getOrDefault(schemaName, schemaName) + "." + tableName,
                         binlogName + ":" + binlogPosition);
             }
-        } catch (SQLException exp) {
+        }
+        catch (SQLException exp) {
             LOGGER.warn("sch_chameleon.t_replica_tables does not exist.");
         }
     }

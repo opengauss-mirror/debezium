@@ -28,8 +28,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 
 import javax.net.ssl.KeyManager;
@@ -38,8 +38,6 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
-import io.debezium.connector.mysql.process.MysqlProcessCommitter;
-import io.debezium.connector.mysql.process.MysqlSourceProcessInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
@@ -73,6 +71,8 @@ import io.debezium.config.CommonConnectorConfig.EventProcessingFailureHandlingMo
 import io.debezium.config.Configuration;
 import io.debezium.connector.mysql.MySqlConnectorConfig.GtidNewChannelPosition;
 import io.debezium.connector.mysql.MySqlConnectorConfig.SecureConnectionMode;
+import io.debezium.connector.mysql.process.MysqlProcessCommitter;
+import io.debezium.connector.mysql.process.MysqlSourceProcessInfo;
 import io.debezium.connector.mysql.sink.event.MyGtidEventData;
 import io.debezium.connector.mysql.sink.event.MyGtidEventDataDeserializer;
 import io.debezium.data.Envelope.Operation;
@@ -970,7 +970,8 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
                             metronome.pause();
                         }
                     }
-                } catch (TimeoutException e) {
+                }
+                catch (TimeoutException e) {
                     // If the client thread is interrupted *before* the client could connect, the client throws a timeout exception
                     // The only way we can distinguish this is if we get the timeout exception before the specified timeout has
                     // elapsed, so we simply check this (within 10%) ...
@@ -1116,7 +1117,7 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
      *         none were filtered
      */
     public GtidSet filterGtidSet(MySqlOffsetContext offsetContext, GtidSet availableServerGtidSet,
-                                GtidSet purgedServerGtid) {
+                                 GtidSet purgedServerGtid) {
         String gtidStr = offsetContext.gtidSet();
         if (gtidStr == null) {
             return null;
