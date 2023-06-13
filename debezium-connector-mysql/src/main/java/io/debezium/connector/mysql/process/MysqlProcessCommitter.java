@@ -5,19 +5,20 @@
  */
 package io.debezium.connector.mysql.process;
 
-import io.debezium.connector.mysql.MySqlConnection;
-import io.debezium.connector.mysql.MySqlConnectorConfig;
-import io.debezium.connector.mysql.sink.task.MySqlSinkConnectorConfig;
-import io.debezium.connector.process.BaseProcessCommitter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.File;
 import java.sql.SQLException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import io.debezium.connector.mysql.MySqlConnection;
+import io.debezium.connector.mysql.MySqlConnectorConfig;
+import io.debezium.connector.mysql.sink.task.MySqlSinkConnectorConfig;
+import io.debezium.connector.process.BaseProcessCommitter;
 
 /**
  * Description: MysqlProcessCommitter
@@ -58,7 +59,7 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
      * @param connection MySqlConnection the connection
      */
     public MysqlProcessCommitter(MySqlConnectorConfig connectorConfig, String originGtidSet,
-                                MySqlConnection connection) {
+                                 MySqlConnection connection) {
         super(connectorConfig, FORWARD_SOURCE_PROCESS_PREFIX);
         this.mysqlConnection = connection;
         this.startEventIndex = initStartEventIndex(originGtidSet);
@@ -144,14 +145,16 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
                         uuidSet.set(rs.getString(VALUE));
                     }
                 });
-            } else {
+            }
+            else {
                 mysqlConnection.query(SHOW_SLAVE_STATUS, rs -> {
                     if (rs.next()) {
                         uuidSet.set(rs.getString(MASTER_UUID));
                     }
                 });
             }
-        } catch (SQLException e) {
+        }
+        catch (SQLException e) {
             LOGGER.warn("SQL exception occurred.", e);
         }
         this.uuid = uuidSet.get();
@@ -171,7 +174,8 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
         String gtid;
         try {
             gtid = getCurrentGtid();
-        } catch (SQLException e) {
+        }
+        catch (SQLException e) {
             return -1L;
         }
         if (!"".equals(gtid)) {
@@ -186,13 +190,15 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
         if (isSource) {
             sourceProcessInfo = MysqlSourceProcessInfo.SOURCE_PROCESS_INFO;
             before = sourceProcessInfo.getPollCount();
-        } else {
+        }
+        else {
             sinkProcessInfo = MysqlSinkProcessInfo.SINK_PROCESS_INFO;
             before = sinkProcessInfo.getReplayedCount();
         }
         try {
             Thread.sleep(commitTimeInterval * 1000L);
-        } catch (InterruptedException exp) {
+        }
+        catch (InterruptedException exp) {
             LOGGER.warn("Interrupted exception occurred", exp);
         }
         return before;

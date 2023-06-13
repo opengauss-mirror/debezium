@@ -12,16 +12,16 @@ import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
-import io.debezium.connector.mysql.process.MysqlProcessCommitter;
-import io.debezium.connector.mysql.process.MysqlSinkProcessInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.debezium.connector.mysql.process.MysqlProcessCommitter;
+import io.debezium.connector.mysql.process.MysqlSinkProcessInfo;
 import io.debezium.connector.mysql.sink.object.ConnectionInfo;
 import io.debezium.connector.mysql.sink.object.Transaction;
 
@@ -155,7 +155,7 @@ public class TransactionDispatcher {
             successCount += workThread.getSuccessCount();
             failCount += workThread.getFailCount();
         }
-        return new int[]{successCount, failCount, successCount + failCount};
+        return new int[]{ successCount, failCount, successCount + failCount };
     }
 
     private void statReplayTask() {
