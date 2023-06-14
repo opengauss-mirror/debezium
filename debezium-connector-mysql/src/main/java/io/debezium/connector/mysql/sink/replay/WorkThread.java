@@ -122,9 +122,8 @@ public class WorkThread extends Thread {
                     }
                     catch (SQLException exp) {
                         isSuccess = false;
-                        LOGGER.error(String.format("SQL exception occurred, the SQL statement executed is: %s,"
-                                + " and the cause of the exception is %s",
-                                txn.getSqlList(), exp.getMessage()));
+                        LOGGER.error("SQL exception occurred in transaction {}, the SQL statement executed is: {}," +
+                                " and the cause of the exception is {}", txn.getSourceField(), sql, exp.getMessage());
                     }
                     finally {
                         feedBackModifiedTable();
@@ -141,8 +140,9 @@ public class WorkThread extends Thread {
                 }
             }
         }
-        catch (SQLException exp) {
-            LOGGER.error("SQL exception occurred in work thread", exp);
+        catch (Throwable exp) {
+            LOGGER.error("Exception occurred in work thread {} and the exp message is {}",
+                    this.getName(), exp.getMessage());
         }
     }
 
