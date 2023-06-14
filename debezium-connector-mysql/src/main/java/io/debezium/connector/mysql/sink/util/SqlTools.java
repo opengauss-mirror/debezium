@@ -50,8 +50,10 @@ public class SqlTools {
                 ColumnMetaData columnMetaData = new ColumnMetaData(rs.getString("column_name"),
                         rs.getString("data_type"), rs.getString("numeric_scale") == null ? -1
                                 : rs.getInt("numeric_scale"));
-                columnMetaData.setPrimaryColumn(isColumnPrimary(schemaName, tableName, columnMetaData.getColumnName()));
                 columnMetaDataList.add(columnMetaData);
+            }
+            for (int i = 0; i < columnMetaDataList.size(); i++) {
+                columnMetaDataList.get(i).setPrimaryColumn(isColumnPrimary(schemaName, tableName, i + 1));
             }
             tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
         }
@@ -61,10 +63,11 @@ public class SqlTools {
         return tableMetaData;
     }
 
-    private boolean isColumnPrimary(String schemaName, String tableName, String columnName) {
+    private boolean isColumnPrimary(String schemaName, String tableName, int columnIndex) {
         String[] primaryColumns = getPrimaryKeyValue(schemaName, tableName);
         for (String primaryColumn : primaryColumns) {
-            if (primaryColumn.trim().equals(columnName)) {
+            int index = Integer.parseInt(primaryColumn);
+            if (index == columnIndex) {
                 return true;
             }
         }
@@ -72,13 +75,15 @@ public class SqlTools {
     }
 
     private String[] getPrimaryKeyValue(String schemaName, String tableName) {
-        String sql = String.format(Locale.ENGLISH, "select indexdef from pg_indexes where"
-                + " schemaname = '%s' and tablename = '%s'", schemaName, tableName);
+        String sql = String.format(Locale.ENGLISH, "select conkey from pg_constraint where "
+                + "conrelid = (select oid from pg_class where relname = '%s' and "
+                + "relnamespace = (select oid from pg_namespace where nspname= '%s')) and"
+                + " contype = 'p';", tableName, schemaName);
         try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
             while (rs.next()) {
-                String indexdef = rs.getString("indexdef");
-                if (!"".equals(indexdef)) {
-                    return indexdef.substring(indexdef.indexOf("(") + 1, indexdef.lastIndexOf(")"))
+                String indexes = rs.getString("conkey");
+                if (indexes != null) {
+                    return indexes.substring(indexes.indexOf("{") + 1, indexes.lastIndexOf("}"))
                             .split(",");
                 }
             }
