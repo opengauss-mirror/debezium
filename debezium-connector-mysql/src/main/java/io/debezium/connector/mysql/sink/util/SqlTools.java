@@ -62,35 +62,38 @@ public class SqlTools {
     }
 
     private boolean isColumnPrimary(String schemaName, String tableName, String columnName) {
-        String primaryCloumn = getPrimaryKeyValue(schemaName, tableName);
-        if (primaryCloumn.equals(columnName)) {
-            return true;
+        String[] primaryColumns = getPrimaryKeyValue(schemaName, tableName);
+        for (String primaryColumn : primaryColumns) {
+            if (primaryColumn.trim().equals(columnName)) {
+                return true;
+            }
         }
         return false;
     }
 
-    private String getPrimaryKeyValue(String schemaName, String tableName) {
+    private String[] getPrimaryKeyValue(String schemaName, String tableName) {
         String sql = String.format(Locale.ENGLISH, "select indexdef from pg_indexes where"
                 + " schemaname = '%s' and tablename = '%s'", schemaName, tableName);
         try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
             while (rs.next()) {
                 String indexdef = rs.getString("indexdef");
                 if (!"".equals(indexdef)) {
-                    return indexdef.substring(indexdef.lastIndexOf("(") + 1, indexdef.lastIndexOf(")"));
+                    return indexdef.substring(indexdef.indexOf("(") + 1, indexdef.lastIndexOf(")"))
+                            .split(",");
                 }
             }
         }
         catch (SQLException e) {
             LOGGER.error("SQL exception occurred in sql tools", e);
         }
-        return "";
+        return new String[0];
     }
 
     public String getInsertSql(TableMetaData tableMetaData, Struct after) {
         StringBuilder sb = new StringBuilder();
         sb.append("insert into \"").append(tableMetaData.getSchemaName()).append("\".\"")
                 .append(tableMetaData.getTableName()).append("\"").append(" values (");
-        ArrayList<String> valueList = getValueList(tableMetaData, after, Envelope.Operation.CREATE);
+        ArrayList<String> valueList = getValueList(tableMetaData.getColumnList(), after, Envelope.Operation.CREATE);
         sb.append(String.join(", ", valueList));
         sb.append(");");
         return sb.toString();
@@ -101,7 +104,8 @@ public class SqlTools {
         StringBuilder sb = new StringBuilder();
         sb.append("update \"").append(tableMetaData.getSchemaName()).append("\".\"")
                 .append(tableMetaData.getTableName()).append("\"").append(" set ");
-        ArrayList<String> updateSetValueList = getValueList(tableMetaData, after, Envelope.Operation.UPDATE);
+        ArrayList<String> updateSetValueList = getValueList(tableMetaData.getColumnList(), after,
+                Envelope.Operation.UPDATE);
         sb.append(String.join(", ", updateSetValueList));
         sb.append(" where ");
         sb.append(getWhereCondition(tableMetaData, before, Envelope.Operation.UPDATE));
@@ -117,23 +121,28 @@ public class SqlTools {
     }
 
     private String getWhereCondition(TableMetaData tableMetaData, Struct before, Envelope.Operation option) {
-        StringBuilder sb = new StringBuilder();
+        List<ColumnMetaData> primaryColumnMetaDataList = new ArrayList<>();
         for (ColumnMetaData column : tableMetaData.getColumnList()) {
             if (column.isPrimaryColumn()) {
-                sb.append(column.getColumnName() + " = ");
-                sb.append(DebeziumValueConverters.getValue(column, before));
-                return sb.toString();
+                primaryColumnMetaDataList.add(column);
             }
         }
-        ArrayList<String> whereConditionValueList = getValueList(tableMetaData, before, option);
+        ArrayList<String> whereConditionValueList;
+        if (primaryColumnMetaDataList.size() > 0) {
+            whereConditionValueList = getValueList(primaryColumnMetaDataList, before, option);
+        }
+        else {
+            whereConditionValueList = getValueList(tableMetaData.getColumnList(), before, option);
+        }
+        StringBuilder sb = new StringBuilder();
         sb.append(String.join(" and ", whereConditionValueList));
         sb.append(";");
         return sb.toString();
     }
 
-    private ArrayList<String> getValueList(TableMetaData tableMetaData, Struct after, Envelope.Operation operation) {
+    private ArrayList<String> getValueList(List<ColumnMetaData> columnMetaDataList, Struct after,
+                                           Envelope.Operation operation) {
         ArrayList<String> valueList = new ArrayList<>();
-        List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
         String singleValue;
         String columnName;
         String columnType;
