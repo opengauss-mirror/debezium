@@ -102,19 +102,15 @@ public class TransactionDispatcher {
     public void dispatcher() {
         createThreads();
         statTask();
+        statWorkThreadStatusTask();
         statReplayTask();
         Transaction txn = null;
-        int freeThreadIndex = -1;
         int queueIndex = 0;
+        WorkThread workThread = null;
         while (true) {
             if (selectedTransaction == null) {
                 txn = transactionQueueList.get(queueIndex).poll();
                 if (txn != null) {
-                    if (LOGGER.isInfoEnabled()) {
-                        String txnString = txn.toString();
-                        LOGGER.info("Ready to replay the transaction: {}",
-                                txnString.substring(0, Math.min(2048, txnString.length())));
-                    }
                     count++;
                     if (count % JdbcDbWriter.MAX_VALUE == 0) {
                         queueIndex++;
@@ -137,12 +133,17 @@ public class TransactionDispatcher {
                 selectedTransaction = null;
             }
             if (txn != null) {
-                freeThreadIndex = canParallelAndFindFreeThread(txn, threadList);
-                if (freeThreadIndex == -1) {
+                workThread = canParallelAndFindFreeThread(txn, threadList);
+                if (null == workThread) {
                     selectedTransaction = txn;
                 }
                 else {
-                    threadList.get(freeThreadIndex).resumeThread(txn);
+                    if (LOGGER.isInfoEnabled()) {
+                        String txnString = txn.toString();
+                        LOGGER.info("In {}, ready to replay the transaction: {}", workThread.getName(),
+                                txnString.substring(0, Math.min(2048, txnString.length())));
+                    }
+                    workThread.resumeThread(txn);
                 }
             }
         }
@@ -152,8 +153,10 @@ public class TransactionDispatcher {
         int successCount = 0;
         int failCount = 0;
         for (WorkThread workThread : threadList) {
-            successCount += workThread.getSuccessCount();
-            failCount += workThread.getFailCount();
+            if (workThread.isAlive()) {
+                successCount += workThread.getSuccessCount();
+                failCount += workThread.getFailCount();
+            }
         }
         return new int[]{ successCount, failCount, successCount + failCount };
     }
@@ -213,20 +216,37 @@ public class TransactionDispatcher {
         timer.schedule(task, 1000, 1000);
     }
 
-    private int canParallelAndFindFreeThread(Transaction transaction, ArrayList<WorkThread> threadList) {
-        int freeThreadIndex = -1;
-        for (int i = 0; i < threadCount; i++) {
-            Transaction runningTransaction = threadList.get(i).getTransaction();
+    private void statWorkThreadStatusTask() {
+        Timer timer = new Timer();
+        TimerTask task = new TimerTask() {
+            @Override
+            public void run() {
+                for (int i = 0; i < threadList.size(); i++) {
+                    if (!threadList.get(i).isAlive()) {
+                        LOGGER.error("Total {} work thread, current work thread {} is dead, so remove it.",
+                                threadList.size(), i);
+                        threadList.remove(i);
+                    }
+                }
+            }
+        };
+        timer.schedule(task, 0, 1000 * 60 * 5);
+    }
+
+    private WorkThread canParallelAndFindFreeThread(Transaction transaction, ArrayList<WorkThread> threadList) {
+        WorkThread freeWorkThread = null;
+        for (WorkThread workThread : threadList) {
+            Transaction runningTransaction = workThread.getTransaction();
             if (runningTransaction != null) {
                 boolean canParallel = transaction.interleaved(runningTransaction);
                 if (!canParallel) {
-                    return -1;
+                    return null;
                 }
             }
             else {
-                freeThreadIndex = i;
+                freeWorkThread = workThread;
             }
         }
-        return freeThreadIndex;
+        return freeWorkThread;
     }
 }
