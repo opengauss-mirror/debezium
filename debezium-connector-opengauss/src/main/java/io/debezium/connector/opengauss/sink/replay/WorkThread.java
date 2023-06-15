@@ -12,6 +12,7 @@ import io.debezium.connector.opengauss.sink.object.SourceField;
 import io.debezium.connector.opengauss.sink.object.TableMetaData;
 import io.debezium.connector.opengauss.sink.object.DmlOperation;
 import io.debezium.connector.opengauss.sink.utils.SqlTools;
+import org.apache.kafka.connect.errors.DataException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,7 +67,7 @@ public class WorkThread extends Thread {
 
     @Override
     public void run() {
-        SinkRecordObject sinkRecordObject;
+        SinkRecordObject sinkRecordObject = null;
         connection = connectionInfo.createMysqlConnection();
         try {
             statement = connection.createStatement();
@@ -91,6 +92,14 @@ public class WorkThread extends Thread {
                     LOGGER.error("SQL exception occurred in work thread", exp);
                 } catch (InterruptedException exp) {
                     LOGGER.warn("Interrupted exception occurred", exp);
+                } catch (DataException exp) {
+                    failCount++;
+                    if (sinkRecordObject != null) {
+                        oldTableMap.remove(schemaMappingMap.get(sinkRecordObject.getSourceField()
+                                .getSchema()) + "." + sinkRecordObject.getSourceField().getTable());
+                    }
+                    LOGGER.error("DataException occurred because of invalid field, possible reason is tables "
+                            + "of OpenGauss and MySQL have same table name but different table structure.", exp);
                 }
             }
     }
