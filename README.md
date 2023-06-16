@@ -685,6 +685,21 @@ select * from pg_current_xlog_location();
 
 若source端无此配置项，工具将从kafka中记录的位置开始迁移，若kafka中没有记录，工具默认从建立逻辑复制槽和发布之后的位置开始迁移
 
+黑白名单配置说明：
+
+mysql connector 可通过配置库级和表级的黑白名单，实现对特定库和表的变更日志的抽取，具体如下：
+
+| 参数                    | 类型     | 参数说明                                                                |
+|-----------------------|--------|---------------------------------------------------------------------|
+| database.include.list | String | 库级白名单列表，以逗号分隔，规定connector只抽取白名单中的数据库的变更日志                           |
+| database.exclude.list | String | 库级黑名单列表，以逗号分隔，规定connector不抽取黑名单中的数据库的变更日志                           |
+| table.include.list    | String | 表级白名单列表，以逗号分隔，规定connector只抽取白名单中的表的变更日志，格式为database_name.table_name |
+| table.exclude.list    | String | 表级黑名单列表，以逗号分隔，规定connector不抽取黑名单中的表的变更日志，格式为database_name.table_name                           |
+
+使用说明：
+（1）同级的黑白名单不能同时配置；
+（2）若要重新配置参数，使得白名单范围变大或黑名单范围变小，需修改source端配置项database.server.name, transforms.route.regex为新的值，注意参数之间的对应关系。
+
 #### Sink端
 
 ```
