@@ -34,6 +34,7 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.mysql.cj.jdbc.AbandonedConnectionCleanupThread;
 import com.mysql.cj.util.StringUtils;
 
 import io.debezium.connector.mysql.process.MysqlProcessCommitter;
@@ -55,7 +56,7 @@ import io.debezium.data.Envelope;
  * Description: JdbcDbWriter
  *
  * @author douxin
- * @since 2022-10-31
+ * @since 2022/10/31
  **/
 public class JdbcDbWriter {
     /**
@@ -69,7 +70,9 @@ public class JdbcDbWriter {
     public static final int MAX_VALUE = 50000;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(JdbcDbWriter.class);
+    private static final int TRAFFIC_LIMIT_THRESHOLD = 20;
 
+    private boolean shouldTrafficLimit = false;
     private ConnectionInfo openGaussConnection;
     private SqlTools sqlTools;
     private TransactionDispatcher transactionDispatcher;
@@ -106,6 +109,15 @@ public class JdbcDbWriter {
      */
     public JdbcDbWriter(MySqlSinkConnectorConfig config) {
         initObject(config);
+    }
+
+    /**
+     * Get traffic limit flag
+     *
+     * @return boolean the traffic limit flag
+     */
+    public boolean getShouldTrafficLimit() {
+        return this.shouldTrafficLimit;
     }
 
     /**
@@ -195,6 +207,8 @@ public class JdbcDbWriter {
         if (config.isCommitProcess()) {
             statCommit();
         }
+        monitorQueueLength();
+        AbandonedConnectionCleanupThread.uncheckedShutdown();
     }
 
     /**
@@ -240,10 +254,10 @@ public class JdbcDbWriter {
                                 .getString(TransactionRecordField.ID).split(":")[1]);
                     }
                     if (skipNum > 0) {
-                        String skipLog = String.format(Locale.ROOT, "Transaction %s contains %s records, and "
-                                + "skips %s records because of table snapshot", value.get(TransactionRecordField.ID),
-                                value.getInt64(TransactionRecordField.EVENT_COUNT), skipNum);
-                        LOGGER.warn(skipLog);
+                        LOGGER.warn("Transaction {} contains {} records, and skips {} records due to table snapshot",
+                                value.get(TransactionRecordField.ID),
+                                value.getInt64(TransactionRecordField.EVENT_COUNT),
+                                skipNum);
                         skipNum = 0;
                     }
                 }
@@ -262,7 +276,7 @@ public class JdbcDbWriter {
                     skippedCount++;
                     statExtractCount();
                     MysqlSinkProcessInfo.SINK_PROCESS_INFO.setSkippedCount(skippedCount);
-                    LOGGER.warn("Skip one record: " + sinkRecordObject);
+                    LOGGER.warn("Skip one record: {}", sinkRecordObject);
                     continue;
                 }
                 try {
@@ -490,15 +504,13 @@ public class JdbcDbWriter {
     }
 
     private void statTask() {
-        final int[] before = { count };
+        final int[] previousCount = { count };
         TimerTask task = new TimerTask() {
             @Override
             public void run() {
-                String date = ofPattern.format(LocalDateTime.now());
-                String result = String.format("have constructed %s transaction, and current time is %s, and current "
-                        + "speed is %s", count, date, count - before[0]);
-                LOGGER.warn(result);
-                before[0] = count;
+                LOGGER.warn("have constructed {} transaction, and current time is {}, and current speed is {}",
+                        count, ofPattern.format(LocalDateTime.now()), count - previousCount[0]);
+                previousCount[0] = count;
             }
         };
         Timer timer = new Timer();
@@ -515,5 +527,23 @@ public class JdbcDbWriter {
     private void statExtractCount() {
         extractCount++;
         MysqlSinkProcessInfo.SINK_PROCESS_INFO.setExtractCount(extractCount);
+    }
+
+    private void monitorQueueLength() {
+        TimerTask task = new TimerTask() {
+            @Override
+            public void run() {
+                int gap = count - transactionDispatcher.getCount();
+                int speed = transactionDispatcher.getCount() - transactionDispatcher.getPreviousCount();
+                if (gap > TRAFFIC_LIMIT_THRESHOLD * speed) {
+                    shouldTrafficLimit = true;
+                }
+                else {
+                    shouldTrafficLimit = false;
+                }
+            }
+        };
+        Timer timer = new Timer();
+        timer.schedule(task, 10, 20);
     }
 }

@@ -41,6 +41,7 @@ public class TransactionDispatcher {
 
     private int threadCount;
     private int count = 0;
+    private int previousCount = 0;
     private ConnectionInfo connectionInfo;
     private Transaction selectedTransaction = null;
     private ArrayList<WorkThread> threadList = new ArrayList<>();
@@ -94,6 +95,24 @@ public class TransactionDispatcher {
      */
     public void initProcessCommitter(String failSqlPath, int fileSizeLimit) {
         this.processCommitter = new MysqlProcessCommitter(failSqlPath, fileSizeLimit);
+    }
+
+    /**
+     * Get count
+     *
+     * @return int the count
+     */
+    public int getCount() {
+        return this.count;
+    }
+
+    /**
+     * Get previous count
+     *
+     * @return int the previous count
+     */
+    public int getPreviousCount() {
+        return this.previousCount;
     }
 
     /**
@@ -202,15 +221,12 @@ public class TransactionDispatcher {
 
     private void statTask() {
         Timer timer = new Timer();
-        final int[] before = { count };
         TimerTask task = new TimerTask() {
             @Override
             public void run() {
-                String date = ofPattern.format(LocalDateTime.now());
-                String result = String.format("have replayed %s transaction, and current time is %s, and current "
-                        + "speed is %s", count, date, count - before[0]);
-                LOGGER.warn(result);
-                before[0] = count;
+                LOGGER.warn("have replayed {} transaction, and current time {}, and current speed is {}",
+                        count, ofPattern.format(LocalDateTime.now()), count - previousCount);
+                previousCount = count;
             }
         };
         timer.schedule(task, 1000, 1000);

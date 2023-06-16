@@ -234,7 +234,8 @@ public final class GtidSet {
         if (values.length == 1 && "1".equals(values[0])) {
             // if max transaction is 1, no modification, return the original uuid:1
             return gtid;
-        } else {
+        }
+        else {
             // if max transaction > 1, modify max transaction id, return the uuid:1-($value+modifiedValue)
             long transactionId = Long.parseLong(values[1]) + modifiedValue;
             return gtid.substring(0, index + 1) + values[0] + "-" + transactionId;
