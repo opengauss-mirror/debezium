@@ -88,10 +88,13 @@ public class OgProcessCommitter extends BaseProcessCommitter {
         sinkProcessInfo.setSpeed(before, commitTimeInterval);
         sinkProcessInfo.setRest(0, 0);
         sinkProcessInfo.setTimestamp();
-        waitSuitableTime();
         long sourceCreateCount = inputCreateCount(createCountInfoPath + File.separator
-                + CREATE_COUNT_INFO_NAME, false);
-        if (sourceCreateCount != -1L) {
+                + CREATE_COUNT_INFO_NAME);
+        while (sourceCreateCount != -1 && sourceCreateCount < sinkProcessInfo.getReplayedCount()) {
+            sourceCreateCount = inputCreateCount(createCountInfoPath + File.separator
+                    + CREATE_COUNT_INFO_NAME);
+        }
+        if (sourceCreateCount != -1) {
             sinkProcessInfo.setOverallPipe(sourceCreateCount);
         }
         return sinkProcessInfo;
@@ -114,16 +117,6 @@ public class OgProcessCommitter extends BaseProcessCommitter {
                         - sourceProcessInfo.getSkippedExcludeCount());
             }
         });
-    }
-
-    private void waitSuitableTime() {
-        long fileTimeMillis = inputCreateCount(createCountInfoPath + File.separator
-                + CREATE_COUNT_INFO_NAME, true);
-        long currentMillis = System.currentTimeMillis();
-        while (fileTimeMillis != -1L && fileTimeMillis < currentMillis) {
-            fileTimeMillis = inputCreateCount(createCountInfoPath + File.separator
-                    + CREATE_COUNT_INFO_NAME, true);
-        }
     }
 
     private long waitTimeInterval(boolean isSource) {

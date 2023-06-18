@@ -27,10 +27,6 @@ import io.debezium.connector.process.BaseProcessCommitter;
  * @since  2023-03-20
  */
 public class MysqlProcessCommitter extends BaseProcessCommitter {
-    /**
-     * current event index
-     */
-    public static long currentEventIndex;
     private static final Logger LOGGER = LoggerFactory.getLogger(MysqlProcessCommitter.class);
     private static final String SHOW_MASTER_STATUS = "SHOW MASTER STATUS";
     private static final String SHOW_SLAVE_STATUS = "SHOW SLAVE STATUS";
@@ -111,16 +107,17 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
         sinkProcessInfo.setSpeed(before, commitTimeInterval);
         sinkProcessInfo.setRest(sinkProcessInfo.getSkippedExcludeEventCount(), sinkProcessInfo.getSkippedCount());
         sinkProcessInfo.setTimestamp();
-        listenStartEventIndex();
-        if (startEventIndex != -1L && currentEventIndex != 0L) {
-            sinkProcessInfo.setOverallPipe(currentEventIndex - startEventIndex);
+        long sourceCreateCount = inputCreateCount(createCountInfoPath + File.separator
+                + CREATE_COUNT_INFO_NAME);
+        while (sourceCreateCount != -1 && sourceCreateCount < sinkProcessInfo.getReplayedCount()
+                + sinkProcessInfo.getSkippedCount() + sinkProcessInfo.getSkippedExcludeEventCount()) {
+            sourceCreateCount = inputCreateCount(createCountInfoPath + File.separator
+                    + CREATE_COUNT_INFO_NAME);
+        }
+        if (sourceCreateCount != -1) {
+            sinkProcessInfo.setOverallPipe(sourceCreateCount);
         }
         return sinkProcessInfo;
-    }
-
-    private void listenStartEventIndex() {
-        startEventIndex = inputCreateCount(createCountInfoPath + File.separator
-                + CREATE_COUNT_INFO_NAME, false);
     }
 
     private long initStartEventIndex(String originGtidSet) {
@@ -221,9 +218,15 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
                 threadPool.shutdown();
                 return;
             }
-            outputCreateCountInfo(dirPath + CREATE_COUNT_INFO_NAME,
-                    startEventIndex);
-            threadPool.shutdown();
+            while (true) {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException exp) {
+                    LOGGER.error("Interrupted exception occurred while thread sleeping", exp);
+                }
+                outputCreateCountInfo(dirPath + CREATE_COUNT_INFO_NAME, getCurrentEventIndex()
+                        - startEventIndex);
+            }
         });
     }
 }

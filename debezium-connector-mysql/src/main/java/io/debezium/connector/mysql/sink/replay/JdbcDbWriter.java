@@ -235,10 +235,6 @@ public class JdbcDbWriter {
                     for (SinkRecordObject sinkRecordObject : sinkRecordsArrayList) {
                         constructDml(sinkRecordObject);
                     }
-                    if (value.getString(TransactionRecordField.ID).split(":").length > 1) {
-                        MysqlProcessCommitter.currentEventIndex = Long.parseLong(value
-                                .getString(TransactionRecordField.ID).split(":")[1]);
-                    }
                     if (skipNum > 0) {
                         String skipLog = String.format(Locale.ROOT, "Transaction %s contains %s records, and "
                                 + "skips %s records because of table snapshot", value.get(TransactionRecordField.ID),
@@ -274,9 +270,6 @@ public class JdbcDbWriter {
                     dataOperation = new DdlOperation(value);
                     sinkRecordObject.setDataOperation(dataOperation);
                     constructDdl(sinkRecordObject);
-                    if (value.getStruct(SourceField.SOURCE).getString(SourceField.GTID) != null) {
-                        MysqlProcessCommitter.currentEventIndex = Long.parseLong(value.getStruct(SourceField.SOURCE).getString(SourceField.GTID).split(":")[1]);
-                    }
                 }
             }
         }

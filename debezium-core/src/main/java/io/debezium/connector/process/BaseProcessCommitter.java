@@ -16,7 +16,6 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.FileNotFoundException;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -177,34 +176,34 @@ public abstract class BaseProcessCommitter {
      * input start event index or create count
      *
      * @param createCountFilePath String the createCountFilePath
-     * @param isInputTimestamp Boolean the isInputTimestamp
      * @return Long the event index or create count
      */
-    protected long inputCreateCount(String createCountFilePath, boolean isInputTimestamp) {
+    protected long inputCreateCount(String createCountFilePath) {
         File createCountFile = new File(createCountFilePath);
-        if (!createCountFile.exists() || !createCountFile.canRead()) {
+        if (!createCountFile.exists()) {
             return -1L;
         }
-        Long fileLength = createCountFile.length();
-        byte[] fileContent = new byte[fileLength.intValue()];
-        try (FileInputStream in = new FileInputStream(createCountFile)) {
-            in.read(fileContent);
-        } catch (FileNotFoundException exp) {
-            LOGGER.warn("FileNotFound exception occurred while reading source create count,"
-                    + " the overallPipe will always be 0", exp);
-            return -1L;
-        } catch (IOException exp) {
-            LOGGER.warn("IO exception occurred while reading source create count,"
-                    + " the overallPipe will always be 0", exp);
-            return -1L;
+        Long fileLength;
+        String content = "";
+        byte[] fileContent;
+        while ("".equals(content)) {
+            fileLength = createCountFile.length();
+            fileContent = new byte[fileLength.intValue()];
+            try (FileInputStream in = new FileInputStream(createCountFile)) {
+                in.read(fileContent);
+            } catch (IOException exp) {
+                LOGGER.warn("IO exception occurred while reading source create count,"
+                        + " the overallPipe will always be 0", exp);
+                return -1L;
+            }
+            content = new String(fileContent, StandardCharsets.UTF_8);
+            content = content.trim();
         }
-        String[] result = new String(fileContent, StandardCharsets.UTF_8).split(":");
+        String[] result = content.split(":");
         if (result.length < 2) {
             return -1L;
         }
-        if (isInputTimestamp && !"".equals(result[0])) {
-            return Long.parseLong(result[0]);
-        } else if (!isInputTimestamp && !"".equals(result[1])) {
+        if (!"".equals(result[1])) {
             return Long.parseLong(result[1]);
         } else {
             return -1L;
