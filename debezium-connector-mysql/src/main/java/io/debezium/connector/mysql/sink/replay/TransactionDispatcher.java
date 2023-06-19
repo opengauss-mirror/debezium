@@ -190,6 +190,11 @@ public class TransactionDispatcher {
                 if (failSqlList.size() > 0) {
                     commitFailSql(failSqlList);
                 }
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    LOGGER.error("Interrupted exception occurred while thread sleeping", e);
+                }
             }
         });
     }
