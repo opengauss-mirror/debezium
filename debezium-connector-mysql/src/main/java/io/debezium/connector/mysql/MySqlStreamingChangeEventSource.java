@@ -38,6 +38,7 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
+import com.github.shyiko.mysql.binlog.event.deserialization.GtidEventDataDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
@@ -274,7 +275,12 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
 
         // Add our custom deserializers ...
         eventDeserializer.setEventDataDeserializer(EventType.STOP, new StopEventDataDeserializer());
-        eventDeserializer.setEventDataDeserializer(EventType.GTID, new MyGtidEventDataDeserializer());
+        if (connection.isVersionLessThan57()) {
+            eventDeserializer.setEventDataDeserializer(EventType.GTID, new GtidEventDataDeserializer());
+        }
+        else {
+            eventDeserializer.setEventDataDeserializer(EventType.GTID, new MyGtidEventDataDeserializer());
+        }
         eventDeserializer.setEventDataDeserializer(EventType.WRITE_ROWS,
                 new RowDeserializers.WriteRowsDeserializer(tableMapEventByTableId));
         eventDeserializer.setEventDataDeserializer(EventType.UPDATE_ROWS,

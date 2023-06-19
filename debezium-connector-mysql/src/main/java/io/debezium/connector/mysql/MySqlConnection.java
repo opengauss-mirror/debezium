@@ -50,6 +50,8 @@ public class MySqlConnection extends JdbcConnection {
     private static final String SQL_SHOW_SYSTEM_VARIABLES_CHARACTER_SET = "SHOW VARIABLES WHERE Variable_name IN ('character_set_server','collation_server')";
     private static final String SQL_SHOW_SESSION_VARIABLE_SSL_VERSION = "SHOW SESSION STATUS LIKE 'Ssl_version'";
     private static final String QUOTED_CHARACTER = "`";
+    private static final int MAIN_VERSION = 5;
+    private static final int SUB_VERSION = 7;
 
     protected static final String URL_PATTERN = "jdbc:mysql://${hostname}:${port}/?useInformationSchema=true&nullCatalogMeansCurrent=false&useSSL=${useSSL}&useUnicode=true&characterEncoding=UTF-8&characterSetResults=UTF-8&zeroDateTimeBehavior=CONVERT_TO_NULL&connectTimeout=${connectTimeout}";
 
@@ -238,6 +240,31 @@ public class MySqlConnection extends JdbcConnection {
         }
         catch (SQLException e) {
             throw new DebeziumException("Unexpected error while connecting to MySQL and looking at GTID mode: ", e);
+        }
+    }
+
+    /**
+     * Determine whether the MySQL server version is less than 5.7
+     *
+     * @return boolean, true if the server version is less than 5.7
+     */
+    public boolean isVersionLessThan57() {
+        try {
+            return queryAndMap("select version();", rs -> {
+                if (rs.next()) {
+                    String[] version = rs.getString(1).split("\\.");
+                    if (version.length >= 2) {
+                        int mainVersion = Integer.parseInt(version[0]);
+                        int subVersion = Integer.parseInt(version[1]);
+                        return mainVersion < MAIN_VERSION ||
+                                (mainVersion == MAIN_VERSION && subVersion < SUB_VERSION);
+                    }
+                }
+                return true;
+            });
+        }
+        catch (SQLException exp) {
+            throw new DebeziumException("Unexpected error while connecting to MySQL and looking at version: ", exp);
         }
     }
 
