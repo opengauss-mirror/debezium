@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import io.debezium.util.Clock;
 import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +32,7 @@ public class SqlTools {
     private static final Logger LOGGER = LoggerFactory.getLogger(SqlTools.class);
     private static final String JSON_PREFIX = "::jsonb";
     private static final String POINT_POLYGON_PREFIX = "~";
+    private static final long ATTEMPTS = 5000L;
 
     private Connection connection;
 
@@ -39,17 +41,21 @@ public class SqlTools {
     }
 
     public TableMetaData getTableMetaData(String schemaName, String tableName) {
+        return getTableMetaData(schemaName, tableName, Clock.system().currentTimeInMillis());
+    }
+
+    private TableMetaData getTableMetaData(String schemaName, String tableName, long timeMillis) {
         List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
         String sql = String.format(Locale.ENGLISH, "select column_name, data_type, numeric_scale from " +
-                "information_schema.columns where table_schema = '%s' and table_name = '%s'" +
-                " order by ordinal_position;",
+                        "information_schema.columns where table_schema = '%s' and table_name = '%s'" +
+                        " order by ordinal_position;",
                 schemaName, tableName);
         TableMetaData tableMetaData = null;
         try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
             while (rs.next()) {
                 ColumnMetaData columnMetaData = new ColumnMetaData(rs.getString("column_name"),
                         rs.getString("data_type"), rs.getString("numeric_scale") == null ? -1
-                                : rs.getInt("numeric_scale"));
+                        : rs.getInt("numeric_scale"));
                 columnMetaDataList.add(columnMetaData);
             }
             for (int i = 0; i < columnMetaDataList.size(); i++) {
@@ -59,6 +65,13 @@ public class SqlTools {
         }
         catch (SQLException exp) {
             LOGGER.error("SQL exception occurred, the sql statement is " + sql);
+        }
+        long currentTimeMillis = Clock.system().currentTimeInMillis();
+        if (columnMetaDataList.isEmpty() && (currentTimeMillis - timeMillis) < ATTEMPTS) {
+            LOGGER.info("No data exists in the metadata query result column. columnMetaDataList is {}",
+                    columnMetaDataList);
+            tableMetaData = null;
+            return getTableMetaData(schemaName, tableName, timeMillis);
         }
         return tableMetaData;
     }
