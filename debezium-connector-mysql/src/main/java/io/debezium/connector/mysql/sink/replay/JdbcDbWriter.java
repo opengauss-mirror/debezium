@@ -27,6 +27,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
@@ -70,9 +71,12 @@ public class JdbcDbWriter {
     public static final int MAX_VALUE = 50000;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(JdbcDbWriter.class);
-    private static final int TRAFFIC_LIMIT_THRESHOLD = 20;
 
-    private boolean shouldTrafficLimit = false;
+    private int maxQueueSize;
+    private double openFlowControlThreshold;
+    private double closeFlowControlThreshold;
+
+    private volatile AtomicBoolean isBlock = new AtomicBoolean(false);
     private ConnectionInfo openGaussConnection;
     private SqlTools sqlTools;
     private TransactionDispatcher transactionDispatcher;
@@ -112,12 +116,12 @@ public class JdbcDbWriter {
     }
 
     /**
-     * Get traffic limit flag
+     * Is block
      *
-     * @return boolean the traffic limit flag
+     * @return boolean true if is block
      */
-    public boolean getShouldTrafficLimit() {
-        return this.shouldTrafficLimit;
+    public boolean isBlock() {
+        return this.isBlock.get();
     }
 
     /**
@@ -144,6 +148,7 @@ public class JdbcDbWriter {
         initSqlTools();
         initTransactionDispatcher(config.parallelReplayThreadNum);
         initXlogLocation(config.xlogLocation);
+        initFlowControl(config);
     }
 
     private void initOpenGaussConnection(MySqlSinkConnectorConfig config) {
@@ -187,6 +192,13 @@ public class JdbcDbWriter {
         transactionDispatcher.initProcessCommitter(config.getFailSqlPath(), config.getFileSizeLimit());
     }
 
+    private void initFlowControl(MySqlSinkConnectorConfig config) {
+        maxQueueSize = config.maxQueueSize;
+        openFlowControlThreshold = config.openFlowControlThreshold;
+        closeFlowControlThreshold = config.closeFlowControlThreshold;
+        monitorSinkQueueSize();
+    }
+
     /**
      * Batch write
      *
@@ -207,7 +219,6 @@ public class JdbcDbWriter {
         if (config.isCommitProcess()) {
             statCommit();
         }
-        monitorQueueLength();
         AbandonedConnectionCleanupThread.uncheckedShutdown();
     }
 
@@ -216,8 +227,12 @@ public class JdbcDbWriter {
      */
     public void parseRecord() {
         int skipNum = 0;
-        Struct value = null;
+        Struct value;
         SinkRecord sinkRecord = null;
+        SourceField sourceField;
+        String snapshot;
+        SinkRecordObject sinkRecordObject;
+        DataOperation dataOperation;
         while (true) {
             try {
                 sinkRecord = sinkQueue.take();
@@ -239,15 +254,17 @@ public class JdbcDbWriter {
                     sinkRecordsArrayList.clear();
                 }
                 else {
-                    dmlEventCountMap.put(value.getString(TransactionRecordField.ID),
-                            value.getInt64(TransactionRecordField.EVENT_COUNT) - skipNum);
+                    if (skipNum < value.getInt64(TransactionRecordField.EVENT_COUNT)) {
+                        dmlEventCountMap.put(value.getString(TransactionRecordField.ID),
+                                value.getInt64(TransactionRecordField.EVENT_COUNT) - skipNum);
+                    }
                     if (value.getInt64(TransactionRecordField.EVENT_COUNT) == 0) {
                         statExtractCount();
                         skippedExcludeEventCount++;
                         MysqlSinkProcessInfo.SINK_PROCESS_INFO.setSkippedExcludeEventCount(skippedExcludeEventCount);
                     }
-                    for (SinkRecordObject sinkRecordObject : sinkRecordsArrayList) {
-                        constructDml(sinkRecordObject);
+                    for (SinkRecordObject oneSinkRecordObject : sinkRecordsArrayList) {
+                        constructDml(oneSinkRecordObject);
                     }
                     if (skipNum > 0) {
                         LOGGER.warn("Transaction {} contains {} records, and skips {} records due to table snapshot",
@@ -259,22 +276,22 @@ public class JdbcDbWriter {
                 }
             }
             catch (DataException exp) {
-                SinkRecordObject sinkRecordObject = new SinkRecordObject();
-                SourceField sourceField = new SourceField(value);
-                String snapshot = sourceField.getSnapshot();
+                sourceField = new SourceField(value);
+                snapshot = sourceField.getSnapshot();
                 if ("true".equals(snapshot) || "last".equals(snapshot)) {
                     continue;
                 }
-                sinkRecordObject.setSourceField(sourceField);
-                DataOperation dataOperation = null;
                 if (isSkippedEvent(sourceField)) {
                     skipNum++;
                     skippedCount++;
                     statExtractCount();
                     MysqlSinkProcessInfo.SINK_PROCESS_INFO.setSkippedCount(skippedCount);
-                    LOGGER.warn("Skip one record: {}", sinkRecordObject);
+                    LOGGER.warn("Skip one record: {}", sourceField);
                     continue;
                 }
+                sinkRecordObject = new SinkRecordObject();
+                sinkRecordObject.setSourceField(sourceField);
+
                 try {
                     dataOperation = new DmlOperation(value);
                     sinkRecordObject.setDataOperation(dataOperation);
@@ -501,6 +518,7 @@ public class JdbcDbWriter {
         TimerTask task = new TimerTask() {
             @Override
             public void run() {
+                Thread.currentThread().setName("timer-construct-txn");
                 LOGGER.warn("have constructed {} transaction, and current time is {}, and current speed is {}",
                         count, ofPattern.format(LocalDateTime.now()), count - previousCount[0]);
                 previousCount[0] = count;
@@ -522,17 +540,29 @@ public class JdbcDbWriter {
         MysqlSinkProcessInfo.SINK_PROCESS_INFO.setExtractCount(extractCount);
     }
 
-    private void monitorQueueLength() {
+    private void monitorSinkQueueSize() {
+        int openFlowControlQueueSize = (int) (openFlowControlThreshold * maxQueueSize);
+        int closeFlowControlQueueSize = (int) (closeFlowControlThreshold * maxQueueSize);
         TimerTask task = new TimerTask() {
             @Override
             public void run() {
-                int gap = count - transactionDispatcher.getCount();
-                int speed = transactionDispatcher.getCount() - transactionDispatcher.getPreviousCount();
-                if (gap > TRAFFIC_LIMIT_THRESHOLD * speed) {
-                    shouldTrafficLimit = true;
+                Thread.currentThread().setName("timer-queue-size");
+                int size = sinkQueue.size();
+                if (size > openFlowControlQueueSize) {
+                    if (!isBlock.get()) {
+                        LOGGER.warn("[start flow control] current isBlock is {}, queue size is {}, which is "
+                                        + "more than {} * {}, so open flow control",
+                                isBlock, size, openFlowControlThreshold, maxQueueSize);
+                    }
+                    isBlock.set(true);
                 }
-                else {
-                    shouldTrafficLimit = false;
+                if (size < closeFlowControlQueueSize) {
+                    if (isBlock.get()) {
+                        LOGGER.warn("[close flow control] current isBlock is {}, queue size is {}, which is "
+                                        + "less than {} * {}, so close flow control",
+                                isBlock, size, closeFlowControlThreshold, maxQueueSize);
+                    }
+                    isBlock.set(false);
                 }
             }
         };
