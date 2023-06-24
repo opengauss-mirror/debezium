@@ -27,6 +27,7 @@ public class MysqlSinkConnectorTask extends SinkTask {
 
     private MySqlSinkConnectorConfig config;
     private JdbcDbWriter jdbcDbWriter;
+    private int count = 0;
 
     @Override
     public String version() {
@@ -42,7 +43,13 @@ public class MysqlSinkConnectorTask extends SinkTask {
 
     @Override
     public void put(Collection<SinkRecord> records) {
-        while (jdbcDbWriter.getShouldTrafficLimit()) {
+        while (jdbcDbWriter.isBlock()) {
+            count++;
+            if (count >= 300) {
+                count = 0;
+                LOGGER.warn("have wait 15s, so skip the loop");
+                break;
+            }
             try {
                 Thread.sleep(50);
             }
@@ -53,7 +60,6 @@ public class MysqlSinkConnectorTask extends SinkTask {
         if (records == null || records.isEmpty()) {
             return;
         }
-        Thread.currentThread().setName("sink-record-thread");
         jdbcDbWriter.batchWrite(records);
     }
 

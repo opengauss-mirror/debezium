@@ -53,6 +53,21 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
     public static final String XLOG_LOCATION = "xlog.location";
 
     /**
+     * Max Queue size
+     */
+    public static final String MAX_QUEUE_SIZE = "max.queue.size";
+
+    /**
+     * Open flow control threshold
+     */
+    public static final String OPEN_FLOW_CONTROL_THRESHOLD = "open.flow.control.threshold";
+
+    /**
+     * Close flow control threshold
+     */
+    public static final String CLOSE_FLOW_CONTROL_THRESHOLD = "close.flow.control.threshold";
+
+    /**
      * CONFIG_DEF
      */
     public static final ConfigDef CONFIG_DEF = getConfigDef()
@@ -61,7 +76,12 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
             .define(OPENGAUSS_PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "openGauss password")
             .define(OPENGAUSS_URL, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "openGauss url")
             .define(PARALLEL_REPLAY_THREAD_NUM, ConfigDef.Type.INT, 30, ConfigDef.Importance.HIGH, "parallel replay thread num")
-            .define(XLOG_LOCATION, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "xlog location");
+            .define(XLOG_LOCATION, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "xlog location")
+            .define(MAX_QUEUE_SIZE, ConfigDef.Type.INT, 1000000, ConfigDef.Importance.HIGH, "max queue size")
+            .define(OPEN_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.8, ConfigDef.Importance.HIGH,
+                    "open flow control threshold")
+            .define(CLOSE_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.7, ConfigDef.Importance.HIGH,
+                    "close flow control threshold");
 
     /**
      * openGauss driver
@@ -94,6 +114,21 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
     public final String xlogLocation;
 
     /**
+     * Max queue size
+     */
+    public final int maxQueueSize;
+
+    /**
+     * Open flow control threshold
+     */
+    public final double openFlowControlThreshold;
+
+    /**
+     * Close flow control threshold
+     */
+    public final double closeFlowControlThreshold;
+
+    /**
      * Constructor
      *
      * @param props Map<?, ?> the props
@@ -107,6 +142,10 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
 
         this.parallelReplayThreadNum = getInt(PARALLEL_REPLAY_THREAD_NUM);
         this.xlogLocation = getString(XLOG_LOCATION);
+
+        this.maxQueueSize = getInt(MAX_QUEUE_SIZE);
+        this.openFlowControlThreshold = getDouble(OPEN_FLOW_CONTROL_THRESHOLD);
+        this.closeFlowControlThreshold = getDouble(CLOSE_FLOW_CONTROL_THRESHOLD);
 
         logAll(props);
     }

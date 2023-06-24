@@ -229,6 +229,7 @@ public class TransactionDispatcher {
         TimerTask task = new TimerTask() {
             @Override
             public void run() {
+                Thread.currentThread().setName("timer-replay-txn");
                 LOGGER.warn("have replayed {} transaction, and current time {}, and current speed is {}",
                         count, ofPattern.format(LocalDateTime.now()), count - previousCount);
                 previousCount = count;
@@ -242,6 +243,7 @@ public class TransactionDispatcher {
         TimerTask task = new TimerTask() {
             @Override
             public void run() {
+                Thread.currentThread().setName("timer-work-status");
                 for (int i = 0; i < threadList.size(); i++) {
                     if (!threadList.get(i).isAlive()) {
                         LOGGER.error("Total {} work thread, current work thread {} is dead, so remove it.",
