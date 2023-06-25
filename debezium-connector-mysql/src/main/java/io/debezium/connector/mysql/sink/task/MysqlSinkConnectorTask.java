@@ -14,7 +14,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.mysql.Module;
-import io.debezium.connector.mysql.sink.replay.JdbcDbWriter;
+import io.debezium.connector.mysql.sink.replay.ReplayTask;
+import io.debezium.connector.mysql.sink.replay.table.TableReplayTask;
+import io.debezium.connector.mysql.sink.replay.transaction.TransactionReplayTask;
 
 /**
  * Description: MysqlSinkConnectorTask class
@@ -26,7 +28,7 @@ public class MysqlSinkConnectorTask extends SinkTask {
     private static final Logger LOGGER = LoggerFactory.getLogger(MysqlSinkConnectorTask.class);
 
     private MySqlSinkConnectorConfig config;
-    private JdbcDbWriter jdbcDbWriter;
+    private ReplayTask jdbcDbWriter;
     private int count = 0;
 
     @Override
@@ -37,7 +39,12 @@ public class MysqlSinkConnectorTask extends SinkTask {
     @Override
     public void start(Map<String, String> props) {
         config = new MySqlSinkConnectorConfig(props);
-        jdbcDbWriter = new JdbcDbWriter(config);
+        if (config.isParallelBasedTransaction) {
+            jdbcDbWriter = new TransactionReplayTask(config);
+        }
+        else {
+            jdbcDbWriter = new TableReplayTask(config);
+        }
         jdbcDbWriter.createWorkThreads();
     }
 

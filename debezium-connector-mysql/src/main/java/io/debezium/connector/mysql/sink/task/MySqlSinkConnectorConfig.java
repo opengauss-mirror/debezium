@@ -48,6 +48,11 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
     public static final String PARALLEL_REPLAY_THREAD_NUM = "parallel.replay.thread.num";
 
     /**
+     * Parallel replay mode
+     */
+    public static final String PARALLEL_BASED_TRANSACTION = "parallel.based.transaction";
+
+    /**
      * Xlog location
      */
     public static final String XLOG_LOCATION = "xlog.location";
@@ -71,17 +76,27 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
      * CONFIG_DEF
      */
     public static final ConfigDef CONFIG_DEF = getConfigDef()
-            .define(OPENGAUSS_DRIVER, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "openGauss driver class name")
-            .define(OPENGAUSS_USERNAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "openGauss username")
-            .define(OPENGAUSS_PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "openGauss password")
-            .define(OPENGAUSS_URL, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "openGauss url")
-            .define(PARALLEL_REPLAY_THREAD_NUM, ConfigDef.Type.INT, 30, ConfigDef.Importance.HIGH, "parallel replay thread num")
-            .define(XLOG_LOCATION, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "xlog location")
-            .define(MAX_QUEUE_SIZE, ConfigDef.Type.INT, 1000000, ConfigDef.Importance.HIGH, "max queue size")
-            .define(OPEN_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.8, ConfigDef.Importance.HIGH,
-                    "open flow control threshold")
-            .define(CLOSE_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.7, ConfigDef.Importance.HIGH,
-                    "close flow control threshold");
+            .define(OPENGAUSS_DRIVER, ConfigDef.Type.STRING, "org.opengauss.Driver",
+                    ConfigDef.Importance.HIGH, "openGauss driver class name")
+            .define(OPENGAUSS_USERNAME, ConfigDef.Type.STRING, "opengauss_user",
+                    ConfigDef.Importance.HIGH, "openGauss username")
+            .define(OPENGAUSS_PASSWORD, ConfigDef.Type.STRING, "******",
+                    ConfigDef.Importance.HIGH, "openGauss password")
+            .define(OPENGAUSS_URL, ConfigDef.Type.STRING,
+                    "jdbc:opengauss://127.0.0.1:5432/migration?loggerLevel=OFF",
+                    ConfigDef.Importance.HIGH, "openGauss url")
+            .define(PARALLEL_REPLAY_THREAD_NUM, ConfigDef.Type.INT, 30,
+                    ConfigDef.Importance.HIGH, "parallel replay thread num")
+            .define(PARALLEL_BASED_TRANSACTION, ConfigDef.Type.BOOLEAN, true,
+                    ConfigDef.Importance.HIGH, "parallel based transaction")
+            .define(XLOG_LOCATION, ConfigDef.Type.STRING, getCurrentPluginPath(),
+                    ConfigDef.Importance.HIGH, "xlog location")
+            .define(MAX_QUEUE_SIZE, ConfigDef.Type.INT, 1000000,
+                    ConfigDef.Importance.HIGH, "max queue size")
+            .define(OPEN_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.8,
+                    ConfigDef.Importance.HIGH, "open flow control threshold")
+            .define(CLOSE_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.7,
+                    ConfigDef.Importance.HIGH, "close flow control threshold");
 
     /**
      * openGauss driver
@@ -129,6 +144,11 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
     public final double closeFlowControlThreshold;
 
     /**
+     * Is parallel based transaction
+     */
+    public final boolean isParallelBasedTransaction;
+
+    /**
      * Constructor
      *
      * @param props Map<?, ?> the props
@@ -141,6 +161,7 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
         this.openGaussUrl = getString(OPENGAUSS_URL);
 
         this.parallelReplayThreadNum = getInt(PARALLEL_REPLAY_THREAD_NUM);
+        this.isParallelBasedTransaction = getBoolean(PARALLEL_BASED_TRANSACTION);
         this.xlogLocation = getString(XLOG_LOCATION);
 
         this.maxQueueSize = getInt(MAX_QUEUE_SIZE);

@@ -61,8 +61,10 @@ public class DmlOperation extends DataOperation {
         this.operation = value.getString(DmlOperation.OPERATION);
         this.before = value.getStruct(DmlOperation.BEFORE);
         this.after = value.getStruct(DmlOperation.AFTER);
-        this.transactionId = value.getStruct(DmlOperation.TRANSACTION)
-                .getString(DmlOperation.ID);
+        if (value.getStruct(DmlOperation.TRANSACTION) != null) {
+            this.transactionId = value.getStruct(DmlOperation.TRANSACTION)
+                    .getString(DmlOperation.ID);
+        }
         setIsDml(true);
     }
 

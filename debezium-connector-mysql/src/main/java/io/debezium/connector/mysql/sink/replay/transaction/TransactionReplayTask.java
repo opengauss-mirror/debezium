@@ -3,7 +3,7 @@
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
  */
-package io.debezium.connector.mysql.sink.replay;
+package io.debezium.connector.mysql.sink.replay.transaction;
 
 import java.io.BufferedWriter;
 import java.io.FileWriter;
@@ -15,7 +15,6 @@ import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
@@ -49,6 +48,7 @@ import io.debezium.connector.mysql.sink.object.SourceField;
 import io.debezium.connector.mysql.sink.object.TableMetaData;
 import io.debezium.connector.mysql.sink.object.Transaction;
 import io.debezium.connector.mysql.sink.object.TransactionRecordField;
+import io.debezium.connector.mysql.sink.replay.ReplayTask;
 import io.debezium.connector.mysql.sink.task.MySqlSinkConnectorConfig;
 import io.debezium.connector.mysql.sink.util.SqlTools;
 import io.debezium.data.Envelope;
@@ -59,7 +59,7 @@ import io.debezium.data.Envelope;
  * @author douxin
  * @since 2022/10/31
  **/
-public class JdbcDbWriter {
+public class TransactionReplayTask extends ReplayTask {
     /**
      * Transaction queue num
      */
@@ -70,7 +70,7 @@ public class JdbcDbWriter {
      */
     public static final int MAX_VALUE = 50000;
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(JdbcDbWriter.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(TransactionReplayTask.class);
 
     private int maxQueueSize;
     private double openFlowControlThreshold;
@@ -99,7 +99,6 @@ public class JdbcDbWriter {
     private ArrayList<String> changedTableNameList = new ArrayList<>();
     private ArrayList<SinkRecordObject> sinkRecordsArrayList = new ArrayList<>();
     private BlockingQueue<String> feedBackQueue = new LinkedBlockingQueue<>();
-    private BlockingQueue<SinkRecord> sinkQueue = new LinkedBlockingQueue<>();
     private ArrayList<ConcurrentLinkedQueue<Transaction>> transactionQueueList = new ArrayList<>();
 
     private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(3, 3, 100,
@@ -111,7 +110,7 @@ public class JdbcDbWriter {
      *
      * @param config MySqlSinkConnectorConfig mysql sink connector config
      */
-    public JdbcDbWriter(MySqlSinkConnectorConfig config) {
+    public TransactionReplayTask(MySqlSinkConnectorConfig config) {
         initObject(config);
     }
 
@@ -200,17 +199,9 @@ public class JdbcDbWriter {
     }
 
     /**
-     * Batch write
-     *
-     * @param records Collection<SinkRecord> the sink records
-     */
-    public void batchWrite(Collection<SinkRecord> records) {
-        sinkQueue.addAll(records);
-    }
-
-    /**
      * Create work threads
      */
+    @Override
     public void createWorkThreads() {
         getTableSnapshot();
         parseSinkRecordThread();
@@ -561,7 +552,7 @@ public class JdbcDbWriter {
                 if (size > openFlowControlQueueSize) {
                     if (!isBlock.get()) {
                         LOGGER.warn("[start flow control] current isBlock is {}, queue size is {}, which is "
-                                        + "more than {} * {}, so open flow control",
+                                + "more than {} * {}, so open flow control",
                                 isBlock, size, openFlowControlThreshold, maxQueueSize);
                     }
                     isBlock.set(true);
@@ -569,7 +560,7 @@ public class JdbcDbWriter {
                 if (size < closeFlowControlQueueSize) {
                     if (isBlock.get()) {
                         LOGGER.warn("[close flow control] current isBlock is {}, queue size is {}, which is "
-                                        + "less than {} * {}, so close flow control",
+                                + "less than {} * {}, so close flow control",
                                 isBlock, size, closeFlowControlThreshold, maxQueueSize);
                     }
                     isBlock.set(false);

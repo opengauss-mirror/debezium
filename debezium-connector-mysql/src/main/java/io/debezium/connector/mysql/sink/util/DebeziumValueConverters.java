@@ -47,6 +47,7 @@ public class DebeziumValueConverters {
     private static final String TIMESTAMP_FORMAT_STRING = "yyyy-MM-dd HH:mm:ss.SSSSSS";
     private static final long NANOSECOND_OF_DAY = 86400000000000L;
     private static final long EQUATION_OF_TIME = 48576000L;
+    private static final String INVALID_TIME_FORMAT_STRING = "HH:mm:ss.SSSSSS";
 
     private static HashMap<String, ValueConverter> dataTypeConverterMap = new HashMap<String, ValueConverter>() {
         {
@@ -252,15 +253,19 @@ public class DebeziumValueConverters {
             long originMicro = Long.parseLong(object.toString()) * TimeUnit.MICROSECONDS.toNanos(1);
             if (originMicro >= NANOSECOND_OF_DAY) {
                 return addingSingleQuotation(handleInvalidTime(originMicro));
-            } else if (originMicro < 0) {
+            }
+            else if (originMicro < 0) {
                 originMicro = (-originMicro - EQUATION_OF_TIME) % 1000000000 == 0
-                        ? -originMicro - EQUATION_OF_TIME : -originMicro;
+                        ? -originMicro - EQUATION_OF_TIME
+                        : -originMicro;
                 return addingSingleQuotation("-" + handleNegativeTime(originMicro));
-            } else {
+            }
+            else {
                 LocalTime localTime = LocalTime.ofNanoOfDay(originMicro);
                 instant = localTime.atDate(LocalDate.now()).toInstant(ZoneOffset.UTC);
             }
-        } else {
+        }
+        else {
             instant = convertDbzDateTime(columnName, value);
         }
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern(TIME_FORMAT_STRING)
