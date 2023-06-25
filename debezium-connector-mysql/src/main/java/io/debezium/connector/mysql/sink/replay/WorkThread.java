@@ -108,6 +108,13 @@ public class WorkThread extends Thread {
         }
     }
 
+    /**
+     * Add fail transaction count
+     */
+    public void addFailTransaction() {
+        failCount++;
+    }
+
     @Override
     public void run() {
         try (Connection connection = connectionInfo.createOpenGaussConnection();

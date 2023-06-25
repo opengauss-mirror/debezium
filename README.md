@@ -803,7 +803,6 @@ openGauss开启逻辑复制功能：
 openGauss参数配置：
 
 ```
-ssl=on
 wal_level=logical
 ```
 约束：

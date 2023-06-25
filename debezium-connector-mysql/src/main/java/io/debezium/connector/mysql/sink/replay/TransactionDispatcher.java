@@ -168,6 +168,14 @@ public class TransactionDispatcher {
         }
     }
 
+    /**
+     * Add fail transaction count
+     */
+    public void addFailTransaction() {
+        count++;
+        threadList.get(0).addFailTransaction();
+    }
+
     private int[] getSuccessAndFailCount() {
         int successCount = 0;
         int failCount = 0;

@@ -263,8 +263,18 @@ public class JdbcDbWriter {
                         skippedExcludeEventCount++;
                         MysqlSinkProcessInfo.SINK_PROCESS_INFO.setSkippedExcludeEventCount(skippedExcludeEventCount);
                     }
-                    for (SinkRecordObject oneSinkRecordObject : sinkRecordsArrayList) {
-                        constructDml(oneSinkRecordObject);
+                    try {
+                        for (SinkRecordObject oneSinkRecordObject : sinkRecordsArrayList) {
+                            constructDml(oneSinkRecordObject);
+                        }
+                    }
+                    catch (Exception e) {
+                        LOGGER.error("The connector caught an exception that cannot be covered,"
+                                + " the transaction constructed failed.", e);
+                        statExtractCount();
+                        count++;
+                        sqlList.clear();
+                        transactionDispatcher.addFailTransaction();
                     }
                     if (skipNum > 0) {
                         LOGGER.warn("Transaction {} contains {} records, and skips {} records due to table snapshot",
