@@ -33,6 +33,9 @@ import java.util.concurrent.TimeUnit;
 public final class DebeziumValueConverters {
     private static final String HEX_PREFIX = "x";
     private static final String HEX_FORMAT_PREFIX = "00000000";
+    private static final long NANOSECOND_OF_DAY = 86400000000000L;
+    private static final String INVALID_TIME_FORMAT_STRING = "HH:mm:ss.SSSSSSSSS";
+
     private DebeziumValueConverters(){}
 
     private static HashMap<String, ValueConverter> dataTypeConverterMap = new HashMap<String, ValueConverter>() {
@@ -135,9 +138,31 @@ public final class DebeziumValueConverters {
         if (object == null){
             return null;
         }
+        if ("io.debezium.time.MicroTime".equals(schemaName)) {
+            long originMicro = Long.parseLong(object.toString()) * TimeUnit.MICROSECONDS.toNanos(1);
+            if (originMicro >= NANOSECOND_OF_DAY) {
+                return handleInvalidTime(originMicro);
+            }
+        }
         Instant instant = convertDbzDateTime(object, schemaName);
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneOffset.UTC);
         return addingSingleQuotation(dateTimeFormatter.format(instant));
+    }
+
+    private static String handleInvalidTime(long originNano) {
+        long validNano = originNano - NANOSECOND_OF_DAY;
+        int days = 1;
+        while (validNano >= NANOSECOND_OF_DAY) {
+            validNano -= NANOSECOND_OF_DAY;
+            days++;
+        }
+        LocalTime localTime = LocalTime.ofNanoOfDay(validNano);
+        Instant instant = localTime.atDate(LocalDate.now()).toInstant(ZoneOffset.UTC);
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern(INVALID_TIME_FORMAT_STRING)
+                .withZone(ZoneOffset.UTC);
+        String time = dateTimeFormatter.format(instant);
+        return addingSingleQuotation(24 * days + Integer.parseInt(time.split(":")[0])
+                + time.substring(time.indexOf(":")));
     }
 
     private static Instant convertDbzDateTime(Object value, String schemaName) {
