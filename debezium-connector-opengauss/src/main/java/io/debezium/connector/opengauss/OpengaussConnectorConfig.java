@@ -781,7 +781,7 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
     public static final Field PUBLICATION_AUTOCREATE_MODE = Field.create("publication.autocreate.mode")
             .withDisplayName("Publication Auto Create Mode")
             .withGroup(Field.createGroupEntry(Field.Group.CONNECTION_ADVANCED_REPLICATION, 9))
-            .withEnum(AutoCreateMode.class, AutoCreateMode.ALL_TABLES)
+            .withEnum(AutoCreateMode.class, AutoCreateMode.FILTERED)
             .withWidth(Width.MEDIUM)
             .withImportance(Importance.MEDIUM)
             .withDescription(
