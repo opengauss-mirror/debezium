@@ -7,7 +7,9 @@
 package io.debezium.connector.opengauss.connection;
 
 import java.nio.charset.Charset;
+import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -631,6 +633,16 @@ public class OpengaussConnection extends JdbcConnection {
         catch (SQLException e) {
             // not a known type
             return super.getColumnValue(rs, columnIndex, column, table, schema);
+        }
+    }
+
+    @Override
+    public synchronized void setSessionTimeout() {
+        Connection conn = getConnection();
+        try (PreparedStatement ps = conn.prepareStatement("set session_timeout = 0");) {
+            ps.execute();
+        } catch (SQLException exp) {
+            LOGGER.error("SQL Exception occurred when set session_timeout.");
         }
     }
 
