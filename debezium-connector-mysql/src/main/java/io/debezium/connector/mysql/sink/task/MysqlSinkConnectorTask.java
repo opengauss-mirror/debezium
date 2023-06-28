@@ -57,6 +57,7 @@ public class MysqlSinkConnectorTask extends SinkTask {
                 LOGGER.warn("Receive interrupted exception while put records from kafka.", exp.getMessage());
             }
         }
+        count = 0;
         if (records == null || records.isEmpty()) {
             return;
         }

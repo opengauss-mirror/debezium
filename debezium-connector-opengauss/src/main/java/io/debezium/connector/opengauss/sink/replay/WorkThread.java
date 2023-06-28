@@ -19,6 +19,8 @@ import org.slf4j.LoggerFactory;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -38,16 +40,19 @@ public class WorkThread extends Thread {
     private static final String UPDATE = "u";
     private static final String DELETE = "d";
 
-    private SqlTools sqlTools;
+    private final DateTimeFormatter sqlPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH:mm:ss.SSS");
+    private final SqlTools sqlTools;
+    private final ConnectionInfo connectionInfo;
+    private final BlockingQueue<SinkRecordObject> sinkRecordQueue = new LinkedBlockingDeque<>();
+    private final Map<String, TableMetaData> oldTableMap = new HashMap<>();
+    private final Map<String, String> schemaMappingMap;
+    private final List<String> failSqlList = new ArrayList<>();
     private int successCount;
     private int failCount;
-    private ConnectionInfo connectionInfo;
-    private BlockingQueue<SinkRecordObject> sinkRecordQueue = new LinkedBlockingDeque<>();
-    private Map<String, TableMetaData> oldTableMap = new HashMap<>();
-    private Map<String, String> schemaMappingMap;
     private Connection connection;
     private Statement statement;
-    private List<String> failSqlList = new ArrayList<>();
+    private SinkRecordObject threadSinkRecordObject = null;
+    private boolean isFreeBlock = true;
 
     /**
      * Constructor
@@ -84,12 +89,17 @@ public class WorkThread extends Thread {
                     }
                     statement.executeUpdate(sql);
                     successCount++;
+                    threadSinkRecordObject = sinkRecordObject;
                 } catch (CommunicationsException exp) {
                     updateConnectionAndExecuteSql(sql);
                 } catch (SQLException exp) {
                     failCount++;
-                    failSqlList.add(sql);
-                    LOGGER.error("SQL exception occurred in work thread", exp);
+                    failSqlList.add("-- " + sqlPattern.format(LocalDateTime.now()) + ": "
+                            + sinkRecordObject.getSourceField() + System.lineSeparator()
+                            + "-- " + exp.getMessage() + System.lineSeparator() + sql + System.lineSeparator());
+                    LOGGER.error("SQL exception occurred in struct date {}", sinkRecordObject.getSourceField());
+                    LOGGER.error("The error SQL statement executed is: {}", sql);
+                    LOGGER.error("the cause of the exception is {}", exp.getMessage());
                 } catch (InterruptedException exp) {
                     LOGGER.warn("Interrupted exception occurred", exp);
                 } catch (DataException exp) {
@@ -194,6 +204,42 @@ public class WorkThread extends Thread {
      */
     public int getFailCount() {
         return failCount;
+    }
+
+    /**
+     * Get thread sink record object
+     *
+     * @return SinkRecordObject get sink record object
+     */
+    public SinkRecordObject getThreadSinkRecordObject() {
+        return threadSinkRecordObject;
+    }
+
+    /**
+     * Get work thread queue length
+     *
+     * @return int the queue length in work thread
+     */
+    public int getQueueLength() {
+        return sinkRecordQueue.size();
+    }
+
+    /**
+     * Gets isFreeBlock
+     *
+     * @return boolean the isFreeBlock
+     */
+    public boolean isFreeBlock() {
+        return isFreeBlock;
+    }
+
+    /**
+     * Sets isFreeBlock
+     *
+     * @param isFreeBlock boolean the isFreeBlock
+     */
+    public void setFreeBlock(boolean isFreeBlock) {
+        this.isFreeBlock = isFreeBlock;
     }
 }
 

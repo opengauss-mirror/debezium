@@ -141,7 +141,10 @@ public final class DebeziumValueConverters {
         if ("io.debezium.time.MicroTime".equals(schemaName)) {
             long originMicro = Long.parseLong(object.toString()) * TimeUnit.MICROSECONDS.toNanos(1);
             if (originMicro >= NANOSECOND_OF_DAY) {
-                return handleInvalidTime(originMicro);
+                return addingSingleQuotation(handleInvalidTime(originMicro));
+            }
+            if (originMicro < 0) {
+                return addingSingleQuotation("-" + handleNegativeTime(-originMicro));
             }
         }
         Instant instant = convertDbzDateTime(object, schemaName);
@@ -161,8 +164,19 @@ public final class DebeziumValueConverters {
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern(INVALID_TIME_FORMAT_STRING)
                 .withZone(ZoneOffset.UTC);
         String time = dateTimeFormatter.format(instant);
-        return addingSingleQuotation(24 * days + Integer.parseInt(time.split(":")[0])
-                + time.substring(time.indexOf(":")));
+        return 24 * days + Integer.parseInt(time.split(":")[0])
+                + time.substring(time.indexOf(":"));
+    }
+
+    private static String handleNegativeTime(long originNano) {
+        if (originNano >= NANOSECOND_OF_DAY) {
+            return handleInvalidTime(originNano);
+        }
+        LocalTime localTime = LocalTime.ofNanoOfDay(originNano);
+        Instant instant = localTime.atDate(LocalDate.now()).toInstant(ZoneOffset.UTC);
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern(INVALID_TIME_FORMAT_STRING)
+                .withZone(ZoneOffset.UTC);
+        return dateTimeFormatter.format(instant);
     }
 
     private static Instant convertDbzDateTime(Object value, String schemaName) {

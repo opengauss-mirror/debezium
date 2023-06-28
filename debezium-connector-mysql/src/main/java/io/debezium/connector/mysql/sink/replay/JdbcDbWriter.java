@@ -344,7 +344,7 @@ public class JdbcDbWriter {
         String tableName = sourceField.getTable();
         String newSchemaName = schemaMappingMap.getOrDefault(schemaName, schemaName);
         String ddl = ddlOperation.getDdl();
-        sqlList.add("set current_schema to " + newSchemaName);
+        sqlList.add("set current_schema to " + newSchemaName + ";");
         if (StringUtils.isNullOrEmpty(tableName)) {
             sqlList.add(ddl);
         }

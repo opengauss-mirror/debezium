@@ -113,7 +113,7 @@ public class SqlTools {
                 Envelope.Operation.UPDATE);
         sb.append(String.join(", ", updateSetValueList));
         sb.append(" where ");
-        sb.append(getWhereCondition(tableMetaData, before, Envelope.Operation.UPDATE));
+        sb.append(getWhereCondition(tableMetaData, before, Envelope.Operation.DELETE));
         return sb.toString();
     }
 

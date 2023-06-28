@@ -37,14 +37,15 @@ public class SourceField implements Cloneable {
      */
     public static final String TABLE = "table";
 
-    
+    /**
+     * lsn
+     */
+    public static final String LSN = "lsn";
 
     private String database;
     private String schema;
     private String table;
-    private String file;
-    private long position;
-
+    private long lsn;
 
     /**
      * Constructor
@@ -63,7 +64,7 @@ public class SourceField implements Cloneable {
         this.database = source.getString(SourceField.DATABASE);
         this.schema = source.getString(SourceField.SCHEMA);
         this.table = source.getString(SourceField.TABLE);
-
+        this.lsn = source.getInt64(SourceField.LSN);
     }
 
     /**
@@ -121,35 +122,21 @@ public class SourceField implements Cloneable {
     }
 
     /**
-     * Gets binlog file
+     * Sets lsn
      *
-     * @return String the binlog file
+     * @param lsn long the lsn
      */
-    public String getFile() {
-        return file;
-    }
-
-
-    public void setFile(String file) {
-        this.file = file;
+    public void setLsn(long lsn) {
+        this.lsn = lsn;
     }
 
     /**
-     * Gets binlog position
+     * Gets lsn
      *
-     * @return long the binlog position
+     * @return long th lsn
      */
-    public long getPosition() {
-        return position;
-    }
-
-    /**
-     * Sets position
-     *
-     * @param position long the position
-     */
-    public void setPosition(long position) {
-        this.position = position;
+    public long getLsn() {
+        return lsn;
     }
 
     @Override
@@ -161,5 +148,15 @@ public class SourceField implements Cloneable {
             LOGGER.error("Clone source field failed.", exp);
         }
         return null;
+    }
+
+    @Override
+    public String toString() {
+        return "SourceField{"
+                + "database='" + database + '\''
+                + ", schema='" + schema + '\''
+                + ", table='" + table + '\''
+                + ", lsn='" + lsn + '\''
+                + '}';
     }
 }

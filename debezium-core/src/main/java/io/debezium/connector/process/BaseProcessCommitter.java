@@ -57,7 +57,6 @@ public abstract class BaseProcessCommitter {
     private String fileFullPath;
     private File currentFile;
     private final DateTimeFormatter ofPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH:mm:ss");
-    private final DateTimeFormatter sqlPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH:mm:ss.SSS");
 
     /**
      * Constructor
@@ -119,7 +118,7 @@ public abstract class BaseProcessCommitter {
      * @param failSql String the sql which replayed failed
      */
     public void commitFailSql(String failSql) {
-        commit(sqlPattern.format(LocalDateTime.now()) + ": " + failSql, true);
+        commit(failSql, true);
     }
 
     /**
@@ -148,6 +147,9 @@ public abstract class BaseProcessCommitter {
      * @return String the file full path
      */
     protected String initFileFullPath(String filePath) {
+        if ("fail-sqls-".equals(this.filePrefix)) {
+            return filePath + ofPattern.format(LocalDateTime.now()) + ".sql";
+        }
         return filePath + ofPattern.format(LocalDateTime.now()) + ".txt";
     }
 
