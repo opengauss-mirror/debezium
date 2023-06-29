@@ -35,6 +35,8 @@ public final class DebeziumValueConverters {
     private static final String HEX_FORMAT_PREFIX = "00000000";
     private static final long NANOSECOND_OF_DAY = 86400000000000L;
     private static final String INVALID_TIME_FORMAT_STRING = "HH:mm:ss.SSSSSSSSS";
+    private static final String SINGLE_QUOTE = "'";
+    private static final String BACKSLASH = "\\\\";
 
     private DebeziumValueConverters(){}
 
@@ -424,6 +426,8 @@ public final class DebeziumValueConverters {
     }
 
     private static String addingSingleQuotation(Object originValue) {
-        return "'" + originValue.toString() + "'";
+        return SINGLE_QUOTE + originValue.toString()
+                .replaceAll(SINGLE_QUOTE, SINGLE_QUOTE + SINGLE_QUOTE)
+                .replaceAll(BACKSLASH, BACKSLASH + BACKSLASH) + SINGLE_QUOTE;
     }
 }
