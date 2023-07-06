@@ -21,6 +21,7 @@ public class Transaction implements Cloneable {
     private SourceField sourceField;
     private ArrayList<String> sqlList = new ArrayList<>();
     private boolean isDml = true;
+    private String expMessage;
 
     /**
      * Constructor
@@ -90,6 +91,24 @@ public class Transaction implements Cloneable {
      */
     public boolean interleaved(Transaction other) {
         return other.getSourceField().getSequenceNumber() > this.getSourceField().getLastCommittd();
+    }
+
+    /**
+     * Gets exception message
+     *
+     * @return String the exception message
+     */
+    public String getExpMessage() {
+        return expMessage.replaceAll(System.lineSeparator(), " ");
+    }
+
+    /**
+     * Sets exception message
+     *
+     * @param expMessage String the exception message
+     */
+    public void setExpMessage(String expMessage) {
+        this.expMessage = expMessage;
     }
 
     @Override

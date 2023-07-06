@@ -18,6 +18,8 @@ public class OpengaussSinkConnectorTask extends SinkTask {
     private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussSinkConnectorTask.class);
     private OpengaussSinkConnectorConfig config;
     private JdbcDbWriter jdbcDbWriter;
+    private int count = 0;
+
     @Override
     public String version() {
         return "1.0.0";
@@ -32,6 +34,21 @@ public class OpengaussSinkConnectorTask extends SinkTask {
 
     @Override
     public void put(Collection<SinkRecord> records) {
+        while (jdbcDbWriter.isSinkQueueBlock() || jdbcDbWriter.isWorkQueueBlock()) {
+            count++;
+            if (count >= 300) {
+                count = 0;
+                LOGGER.warn("have wait 15s, so skip the loop");
+                break;
+            }
+            try {
+                Thread.sleep(50);
+            }
+            catch (InterruptedException exp) {
+                LOGGER.warn("Receive interrupted exception while put records from kafka.", exp.getMessage());
+            }
+        }
+        count = 0;
         if (records == null || records.isEmpty()){
             return;
         }

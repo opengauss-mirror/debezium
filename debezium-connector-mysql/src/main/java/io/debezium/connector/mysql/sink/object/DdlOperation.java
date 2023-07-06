@@ -49,7 +49,7 @@ public class DdlOperation extends DataOperation {
      * @return String the ddl
      */
     public String getDdl() {
-        return this.ddl;
+        return this.ddl + ";";
     }
 
     /**

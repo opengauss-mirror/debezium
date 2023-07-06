@@ -43,10 +43,10 @@ public class DebeziumValueConverters {
     private static final String POLYGON_PREFIX = "POLYGON ";
     private static final String LINESTRING_PREFIX = "LINESTRING ";
     private static final String DATE_FORMAT_STRING = "yyyy-MM-dd";
-    private static final String TIME_FORMAT_STRING = "HH:mm:ss";
+    private static final String TIME_FORMAT_STRING = "HH:mm:ss.SSSSSSSSS";
     private static final String TIMESTAMP_FORMAT_STRING = "yyyy-MM-dd HH:mm:ss.SSSSSS";
-    private static final String INVALID_TIME_FORMAT_STRING = "HH:mm:ss.SSSSSS";
     private static final long NANOSECOND_OF_DAY = 86400000000000L;
+    private static final long EQUATION_OF_TIME = 48576000L;
 
     private static HashMap<String, ValueConverter> dataTypeConverterMap = new HashMap<String, ValueConverter>() {
         {
@@ -246,9 +246,16 @@ public class DebeziumValueConverters {
         Instant instant;
         if ("io.debezium.time.MicroTime".equals(schemaName)) {
             Object object = value.get(columnName);
+            if (object == null) {
+                return null;
+            }
             long originMicro = Long.parseLong(object.toString()) * TimeUnit.MICROSECONDS.toNanos(1);
             if (originMicro >= NANOSECOND_OF_DAY) {
-                return handleInvalidTime(originMicro);
+                return addingSingleQuotation(handleInvalidTime(originMicro));
+            } else if (originMicro < 0) {
+                originMicro = (-originMicro - EQUATION_OF_TIME) % 1000000000 == 0
+                        ? -originMicro - EQUATION_OF_TIME : -originMicro;
+                return addingSingleQuotation("-" + handleNegativeTime(originMicro));
             } else {
                 LocalTime localTime = LocalTime.ofNanoOfDay(originMicro);
                 instant = localTime.atDate(LocalDate.now()).toInstant(ZoneOffset.UTC);
@@ -261,6 +268,17 @@ public class DebeziumValueConverters {
         return instant == null ? null : addingSingleQuotation(dateTimeFormatter.format(instant));
     }
 
+    private static String handleNegativeTime(long originNano) {
+        if (originNano >= NANOSECOND_OF_DAY) {
+            return handleInvalidTime(originNano);
+        }
+        LocalTime localTime = LocalTime.ofNanoOfDay(originNano);
+        Instant instant = localTime.atDate(LocalDate.now()).toInstant(ZoneOffset.UTC);
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern(TIME_FORMAT_STRING)
+                .withZone(ZoneOffset.UTC);
+        return dateTimeFormatter.format(instant);
+    }
+
     private static String handleInvalidTime(long originNano) {
         long validNano = originNano - NANOSECOND_OF_DAY;
         int days = 1;
@@ -270,11 +288,11 @@ public class DebeziumValueConverters {
         }
         LocalTime localTime = LocalTime.ofNanoOfDay(validNano);
         Instant instant = localTime.atDate(LocalDate.now()).toInstant(ZoneOffset.UTC);
-        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern(INVALID_TIME_FORMAT_STRING)
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern(TIME_FORMAT_STRING)
                 .withZone(ZoneOffset.UTC);
         String time = dateTimeFormatter.format(instant);
-        return addingSingleQuotation(24 * days + Integer.parseInt(time.split(":")[0])
-                + time.substring(time.indexOf(":")));
+        return 24 * days + Integer.parseInt(time.split(":")[0])
+                + time.substring(time.indexOf(":"));
     }
 
     private static String convertTimestamp(String columnName, Struct value) {

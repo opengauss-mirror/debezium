@@ -109,6 +109,7 @@ public class ReplicationMessageColumnValueResolver {
 
             case "timestamp":
             case "timestamp without time zone":
+            case "smalldatetime":
                 return value.asInstant();
 
             case "time":

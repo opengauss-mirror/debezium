@@ -28,10 +28,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.Iterator;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Description: JdbcDbWriter
@@ -55,6 +58,12 @@ public class JdbcDbWriter {
     private Map<String, Integer> runnableMap = new HashMap<>();
     private Map<String, String> schemaMappingMap = new HashMap<>();
     private OpengaussSinkConnectorConfig config;
+    private volatile AtomicBoolean isSinkQueueBlock = new AtomicBoolean(false);
+    private volatile AtomicBoolean isWorkQueueBlock = new AtomicBoolean(false);
+
+    private int maxQueueSize;
+    private double openFlowControlThreshold;
+    private double closeFlowControlThreshold;
 
     /**
      * Constructor
@@ -72,6 +81,8 @@ public class JdbcDbWriter {
             threadList.add(workThread);
         }
         this.failSqlCommitter = new OgProcessCommitter(config.getFailSqlPath(), config.getFileSizeLimit());
+        initFlowControl(config);
+        printSinkRecordObject();
     }
 
     private void initSchemaMappingMap(String schemaMappings) {
@@ -142,12 +153,21 @@ public class JdbcDbWriter {
             sinkRecordObject.setSourceField(sourceField);
             String schemaName = sourceField.getSchema();
             String tableName = sourceField.getTable();
+            while (isWorkQueueBlock()) {
+                try {
+                    Thread.sleep(50);
+                }
+                catch (InterruptedException exp) {
+                    LOGGER.warn("Receive interrupted exception while work queue block:{}", exp.getMessage());
+                }
+            }
             String tableFullName = schemaMappingMap.get(schemaName) + "." + tableName;
             findProperWorkThread(tableFullName, sinkRecordObject, schemaMappingMap.get(schemaName));
         }
     }
 
-    private void findProperWorkThread(String tableFullName, SinkRecordObject sinkRecordObject, String schemaName) {
+    private void findProperWorkThread(String tableFullName, SinkRecordObject sinkRecordObject,
+                                      String schemaName) {
         if (runnableMap.containsKey(tableFullName)) {
             WorkThread workThread = threadList.get(runnableMap.get(tableFullName));
             workThread.addData(sinkRecordObject);
@@ -171,6 +191,131 @@ public class JdbcDbWriter {
         }
         runnableMap.put(tableFullName, runCount % threadCount);
         runCount++;
+    }
+
+    private void monitorSinkQueueSize() {
+        TimerTask task = new TimerTask() {
+            @Override
+            public void run() {
+                Thread.currentThread().setName("timer-sink-queue-size");
+                getSinkQueueBlockFlag();
+                getWorkThreadQueueFlag();
+            }
+        };
+        Timer timer = new Timer();
+        timer.schedule(task, 10, 20);
+    }
+
+    private void printSinkRecordObject() {
+        TimerTask task = new TimerTask() {
+            @Override
+            public void run() {
+                Thread.currentThread().setName("print-sink-record");
+                    SinkRecordObject sinkRecordObject = null;
+                    String workThreadName = "";
+                    for (WorkThread workThread : threadList) {
+                        if (workThread.getThreadSinkRecordObject() != null) {
+                            if (sinkRecordObject == null || workThread.getThreadSinkRecordObject().getSourceField()
+                                    .getLsn() < sinkRecordObject.getSourceField().getLsn()) {
+                                sinkRecordObject = workThread.getThreadSinkRecordObject();
+                                workThreadName = workThread.getName();
+                            }
+                        }
+                    }
+                    if (sinkRecordObject != null) {
+                        LOGGER.warn("[Breakpoint] {} in work thread {}",
+                                sinkRecordObject.getSourceField().toString(), workThreadName);
+                    }
+                }
+        };
+        Timer timer = new Timer();
+        timer.schedule(task, 1000, 1000 * 60 * 5);
+    }
+
+    private void getSinkQueueBlockFlag() {
+        int openFlowControlQueueSize = (int) (openFlowControlThreshold * maxQueueSize);
+        int closeFlowControlQueueSize = (int) (closeFlowControlThreshold * maxQueueSize);
+        int size = sinkQueue.size();
+        if (size > openFlowControlQueueSize) {
+            if (!isSinkQueueBlock.get()) {
+                LOGGER.warn("[start flow control sink queue] current isSinkQueueBlock is {}, "
+                                + "queue size is {}, which is more than {} * {}, so open flow control",
+                        isSinkQueueBlock, size, openFlowControlThreshold, maxQueueSize);
+                isSinkQueueBlock.set(true);
+            }
+        }
+        if (size < closeFlowControlQueueSize) {
+            if (isSinkQueueBlock.get()) {
+                LOGGER.warn("[close flow control sink queue] current isSinkQueueBlock is {}, "
+                                + "queue size is {}, which is less than {} * {}, so close flow control",
+                        isSinkQueueBlock, size, closeFlowControlThreshold, maxQueueSize);
+                isSinkQueueBlock.set(false);
+            }
+        }
+    }
+
+    private void getWorkThreadQueueFlag() {
+        int openFlowControlQueueSize = (int) (openFlowControlThreshold * maxQueueSize);
+        int closeFlowControlQueueSize = (int) (closeFlowControlThreshold * maxQueueSize);
+        int size = 0;
+        for (WorkThread workThread : threadList) {
+            size = workThread.getQueueLength();
+            if (size > openFlowControlQueueSize) {
+                if (!isWorkQueueBlock.get()) {
+                    LOGGER.warn("[start flow control work queue] current isWorkQueueBlock is {}, "
+                                    + "queue size is {}, which is more than {} * {}, so open flow control",
+                            isWorkQueueBlock, size, openFlowControlThreshold, maxQueueSize);
+                    isWorkQueueBlock.set(true);
+                    return;
+                }
+            }
+            if (size < closeFlowControlQueueSize) {
+                workThread.setFreeBlock(true);
+            }
+            else {
+                workThread.setFreeBlock(false);
+            }
+        }
+        if (isFreeBlock(threadList) && isWorkQueueBlock()) {
+            LOGGER.warn("[close flow control work queue] current isWorkQueueBlock is {}, all the queue size is "
+                            + "less than {} * {}, so close flow control",
+                    isWorkQueueBlock, closeFlowControlThreshold, maxQueueSize);
+            isWorkQueueBlock.set(false);
+        }
+    }
+
+    private boolean isFreeBlock(ArrayList<WorkThread> threadList) {
+        for (WorkThread workThread : threadList) {
+            if (!workThread.isFreeBlock()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void initFlowControl(OpengaussSinkConnectorConfig config) {
+        maxQueueSize = config.maxQueueSize;
+        openFlowControlThreshold = config.openFlowControlThreshold;
+        closeFlowControlThreshold = config.closeFlowControlThreshold;
+        monitorSinkQueueSize();
+    }
+
+    /**
+     * Get traffic limit flag
+     *
+     * @return boolean the traffic limit flag
+     */
+    public boolean isWorkQueueBlock() {
+        return this.isWorkQueueBlock.get();
+    }
+
+    /**
+     * Is block
+     *
+     * @return boolean true if is block
+     */
+    public boolean isSinkQueueBlock() {
+        return this.isSinkQueueBlock.get();
     }
 
     private int[] getSuccessAndFailCount() {
@@ -233,6 +378,11 @@ public class JdbcDbWriter {
                 List<String> failSqlList = collectFailSql();
                 if (failSqlList.size() > 0) {
                     commitFailSql(failSqlList);
+                }
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    LOGGER.error("Interrupted exception occurred while thread sleeping", e);
                 }
             }
         });

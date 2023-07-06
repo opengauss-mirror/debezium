@@ -8,6 +8,8 @@ package io.debezium.connector.mysql.sink.replay;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
@@ -31,6 +33,7 @@ public class WorkThread extends Thread {
     private static final String COMMIT = "commit";
     private static final String ROLLBACK = "rollback";
 
+    private final DateTimeFormatter sqlPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH:mm:ss.SSS");
     private ConnectionInfo connectionInfo;
     private int successCount;
     private int failCount;
@@ -147,7 +150,12 @@ public class WorkThread extends Thread {
                 statement.execute(ROLLBACK);
             }
             failCount++;
-            failSqlList.addAll(txn.getSqlList());
+            List<String> tmpSqlList = new ArrayList<>();
+            tmpSqlList.add("-- " + sqlPattern.format(LocalDateTime.now()) + ": " + txn.getSourceField());
+            tmpSqlList.add("-- " + txn.getExpMessage());
+            tmpSqlList.addAll(txn.getSqlList());
+            tmpSqlList.add(System.lineSeparator());
+            failSqlList.addAll(tmpSqlList);
         }
     }
 
@@ -160,6 +168,7 @@ public class WorkThread extends Thread {
                 LOGGER.error("SQL exception occurred in transaction {}", txn.getSourceField());
                 LOGGER.error("The error SQL statement executed is: {}", sql);
                 LOGGER.error("the cause of the exception is {}", exp.getMessage());
+                txn.setExpMessage(exp.getMessage());
                 return false;
             }
             finally {
