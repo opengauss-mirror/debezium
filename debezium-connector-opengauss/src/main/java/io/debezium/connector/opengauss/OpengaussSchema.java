@@ -87,9 +87,20 @@ public class OpengaussSchema extends RelationalDatabaseSchema {
     protected OpengaussSchema refresh(OpengaussConnection connection, boolean printReplicaIdentityInfo) throws SQLException {
         // read all the information from the DB
         connection.readSchema(tables(), null, null, getTableFilter(), null, true);
+        List<String> schemaList = connection.queryAndMap("SELECT pn.oid AS schema_oid, iss.catalog_name, "
+                + "iss.schema_owner,iss.schema_name FROM information_schema.schemata iss "
+                + "INNER JOIN pg_namespace pn ON pn.nspname = iss.schema_name "
+                + "where iss.schema_name = 'public' or pn.oid > 16384;", rs -> {
+            List<String> schemas = new ArrayList<>();
+            while (rs.next()) {
+                schemas.add(rs.getString("schema_name"));
+            }
+            return schemas;
+        });
         if (printReplicaIdentityInfo) {
             // print out all the replica identity info
-            tableIds().forEach(tableId -> printReplicaIdentityInfo(connection, tableId));
+            tableIds().stream().filter(o -> schemaList.contains(o.schema()))
+                    .forEach(tableId -> printReplicaIdentityInfo(connection, tableId));
         }
         // and then refresh the schemas
         refreshSchemas();
@@ -102,7 +113,8 @@ public class OpengaussSchema extends RelationalDatabaseSchema {
     private void printReplicaIdentityInfo(OpengaussConnection connection, TableId tableId) {
         try {
             ServerInfo.ReplicaIdentity replicaIdentity = connection.readReplicaIdentityInfo(tableId);
-            if (! "FULL".equals(replicaIdentity.toString())) {
+            boolean isEmpty = tables().forTable(tableId).primaryKeyColumns().isEmpty();
+            if (isEmpty && ! "FULL".equals(replicaIdentity.toString())) {
                 Statement stmt = connection.connection().createStatement();
                 String sql = String.format("ALTER TABLE %s REPLICA IDENTITY FULL", tableId);
                 stmt.execute(sql);
