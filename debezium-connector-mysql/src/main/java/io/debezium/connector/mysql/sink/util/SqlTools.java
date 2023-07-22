@@ -13,7 +13,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-import io.debezium.util.Clock;
 import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import io.debezium.connector.mysql.sink.object.ColumnMetaData;
 import io.debezium.connector.mysql.sink.object.TableMetaData;
 import io.debezium.data.Envelope;
+import io.debezium.util.Clock;
 
 /**
  * Description: SqlTools class
@@ -47,15 +47,15 @@ public class SqlTools {
     private TableMetaData getTableMetaData(String schemaName, String tableName, long timeMillis) {
         List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
         String sql = String.format(Locale.ENGLISH, "select column_name, data_type, numeric_scale from " +
-                        "information_schema.columns where table_schema = '%s' and table_name = '%s'" +
-                        " order by ordinal_position;",
+                "information_schema.columns where table_schema = '%s' and table_name = '%s'" +
+                " order by ordinal_position;",
                 schemaName, tableName);
         TableMetaData tableMetaData = null;
         try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
             while (rs.next()) {
                 ColumnMetaData columnMetaData = new ColumnMetaData(rs.getString("column_name"),
                         rs.getString("data_type"), rs.getString("numeric_scale") == null ? -1
-                        : rs.getInt("numeric_scale"));
+                                : rs.getInt("numeric_scale"));
                 columnMetaDataList.add(columnMetaData);
             }
             for (int i = 0; i < columnMetaDataList.size(); i++) {
@@ -85,6 +85,33 @@ public class SqlTools {
             }
         }
         return false;
+    }
+
+    /**
+     * Gets rely table list
+     *
+     * @param oldTableName String the old table name
+     * @param schemaName String the schema name
+     * @return List<String> the table name list rely on the old table
+     */
+    public List<String> getRelyTableList(String oldTableName, String schemaName) {
+        String sql = String.format(Locale.ENGLISH, "select c.relname, ns.nspname from pg_class c left join"
+                + " pg_namespace ns on c.relnamespace=ns.oid left join pg_constraint cons on c.oid=cons.conrelid"
+                + " left join pg_class oc on cons.confrelid=oc.oid"
+                + " left join  pg_namespace ons on oc.relnamespace=ons.oid"
+                + " where oc.relname='%s' and ons.nspname='%s';",
+                oldTableName, schemaName);
+        try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
+            List<String> tableList = new ArrayList<>();
+            while (rs.next()) {
+                tableList.add(rs.getString("ns.nspname") + "." + rs.getString("c.relname"));
+            }
+            return tableList;
+        }
+        catch (SQLException e) {
+            LOGGER.error("SQL exception occurred in sql tools", e);
+        }
+        return new ArrayList<>(0);
     }
 
     private String[] getPrimaryKeyValue(String schemaName, String tableName) {

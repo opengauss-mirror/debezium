@@ -3,7 +3,7 @@
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
  */
-package io.debezium.connector.mysql.sink.replay;
+package io.debezium.connector.mysql.sink.replay.transaction;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -131,9 +131,9 @@ public class TransactionDispatcher {
                 txn = transactionQueueList.get(queueIndex).poll();
                 if (txn != null) {
                     count++;
-                    if (count % JdbcDbWriter.MAX_VALUE == 0) {
+                    if (count % TransactionReplayTask.MAX_VALUE == 0) {
                         queueIndex++;
-                        if (queueIndex % JdbcDbWriter.TRANSACTION_QUEUE_NUM == 0) {
+                        if (queueIndex % TransactionReplayTask.TRANSACTION_QUEUE_NUM == 0) {
                             queueIndex = 0;
                         }
                     }
@@ -200,7 +200,8 @@ public class TransactionDispatcher {
                 }
                 try {
                     Thread.sleep(1000);
-                } catch (InterruptedException e) {
+                }
+                catch (InterruptedException e) {
                     LOGGER.error("Interrupted exception occurred while thread sleeping", e);
                 }
             }
