@@ -57,6 +57,11 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
     public MysqlProcessCommitter(MySqlConnectorConfig connectorConfig, String originGtidSet,
                                  MySqlConnection connection) {
         super(connectorConfig, FORWARD_SOURCE_PROCESS_PREFIX);
+        this.fileFullPath = initFileFullPath(file + File.separator + FORWARD_SOURCE_PROCESS_PREFIX);
+        this.currentFile = new File(fileFullPath);
+        this.isAppendWrite = connectorConfig.appendWrite();
+        deleteRedundantFiles(connectorConfig.filePath(),
+                connectorConfig.processFileCountLimit(), connectorConfig.processFileTimeLimit());
         this.mysqlConnection = connection;
         this.startEventIndex = initStartEventIndex(originGtidSet);
         executeOutPutThread(connectorConfig.createCountInfoPath() + File.separator);
@@ -69,6 +74,12 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
      */
     public MysqlProcessCommitter(MySqlSinkConnectorConfig connectorConfig) {
         super(connectorConfig, FORWARD_SINK_PROCESS_PREFIX);
+        this.fileFullPath = initFileFullPath(file + File.separator + FORWARD_SINK_PROCESS_PREFIX);
+        this.currentFile = new File(fileFullPath);
+        this.isAppendWrite = connectorConfig.isAppend();
+        this.createCountInfoPath = connectorConfig.getCreateCountInfoPath();
+        deleteRedundantFiles(connectorConfig.getSinkProcessFilePath(),
+                connectorConfig.getProcessFileCountLimit(), connectorConfig.getProcessFileTimeLimit());
     }
 
     /**

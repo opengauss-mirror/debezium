@@ -8,8 +8,8 @@ package io.debezium.connector.opengauss;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.Statement;
 import java.sql.ResultSet;
+import java.sql.Statement;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -218,6 +218,9 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
             return c.getInstance(SNAPSHOT_MODE_CLASS, Snapshotter.class);
         });
 
+        /**
+         * Functional interface snapshot constructor
+         */
         @FunctionalInterface
         public interface SnapshotterBuilder {
             Snapshotter buildSnapshotter(Configuration config);
@@ -1087,6 +1090,33 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
             .withImportance(Importance.MEDIUM)
             .withDescription("wal sender timeout");
 
+    /**
+     *  full migration write file position
+     */
+    public static final Field EXPORT_CSV_PATH = Field.create("export.csv.path")
+            .withDisplayName("export csv path")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("full data export csv path");
+
+    /**
+     *  full migration write folder size
+     */
+    public static final Field EXPORT_CSV_PATH_SIZE = Field.create("export.csv.path.size")
+            .withDisplayName("export csv path size")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("full data export csv path size");
+
+    /**
+     *  full migration write file size
+     */
+    public static final Field EXPORT_FILE_SIZE = Field.create("export.file.size")
+            .withDisplayName("export file size")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("full data export file size");
+
     private final TruncateHandlingMode truncateHandlingMode;
     private final LogicalDecodingMessageFilter logicalDecodingMessageFilter;
     private final HStoreHandlingMode hStoreHandlingMode;
@@ -1271,7 +1301,10 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
                     SSL_SOCKET_FACTORY,
                     STATUS_UPDATE_INTERVAL_MS,
                     TCP_KEEPALIVE,
-                    XMIN_FETCH_INTERVAL)
+                    XMIN_FETCH_INTERVAL,
+                    EXPORT_CSV_PATH,
+                    EXPORT_FILE_SIZE,
+                    EXPORT_CSV_PATH_SIZE)
             .events(
                     INCLUDE_UNKNOWN_DATATYPES,
                     TOASTED_VALUE_PLACEHOLDER)
@@ -1380,6 +1413,33 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
             LOGGER.error("Create openGauss connection failed.", exp);
         }
         return connection;
+    }
+
+    /**
+     * Get
+     *
+     * @return EXPORT_CSV_PATH
+     */
+    public String getExportCsvPath() {
+        return getConfig().getString(EXPORT_CSV_PATH);
+    }
+
+    /**
+     * Get
+     *
+     * @return EXPORT_FILE_SIZE
+     */
+    public String getExportFileSize() {
+        return getConfig().getString(EXPORT_FILE_SIZE);
+    }
+
+    /**
+     * Get
+     *
+     * @return EXPORT_CSV_PATH_SIZE
+     */
+    public String getExportCsvPathSize() {
+        return getConfig().getString(EXPORT_CSV_PATH_SIZE);
     }
 
     @Override

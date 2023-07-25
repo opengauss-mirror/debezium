@@ -43,6 +43,9 @@
         <version.revapi-java.plugin>0.21.0</version.revapi-java.plugin>
         <version.build-helper.plugin>1.9.1</version.build-helper.plugin>
 
+        <version.commons-fileupload>1.5</version.commons-fileupload>
+        <version.alibaba.fastjson>1.2.75</version.alibaba.fastjson>
+
         <!-- Dockerfiles -->
         <docker.maintainer>Debezium community</docker.maintainer>
 

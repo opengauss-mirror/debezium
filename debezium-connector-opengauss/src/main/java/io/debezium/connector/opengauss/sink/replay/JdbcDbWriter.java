@@ -5,10 +5,15 @@
  */
 package io.debezium.connector.opengauss.sink.replay;
 
+import io.debezium.connector.opengauss.process.OgFullSinkProcessInfo;
+import io.debezium.connector.opengauss.process.OgFullSourceProcessInfo;
 import io.debezium.connector.opengauss.process.OgProcessCommitter;
 import io.debezium.connector.opengauss.process.OgSinkProcessInfo;
-import io.debezium.connector.opengauss.sink.object.DmlOperation;
+import io.debezium.connector.opengauss.process.ProgressStatus;
+import io.debezium.connector.opengauss.process.TableInfo;
+import io.debezium.connector.opengauss.process.TotalInfo;
 import io.debezium.connector.opengauss.sink.object.ConnectionInfo;
+import io.debezium.connector.opengauss.sink.object.DmlOperation;
 import io.debezium.connector.opengauss.sink.object.SinkRecordObject;
 import io.debezium.connector.opengauss.sink.object.SourceField;
 import io.debezium.connector.opengauss.sink.task.OpengaussSinkConnectorConfig;
@@ -18,20 +23,22 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-
-import java.util.List;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.Iterator;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -53,6 +60,10 @@ public class JdbcDbWriter {
     private ArrayList<WorkThread> threadList = new ArrayList<>();
     private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(4, 4, 100,
             TimeUnit.SECONDS, new LinkedBlockingQueue<>(4));
+    private final ScheduledExecutorService fullProgressReportService = Executors
+            .newSingleThreadScheduledExecutor((r) -> {
+                return new Thread(r, "fullProgressReportThread");
+            });
     private final DateTimeFormatter ofPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
     private BlockingQueue<SinkRecord> sinkQueue = new LinkedBlockingQueue<>();
     private Map<String, Integer> runnableMap = new HashMap<>();
@@ -64,6 +75,9 @@ public class JdbcDbWriter {
     private int maxQueueSize;
     private double openFlowControlThreshold;
     private double closeFlowControlThreshold;
+    private OgFullSinkProcessInfo ogFullSinkProcessInfo;
+    private OgProcessCommitter ogSinkFullCommiter;
+    private List<TableInfo> tableList;
 
     /**
      * Constructor
@@ -78,6 +92,7 @@ public class JdbcDbWriter {
         this.threadCount = config.maxThreadCount;
         for (int i = 0; i < threadCount; i++) {
             WorkThread workThread = new WorkThread(schemaMappingMap, mysqlConnection, sqlTools, i);
+            workThread.setClearFile(config.isDelCsv);
             threadList.add(workThread);
         }
         this.failSqlCommitter = new OgProcessCommitter(config.getFailSqlPath(), config.getFileSizeLimit());
@@ -90,6 +105,7 @@ public class JdbcDbWriter {
         for (String pair : pairs) {
             if (pair == null || " ".equals(pair)) {
                 LOGGER.error("the format of schema.mappings is error:" + schemaMappings);
+                continue;
             }
             String[] schema = pair.split(":");
             if (schema.length == 2) {
@@ -115,6 +131,9 @@ public class JdbcDbWriter {
         statTask();
         if (config.isCommitProcess()) {
             statCommit();
+            ogSinkFullCommiter = new OgProcessCommitter(config, OgProcessCommitter.REVERSE_FULL_PROCESS_SUFFIX);
+            fullProgressReportService.scheduleAtFixedRate(this::fullProgressReport,
+            config.getCommitTimeInterval(), config.getCommitTimeInterval(), TimeUnit.SECONDS);
         }
         statReplayTask();
     }
@@ -166,8 +185,7 @@ public class JdbcDbWriter {
         }
     }
 
-    private void findProperWorkThread(String tableFullName, SinkRecordObject sinkRecordObject,
-                                      String schemaName) {
+    private void findProperWorkThread(String tableFullName, SinkRecordObject sinkRecordObject, String schemaName) {
         if (runnableMap.containsKey(tableFullName)) {
             WorkThread workThread = threadList.get(runnableMap.get(tableFullName));
             workThread.addData(sinkRecordObject);
@@ -211,22 +229,22 @@ public class JdbcDbWriter {
             @Override
             public void run() {
                 Thread.currentThread().setName("print-sink-record");
-                    SinkRecordObject sinkRecordObject = null;
-                    String workThreadName = "";
-                    for (WorkThread workThread : threadList) {
-                        if (workThread.getThreadSinkRecordObject() != null) {
-                            if (sinkRecordObject == null || workThread.getThreadSinkRecordObject().getSourceField()
-                                    .getLsn() < sinkRecordObject.getSourceField().getLsn()) {
-                                sinkRecordObject = workThread.getThreadSinkRecordObject();
-                                workThreadName = workThread.getName();
-                            }
+                SinkRecordObject sinkRecordObject = null;
+                String workThreadName = "";
+                for (WorkThread workThread : threadList) {
+                    if (workThread.getThreadSinkRecordObject() != null) {
+                        if (sinkRecordObject == null || workThread.getThreadSinkRecordObject().getSourceField()
+                                .getLsn() < sinkRecordObject.getSourceField().getLsn()) {
+                            sinkRecordObject = workThread.getThreadSinkRecordObject();
+                            workThreadName = workThread.getName();
                         }
                     }
-                    if (sinkRecordObject != null) {
-                        LOGGER.warn("[Breakpoint] {} in work thread {}",
-                                sinkRecordObject.getSourceField().toString(), workThreadName);
-                    }
                 }
+                if (sinkRecordObject != null) {
+                    LOGGER.warn("[Breakpoint] {} in work thread {}",
+                            sinkRecordObject.getSourceField().toString(), workThreadName);
+                }
+            }
         };
         Timer timer = new Timer();
         timer.schedule(task, 1000, 1000 * 60 * 5);
@@ -403,5 +421,67 @@ public class JdbcDbWriter {
         for (String sql : failSqlList) {
             failSqlCommitter.commitFailSql(sql);
         }
+    }
+
+    private void fullProgressReport() {
+        if (ogFullSinkProcessInfo == null) {
+            initFullProcess();
+            return;
+        }
+        double complete = 0d;
+        for (TableInfo table : tableList) {
+            String tableFullName = schemaMappingMap.get(table.getSchema()) + "." + table.getName();
+            if (runnableMap.containsKey(tableFullName)) {
+                WorkThread workThread = threadList.get(runnableMap.get(tableFullName));
+                int count = workThread.processRecordMap.computeIfAbsent(tableFullName, k -> 0);
+                table.setProcessRecord(count);
+                BigDecimal decimal = new BigDecimal(count).divide(new BigDecimal(table.getRecord())).setScale(1,
+                BigDecimal.ROUND_HALF_UP);
+                table.setPercent(decimal.floatValue());
+                table.updateStatus(ProgressStatus.IN_MIGRATED);
+                complete += decimal.floatValue() * table.getData();
+                if (count / table.getRecord() == 1) {
+                    table.updateStatus(ProgressStatus.MIGRATED_COMPLETE);
+                }
+            }
+        }
+        TotalInfo totalInfo = ogFullSinkProcessInfo.getTotal();
+        int time = (int) (totalInfo.getTime() + config.getCommitTimeInterval());
+        BigDecimal divide = new BigDecimal(complete).divide(new BigDecimal(time)).setScale(2, BigDecimal.ROUND_HALF_UP);
+        totalInfo.setSpeed(divide.doubleValue());
+        totalInfo.setTime(time);
+        wirteFullToFile();
+        boolean hasMatch = tableList.stream().anyMatch(o -> ((int) o.getPercent()) != 1);
+        if (!hasMatch) {
+            fullProgressReportService.shutdown();
+            LOGGER.info("full migration complete. full report thread is close.");
+        }
+    }
+
+    private void initFullProcess() {
+        if (ogSinkFullCommiter.hasMessage()) {
+            OgFullSourceProcessInfo ogFullSourceProcessInfo = ogSinkFullCommiter.getSourceFileJson();
+            if (ogFullSourceProcessInfo.getTableList().isEmpty()) {
+                return;
+            }
+            ogFullSinkProcessInfo = new OgFullSinkProcessInfo();
+            ogFullSinkProcessInfo.setTable(ogFullSourceProcessInfo.getTableList());
+            tableList = ogFullSourceProcessInfo.getTableList();
+            int record = 0;
+            double data = 0d;
+            int time = 0;
+            double speed = 0d;
+            for (TableInfo tableInfo : ogFullSourceProcessInfo.getTableList()) {
+                record += tableInfo.getRecord();
+                data += tableInfo.getData();
+            }
+            TotalInfo totalInfo = new TotalInfo(record, data, time, speed);
+            ogFullSinkProcessInfo.setTotal(totalInfo);
+            wirteFullToFile();
+        }
+    }
+
+    private void wirteFullToFile() {
+        ogSinkFullCommiter.commitSinkTableProcessInfo(ogFullSinkProcessInfo);
     }
 }
