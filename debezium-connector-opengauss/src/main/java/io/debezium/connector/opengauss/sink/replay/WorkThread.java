@@ -57,8 +57,7 @@ public class WorkThread extends Thread {
     private static final String LOAD_SQL = "LOAD DATA LOCAL INFILE 'sql.csv' "
             + " INTO TABLE %s"
             + " FIELDS TERMINATED BY ','"
-            + " LINES TERMINATED BY '%s'"
-            + " %s";
+            + " LINES TERMINATED BY '%s' ";
     private static final String DELIMITER = System.lineSeparator();
 
     private final DateTimeFormatter sqlPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH:mm:ss.SSS");
@@ -206,8 +205,8 @@ public class WorkThread extends Thread {
 
     private void processFullData(DmlOperation dmlOperation, String tableFullName, TableMetaData tableMetaData) {
         String columnString = dmlOperation.getColumnString();
-        String loadSql = String.format(Locale.ROOT, LOAD_SQL, tableFullName, System.lineSeparator(),
-                "(" + columnString + ")");
+        String loadSql = String.format(Locale.ROOT, LOAD_SQL, tableFullName, System.lineSeparator());
+        loadSql = sqlTools.sqlAddBitCast(tableMetaData, columnString, loadSql);
         if (clientPreparedStatement == null) {
             try {
                 statement.execute("set session SQL_LOG_BIN=0;");

@@ -27,6 +27,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
+import static java.lang.Integer.toBinaryString;
+
 /**
  * Description: Full data type converters
  *
@@ -99,7 +101,8 @@ public class FullDataConverters {
         if (value == null) {
             return "";
         }
-        byte[] indexes = parseHexStr2bytes(String.valueOf(value));
+        String hexString = String.valueOf(value);
+        byte[] indexes = parseHexStr2bytes(hexString);
         return addingSingleQuotation(new String(indexes, Charset.defaultCharset()));
     }
 
@@ -154,8 +157,7 @@ public class FullDataConverters {
     }
 
     private static String objectConvertBinary(String columnName, Object value, Struct valueStruct) {
-        byte[] bytes = value.toString().getBytes(Charset.defaultCharset());
-        String hexString = convertHexString(bytes);
+        String hexString = String.valueOf(value);
         return addingSingleQuotation(new String(Objects.requireNonNull(parseHexStr2bytes(hexString))));
     }
 
@@ -169,11 +171,9 @@ public class FullDataConverters {
         }
         String object = value.toString();
         if (object.equalsIgnoreCase("true") || object.equalsIgnoreCase("false")) {
-            return Boolean.valueOf(value.toString()) + "";
-        } else {
-            byte[] bytes = object.getBytes(Charset.defaultCharset());
-            return "b" + convertBitString(bytes);
+            return Boolean.parseBoolean(value.toString()) ? "1" : "0";
         }
+        return object;
     }
 
     private static String objectConvertSet(String columnName, Object value, Struct after) {
@@ -306,10 +306,10 @@ public class FullDataConverters {
 
     private static String convertBitString(byte[] bytes) {
         StringBuilder sb = new StringBuilder();
-        sb.append(Integer.toBinaryString(adjustByte(bytes[bytes.length - 1])));
+        sb.append(toBinaryString(adjustByte(bytes[bytes.length - 1])));
         if (bytes.length > 1) {
             for (int i = bytes.length - 2; i >= 0; i--) {
-                sb.append(Integer.toBinaryString((bytes[i] & 0xFF) + 0x100).substring(1));
+                sb.append(toBinaryString((bytes[i] & 0xFF) + 0x100).substring(1));
             }
         }
         return addingSingleQuotation(sb.toString());
@@ -410,9 +410,18 @@ public class FullDataConverters {
         return dateTimeFormatter.format(instant);
     }
 
+    private static byte[] string2ByteArray(String obj) {
+        char[] chars = obj.toCharArray();
+        byte[] bytes = new byte[chars.length];
+        for (int i = 0; i < chars.length; i++) {
+            bytes[i] = (byte) Integer.parseInt(chars[i] + "");
+        }
+        return bytes;
+    }
+
     private static String addingSingleQuotation(Object originValue) {
-        return SINGLE_QUOTE + originValue.toString()
+        return originValue.toString()
                 .replaceAll(SINGLE_QUOTE, SINGLE_QUOTE + SINGLE_QUOTE)
-                .replaceAll(BACKSLASH, BACKSLASH + BACKSLASH) + SINGLE_QUOTE;
+                .replaceAll(BACKSLASH, BACKSLASH + BACKSLASH);
     }
 }

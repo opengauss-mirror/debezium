@@ -42,6 +42,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 /**
  * Description: JdbcDbWriter
@@ -78,6 +79,7 @@ public class JdbcDbWriter {
     private OgFullSinkProcessInfo ogFullSinkProcessInfo;
     private OgProcessCommitter ogSinkFullCommiter;
     private List<TableInfo> tableList;
+    private int sqlErrCount;
 
     /**
      * Constructor
@@ -171,6 +173,13 @@ public class JdbcDbWriter {
             sinkRecordObject.setDmlOperation(dmlOperation);
             sinkRecordObject.setSourceField(sourceField);
             String schemaName = sourceField.getSchema();
+            if (schemaMappingMap.get(schemaName) == null) {
+                LOGGER.warn("Not specified schema [{}] mapping library relation.", schemaName);
+                sqlErrCount++;
+                long replayedCount = OgSinkProcessInfo.SINK_PROCESS_INFO.getReplayedCount();
+                OgSinkProcessInfo.SINK_PROCESS_INFO.setReplayedCount(++replayedCount);
+                continue;
+            }
             String tableName = sourceField.getTable();
             while (isWorkQueueBlock()) {
                 try {
@@ -338,7 +347,7 @@ public class JdbcDbWriter {
 
     private int[] getSuccessAndFailCount() {
         int successCount = 0;
-        int failCount = 0;
+        int failCount = sqlErrCount;
         for (WorkThread workThread : threadList) {
             successCount += workThread.getSuccessCount();
             failCount += workThread.getFailCount();
@@ -431,25 +440,34 @@ public class JdbcDbWriter {
         double complete = 0d;
         for (TableInfo table : tableList) {
             String tableFullName = schemaMappingMap.get(table.getSchema()) + "." + table.getName();
-            if (runnableMap.containsKey(tableFullName)) {
-                WorkThread workThread = threadList.get(runnableMap.get(tableFullName));
-                int count = workThread.processRecordMap.computeIfAbsent(tableFullName, k -> 0);
-                table.setProcessRecord(count);
-                BigDecimal decimal = new BigDecimal(count).divide(new BigDecimal(table.getRecord())).setScale(1,
-                BigDecimal.ROUND_HALF_UP);
-                table.setPercent(decimal.floatValue());
-                table.updateStatus(ProgressStatus.IN_MIGRATED);
-                complete += decimal.floatValue() * table.getData();
+            if (!runnableMap.containsKey(tableFullName)) {
+                continue;
+            }
+            WorkThread workThread = threadList.get(runnableMap.get(tableFullName));
+            int count = workThread.processRecordMap.computeIfAbsent(tableFullName, k -> 0);
+            table.setProcessRecord(count);
+            BigDecimal decimal;
+            table.updateStatus(ProgressStatus.IN_MIGRATED);
+            if (table.getRecord() == 0) {
+                decimal = new BigDecimal(0).setScale(1, BigDecimal.ROUND_HALF_UP);
+                table.updateStatus(ProgressStatus.MIGRATED_COMPLETE);
+            } else {
+                decimal = new BigDecimal(count).divide(new BigDecimal(table.getRecord())).setScale(1,
+                        BigDecimal.ROUND_HALF_UP);
+                double data = (int) table.getData() == 0 ? 1 : table.getData();
+                complete += decimal.floatValue() * data;
                 if (count / table.getRecord() == 1) {
                     table.updateStatus(ProgressStatus.MIGRATED_COMPLETE);
                 }
             }
+            table.setPercent(decimal.floatValue());
         }
         TotalInfo totalInfo = ogFullSinkProcessInfo.getTotal();
         int time = (int) (totalInfo.getTime() + config.getCommitTimeInterval());
         BigDecimal divide = new BigDecimal(complete).divide(new BigDecimal(time)).setScale(2, BigDecimal.ROUND_HALF_UP);
         totalInfo.setSpeed(divide.doubleValue());
         totalInfo.setTime(time);
+        ogFullSinkProcessInfo.setTotal(totalInfo);
         wirteFullToFile();
         boolean hasMatch = tableList.stream().anyMatch(o -> ((int) o.getPercent()) != 1);
         if (!hasMatch) {
@@ -465,8 +483,9 @@ public class JdbcDbWriter {
                 return;
             }
             ogFullSinkProcessInfo = new OgFullSinkProcessInfo();
-            ogFullSinkProcessInfo.setTable(ogFullSourceProcessInfo.getTableList());
-            tableList = ogFullSourceProcessInfo.getTableList();
+            tableList = ogFullSourceProcessInfo.getTableList().stream()
+                    .filter(o -> schemaMappingMap.get(o.getSchema()) != null).collect(Collectors.toList());
+            ogFullSinkProcessInfo.setTable(tableList);
             int record = 0;
             double data = 0d;
             int time = 0;

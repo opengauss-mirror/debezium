@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import io.debezium.DebeziumException;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigDef.Importance;
 import org.apache.kafka.common.config.ConfigDef.Type;
@@ -1421,7 +1422,11 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
      * @return EXPORT_CSV_PATH
      */
     public String getExportCsvPath() {
-        return getConfig().getString(EXPORT_CSV_PATH);
+        String csvPath = getConfig().getString(EXPORT_CSV_PATH);
+        if (csvPath == null) {
+            throw new DebeziumException("config " + EXPORT_CSV_PATH.name() + " must not null.");
+        }
+        return csvPath;
     }
 
     /**
