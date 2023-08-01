@@ -5,6 +5,7 @@
  */
 package io.debezium.connector.opengauss;
 
+import io.debezium.DebeziumException;
 import io.debezium.connector.opengauss.connection.Lsn;
 import io.debezium.connector.opengauss.connection.OpengaussConnection;
 import io.debezium.connector.opengauss.connection.ReplicationMessage;
@@ -21,11 +22,14 @@ import io.debezium.pipeline.spi.ChangeRecordEmitter;
 import io.debezium.relational.RelationalSnapshotChangeEventSource;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
+import io.debezium.relational.TableSchema;
 import io.debezium.schema.SchemaChangeEvent;
 import io.debezium.schema.SchemaChangeEvent.SchemaChangeEventType;
 import io.debezium.util.Clock;
+import io.debezium.util.ColumnUtils;
 import io.debezium.util.Threads;
 import org.apache.commons.io.FileUtils;
+import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,6 +37,10 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -282,8 +290,9 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
     @Override
     protected void createDataEvents(ChangeEventSourceContext sourceContext,
         RelationalSnapshotContext<OpengaussPartition, OpengaussOffsetContext> snapshotContext) throws Exception {
-        csvPath = csvPath.endsWith(File.separator) && csvPath.length() > 1
-                ? csvPath.substring(0, csvPath.lastIndexOf(File.separator)) : csvPath;
+        if (!new File(csvPath).exists()) {
+            Files.createDirectories(Paths.get(csvPath));
+        }
         if (connectorConfig.getExportCsvPathSize() != null) {
             csvDirSize = initCsvDirSize();
         }
@@ -291,10 +300,12 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
             pageSize = initPagePartitionSize();
         }
         EventDispatcher.SnapshotReceiver receiver = dispatcher.getSnapshotChangeEventReceiver();
-        pushTruncateMessageForTable(snapshotContext, receiver);
+        List<String> schemaList = appointSchemas();
+        pushTruncateMessageForTable(snapshotContext, receiver, schemaList);
         tryStartingSnapshot(snapshotContext);
-
-        final int tableCount = snapshotContext.capturedTables.size();
+        Set<TableId> tableIds = snapshotContext.capturedTables.stream().filter(o -> schemaList.contains(o.schema()))
+                .collect(Collectors.toSet());
+        final int tableCount = tableIds.size();
         AtomicInteger tableOrder = new AtomicInteger(1);
         LOGGER.info("Snapshotting contents of {} tables while still in transaction", tableCount);
         // init poolExecutor
@@ -302,7 +313,7 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
                 5, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
         OgFullSourceProcessInfo ogFullSourceProcessInfo = new OgFullSourceProcessInfo();
         ogFullSourceProcessInfo.setTotal(tableCount);
-        for (Iterator<TableId> tableIdIterator = snapshotContext.capturedTables.iterator();
+        for (Iterator<TableId> tableIdIterator = tableIds.iterator();
             tableIdIterator.hasNext();) {
             final TableId tableId = tableIdIterator.next();
             boolean isLastTable = !tableIdIterator.hasNext();
@@ -372,16 +383,7 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
      */
     private void pushTruncateMessageForTable(RelationalSnapshotContext<OpengaussPartition,
             OpengaussOffsetContext> snapshotContext,
-            EventDispatcher.SnapshotReceiver receiver) throws InterruptedException, SQLException {
-        List<String> schemaList = new ArrayList<>();
-        try (Connection connection = connectorConfig.getConnection(connectorConfig);
-            Statement statement = connection.createStatement();
-            ResultSet rs = statement.executeQuery("select nspname from pg_namespace where oid > 16384 "
-            + "or nspname = 'public';")) {
-            while (rs.next()) {
-                schemaList.add(rs.getString(1));
-            }
-        }
+            EventDispatcher.SnapshotReceiver receiver, List<String> schemaList) throws InterruptedException {
         for (Iterator<TableId> iterator = snapshotContext.capturedTables.iterator(); iterator.hasNext();) {
             final TableId tableId = iterator.next();
             boolean hasNext = iterator.hasNext();
@@ -393,11 +395,29 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
         }
     }
 
+    private List<String> appointSchemas() throws SQLException {
+        List<String> schemaList = new ArrayList<>();
+        try (Connection connection = connectorConfig.getConnection(connectorConfig);
+             Statement statement = connection.createStatement();
+             ResultSet rs = statement.executeQuery("SELECT pn.oid AS schema_oid, iss.catalog_name, iss.schema_owner, "
+                    + "iss.schema_name FROM information_schema.schemata iss "
+                    + "INNER JOIN pg_namespace pn ON pn.nspname = iss.schema_name "
+                    + "where iss.schema_name = 'public' or pn.oid > 16384;")) {
+            while (rs.next()) {
+                schemaList.add(rs.getString("schema_name"));
+            }
+        }
+        return schemaList;
+    }
+
     private int initCsvDirSize() {
         String csvPathSize = connectorConfig.getExportCsvPathSize();
-        int size = Integer.parseInt(csvPathSize);
+        int size;
         if (isNumeric(csvPathSize)) {
+            size = Integer.parseInt(csvPathSize);
             return size * MEMORY_UNIT * MEMORY_UNIT * MEMORY_UNIT;
+        } else {
+            size = Integer.parseInt(stringToInt(csvPathSize));
         }
         LOGGER.info("config: export.csv.path.size = {}", csvPathSize);
         return initStoreSize(size, csvPathSize, csvDirSize);
@@ -405,9 +425,12 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
 
     private int initPagePartitionSize() {
         String exportFileSize = connectorConfig.getExportFileSize();
-        int size = Integer.parseInt(exportFileSize);
+        int size;
         if (isNumeric(exportFileSize)) {
+            size = Integer.parseInt(exportFileSize);
             return size * MEMORY_UNIT * MEMORY_UNIT;
+        } else {
+            size = Integer.parseInt(stringToInt(exportFileSize));
         }
         LOGGER.info("config: export.file.size = {}", exportFileSize);
         return initStoreSize(size, exportFileSize, pageSize);
@@ -438,6 +461,16 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
             }
         }
         return true;
+    }
+
+    private String stringToInt(CharSequence cs) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < cs.length(); i++) {
+            if (Character.isDigit(cs.charAt(i))) {
+                sb.append(cs.charAt(i));
+            }
+        }
+        return sb.toString();
     }
 
     private ChangeRecordEmitter getTruncateRecordEmitter(RelationalSnapshotContext<OpengaussPartition,
@@ -515,14 +548,10 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
             ResultSet resultSet = statement.executeQuery(sizeSql)) {
             if (resultSet.next()) {
                 long size = resultSet.getLong("avgRowLength");
-                int tableRows = resultSet.getInt("tableRows");
-                String tableName = resultSet.getString("tableName");
-                sourceTableReport(ogFullSourceProcessInfo, size, tableRows,
-                tableName, table.id().schema());
-                int pageRows = size == 0 ? 0 : (int) (pageSize / size);
+                int pageRows = size == 0 ? 100000 : (int) (pageSize / size);
                 ResultSet rs = statement.executeQuery(selectStatement.get());
                 unLockTable(tableCount, dataEventsParam.getSnapshotContext());
-                processData(dataEventsParam, rs, pageRows);
+                processData(dataEventsParam, rs, pageRows, ogFullSourceProcessInfo, size);
             }
         } catch (SQLException e) {
             LOGGER.error("Snapshotting of table " + table.id() + " failed", e);
@@ -562,7 +591,8 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
         }
     }
 
-    private void processData(OpenGaussDataEventsParam dataEventsParam, ResultSet rs, int pageRows)
+    private void processData(OpenGaussDataEventsParam dataEventsParam, ResultSet rs, int pageRows,
+                             OgFullSourceProcessInfo ogFullSourceProcessInfo, long size)
         throws InterruptedException, IOException, SQLException {
         Table table = dataEventsParam.getTable();
         RelationalSnapshotContext<OpengaussPartition,
@@ -578,6 +608,8 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
         } else {
             LOGGER.info("\t Finished exporting {} records for table '{}';", rows, table.id());
         }
+        sourceTableReport(ogFullSourceProcessInfo, size, rows,
+                table.id().table(), table.id().schema());
         LOGGER.info("\t Finished exporting {} records for table '{}';", rows, table.id());
         super.getSnapshotProgressListener().dataCollectionSnapshotCompleted(table.id(), rows);
     }
@@ -597,19 +629,19 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
         String columnString = columnNames.stream().map(o -> o.replaceAll("\"", ""))
                 .collect(Collectors.joining(DELIMITER));
         List<String> columnStringArr = new ArrayList<>();
-        int columnCount = rs.getMetaData().getColumnCount();
+        ColumnUtils.ColumnArray columnArray = ColumnUtils.toArray(rs, table);
         while (!lastRecordInTable) {
             if (!sourceContext.isRunning()) {
                 throw new InterruptedException("Interrupted while snapshotting table " + table.id());
             }
             rows++;
+            columnStringArr.add(columnToString(rs, columnArray, table));
             if (rows > subscript * pageRows) {
                 wirteAndSendData(dataEventsParam, columnStringArr, subscript, columnString);
                 subscript++;
                 columnStringArr = new ArrayList<>();
             }
             // final Object[] row = jdbcConnection.rowToArray(table, schema(), rs, columnArray);
-            columnStringArr.add(columnToString(rs, columnCount));
             lastRecordInTable = !rs.next();
             if (logTimer.expired()) {
                 if (rowCountForTable.isPresent()) {
@@ -640,7 +672,7 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
         RelationalSnapshotContext<OpengaussPartition,
             OpengaussOffsetContext> snapshotContext = dataEventsParam.getSnapshotContext();
         EventDispatcher.SnapshotReceiver snapshotReceiver = dataEventsParam.getSnapshotReceiver();
-        String path = csvPath + generateFileName(table.id().schema(), table.id().table(), subscript);
+        String path = generateFileName(table.id().schema(), table.id().table(), subscript);
         if (wirteCsv(columnStringArr, path)) {
             synchronized (messLock) {
                 ChangeRecordEmitter changeRecordEmitter = getFilePathRecordEmitter(snapshotContext,
@@ -651,7 +683,8 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
     }
 
     private String generateFileName(String schema, String table, int subscript) {
-        return File.separator + String.format(Locale.ROOT, "%s_%s_%d.csv", schema, table, subscript);
+        return new File(csvPath) + File.separator + String.format(Locale.ROOT, "%s_%s_%d.csv",
+                schema, table, subscript);
     }
 
     private ChangeRecordEmitter getFilePathRecordEmitter(RelationalSnapshotContext<OpengaussPartition,
@@ -661,12 +694,32 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
                 row);
     }
 
-    private String columnToString(ResultSet rs, int columnCount) throws SQLException {
+    private String columnToString(ResultSet rs, ColumnUtils.ColumnArray columnArray, Table table) throws SQLException {
         StringBuilder stringBuilder = new StringBuilder();
-        for (int i = 1; i <= columnCount; i++) {
-            Object value = rs.getObject(i);
-            stringBuilder.append(value == null ? "" : value);
-            if (i != columnCount) {
+        TableSchema tableSchema;
+        if (dispatcher.getSchema().schemaFor(table.id()) instanceof TableSchema) {
+            tableSchema = (TableSchema) dispatcher.getSchema().schemaFor(table.id());
+        } else {
+            throw new DebeziumException("opengauss2mysql full data schema error");
+        }
+        Struct newValue = tableSchema.valueFromColumnData(jdbcConnection.rowToArray(table, schema(), rs, columnArray));
+        int len = columnArray.getColumns().length;
+        for (int i = 0; i < len; i++) {
+            Object value = newValue.get(columnArray.getColumns()[i].name());
+            if (value instanceof ByteBuffer) {
+                ByteBuffer object = (ByteBuffer) value;
+                value = new String(object.array(), object.position(), object.limit(), Charset.defaultCharset());
+            }
+            if (value instanceof byte[]) {
+                StringBuilder bytes = new StringBuilder();
+                byte[] obj = (byte[]) value;
+                for (byte b : obj) {
+                    bytes.append(String.valueOf(b));
+                }
+                value = bytes.toString();
+            }
+            stringBuilder.append(value);
+            if (i != len - 1) {
                 stringBuilder.append(DELIMITER);
             }
         }

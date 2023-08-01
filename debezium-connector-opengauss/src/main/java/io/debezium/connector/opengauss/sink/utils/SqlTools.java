@@ -201,6 +201,38 @@ public class SqlTools {
         return result;
     }
 
+    /**
+     * modifying sql statements
+     *
+     * @param tableMetaData TableMetaData the table meta data
+     * @param columnString sql columnString
+     * @param sql sql of load data
+     * @return load data
+     */
+    public String sqlAddBitCast(TableMetaData tableMetaData, String columnString, String sql) {
+        List<ColumnMetaData> columnList = tableMetaData.getColumnList();
+        StringBuilder condition = new StringBuilder(" set");
+        boolean hasBitType = false;
+        String column = columnString;
+        String query = sql;
+        for (ColumnMetaData columnMetaData : columnList) {
+            if ("bit".equals(columnMetaData.getColumnType())) {
+                hasBitType = true;
+                column = column.replace(columnMetaData.getColumnName(),
+                        "@" + columnMetaData.getColumnName());
+                condition.append(String.format(Locale.ROOT, " %s=cast(@%s as signed)",
+                        columnMetaData.getColumnName(), columnMetaData.getColumnName()));
+                condition.append(",");
+            }
+        }
+        query = query + "(" + column + ")";
+        if (hasBitType) {
+            condition.deleteCharAt(condition.length() - 1);
+            return query + condition.toString();
+        }
+        return query;
+    }
+
     private String getWhereCondition(TableMetaData tableMetaData, Struct before, List<ColumnMetaData> columnMetaDataList) {
         StringBuilder sb = new StringBuilder();
         String primaryKeyColumnName;

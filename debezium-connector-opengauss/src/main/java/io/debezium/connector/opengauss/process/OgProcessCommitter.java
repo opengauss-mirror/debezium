@@ -83,7 +83,8 @@ public class OgProcessCommitter extends BaseProcessCommitter {
      */
     public OgProcessCommitter(OpengaussConnectorConfig connectorConfig, String suffix) {
         super(connectorConfig, REVERSE_SOURCE_PROCESS_PREFIX);
-        this.fileFullPath = file + File.separator + REVERSE_SOURCE_PROCESS_PREFIX + suffix;
+        this.fileFullPath = new File(connectorConfig.createCountInfoPath())
+                + File.separator + REVERSE_SOURCE_PROCESS_PREFIX + suffix;
         this.currentFile = new File(fileFullPath);
     }
 
@@ -95,7 +96,7 @@ public class OgProcessCommitter extends BaseProcessCommitter {
      */
     public OgProcessCommitter(OpengaussSinkConnectorConfig connectorConfig, String suffix) {
         super(connectorConfig, REVERSE_SINK_PROCESS_PREFIX);
-        this.fileFullPath = file + File.separator + REVERSE_SOURCE_PROCESS_PREFIX + suffix;
+        this.fileFullPath = file + File.separator + REVERSE_SINK_PROCESS_PREFIX + suffix;
         this.currentFile = new File(fileFullPath);
         this.sharePath = connectorConfig.getCreateCountInfoPath();
     }
@@ -136,7 +137,7 @@ public class OgProcessCommitter extends BaseProcessCommitter {
     public boolean hasMessage() {
         String fileFullPath = getSourceFullFilePath();
         File file = new File(fileFullPath);
-        if (file.exists()) {
+        if (!file.exists()) {
             return false;
         }
         return file.length() > 0;
@@ -197,7 +198,7 @@ public class OgProcessCommitter extends BaseProcessCommitter {
 
     private String getSourceFullFilePath() {
         File file = new File(sharePath);
-        return file + File.separator + REVERSE_SOURCE_PROCESS_PREFIX + REVERSE_FULL_PROCESS_SUFFIX + ".txt";
+        return file + File.separator + REVERSE_SOURCE_PROCESS_PREFIX + REVERSE_FULL_PROCESS_SUFFIX;
     }
 
     private void outputCreateCountThread(String filePath) {
