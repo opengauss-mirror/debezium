@@ -21,6 +21,8 @@ public class Transaction implements Cloneable {
     private SourceField sourceField;
     private ArrayList<String> sqlList = new ArrayList<>();
     private boolean isDml = true;
+    private Long txnBeginOffset;
+    private Long txnEndOffset;
     private String expMessage;
 
     /**
@@ -63,6 +65,42 @@ public class Transaction implements Cloneable {
      */
     public ArrayList<String> getSqlList() {
         return sqlList;
+    }
+
+    /**
+     * Gets txnBeginOffset.
+     *
+     * @return the value of txnBeginOffset
+     */
+    public Long getTxnBeginOffset() {
+        return txnBeginOffset;
+    }
+
+    /**
+     * Sets the txnBeginOffset.
+     *
+     * @param txnBeginOffset txnBeginOffset
+     */
+    public void setTxnBeginOffset(Long txnBeginOffset) {
+        this.txnBeginOffset = txnBeginOffset;
+    }
+
+    /**
+     * Gets txnEndOffset.
+     *
+     * @return the value of txnEndOffset
+     */
+    public Long getTxnEndOffset() {
+        return txnEndOffset;
+    }
+
+    /**
+     * Sets the txnEndOffset.
+     *
+     * @param txnEndOffset txnEndOffset
+     */
+    public void setTxnEndOffset(Long txnEndOffset) {
+        this.txnEndOffset = txnEndOffset;
     }
 
     /**
@@ -113,11 +151,13 @@ public class Transaction implements Cloneable {
 
     @Override
     public String toString() {
-        return "Transaction{" +
-                "sourceField=" + sourceField +
-                ", isDml=" + isDml +
-                ", sqlList=" + sqlList +
-                '}';
+        return "Transaction{"
+                + "sourceField=" + sourceField
+                + ", sqlList=" + sqlList
+                + ", isDml=" + isDml
+                + ", txnBeginOffset=" + txnBeginOffset
+                + ", txnEndOffset=" + txnEndOffset
+                + '}';
     }
 
     @Override

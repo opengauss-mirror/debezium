@@ -84,7 +84,8 @@ mvn clean package -P quick,skip-integration-tests,oracle,jdk11,assembly,xstream,
 - Source端支持自定义配置快照点；
 - 配置gtid_mode=on，source端支持解析last_committed和sequence_number字段，并存入kafka；
 - 基于Debezium connector（Kafka Connect）框架，增加sink端能力，可用于从kafka抽取数据并在openGauss端按照事务粒度并行回放;
-- 增加迁移进度上报功能，可用于读取数据迁移时延。
+- 增加迁移进度上报功能，可用于读取数据迁移时延；
+- 增加增量迁移断点续传功能，用户中断后基于断点重启后继续迁移。
 
 ### 新增配置参数说明
 
@@ -288,6 +289,11 @@ connector.class=io.debezium.connector.mysql.sink.MysqlSinkConnector
 | max.queue.size | int      | 存储kafka记录的队列的最大长度，int类型，默认值为1000000 |
 | open.flow.control.threshold | double | 流量控制参数，double类型，默认值为0.8，当存储kafka记录的队列长度>最大长度max.queue.size*该门限值时，将启用流量控制，暂停从kafka抽取数据 |
 | close.flow.control.threshold | double | 流量控制参数，double类型，默认值为0.7，当存储kafka记录的队列长度<最大长度max.queue.size*该门限值时，将关闭流量控制，继续从kafka抽取数据 |
+| record.breakpoint.kafka.topic | String     | 自定义断点记录topic，在回放过程记录执行结果到Kafka中，可根据实际情况修改，默认值为bp_topic                                |
+| record.breakpoint.kafka.bootstrap.servers | String     | 自定义断点记录的Kafka启动服务器地址，如无特殊需要，配置为source端的Kafka地址，可根据实际情况修改，默认值为localhost:9092        |
+| record.breakpoint.kafka.recovery.attempts | int     | 自定义读取断点记录重试次数，默认为3                                                 |
+| record.breakpoint.kafka.size.limit | int     | 断点记录Kafka的条数限制，超过该限制会触发删除Kafka的断点清除策略，删除无用的断点记录数据，单位：事务万条数，默认值3000       |
+| record.breakpoint.kafka.clear.interval | int     | 断点记录Kafka的时间限制，超过该限制会触发删除Kafka的断点清除策略，删除无用的断点记录数据，单位：小时，默认值1         |
 
 ### 迁移进度上报信息说明
 
@@ -666,7 +672,8 @@ curl -X PUT -H "Content-Type: application/vnd.schemaregistry.v1+json" \
 - 支持openGauss端对schema下的数据的dml操作同步到MySQL端，不支持迁移ddl操作的迁移；
 - Sink端支持数据按表进行并发回放；
 - 支持openGausss的多个schema下的数据迁移到指定的MySQL的多个库；
-- 增加迁移进度上报功能，可用于读取数据迁移时延。
+- 增加迁移进度上报功能，可用于读取数据迁移时延；
+- 增加反向迁移断点续传功能，用户中断后基于断点重启后继续迁移。
 
 ### 新增配置参数说明
 
@@ -765,6 +772,11 @@ connector.class=io.debezium.connector.opengauss.sink.OpengaussSinkConnector
 | max.queue.size | int      | 存储kafka记录的队列和按表并发线程中预处理数据的队列的最大长度，int类型，默认值为1000000                                                                                                                                                                                                                                                                                                |
 | open.flow.control.threshold | double | 流量控制参数，double类型，默认值为0.8，当存储kafka记录的队列或某一个按表并发线程中预处理数据的队列长度>最大长度max.queue.size*该门限值时，将启用流量控制，暂停从kafka抽取数据                                                                                                                                                                                                                                           |
 | close.flow.control.threshold | double | 流量控制参数，double类型，默认值为0.7，当存储kafka记录的队列和所有按表并发线程中预处理数据的队列长度<最大长度max.queue.size*该门限值时，将关闭流量控制，继续从kafka抽取数据                                                                                                                                                                                                                                            |
+| record.breakpoint.kafka.topic | String     | 自定义断点记录topic，在回放过程记录执行结果到Kafka中，可根据实际情况修改，默认值为bp_topic                                |
+| record.breakpoint.kafka.bootstrap.servers | String     | 自定义断点记录的Kafka启动服务器地址，如无特殊需要，配置为source端的Kafka地址，可根据实际情况修改，默认值为localhost:9092        |
+| record.breakpoint.kafka.recovery.attempts | int     | 自定义读取断点记录重试次数，默认为3                                             |
+| record.breakpoint.kafka.size.limit | int     | 断点记录Kafka的条数限制，超过该限制会触发删除Kafka的断点清除策略，删除无用的断点记录数据，单位：事务万条数，默认值：3000      |
+| record.breakpoint.kafka.clear.interval | int     | 断点记录Kafka的时间限制，超过该限制会触发删除Kafka的断点清除策略，删除无用的断点记录数据，单位：小时，默认值1       |
 
 ##### 全量数据迁移新增参数
 

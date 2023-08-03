@@ -172,7 +172,7 @@ public class SqlTools {
      * @return new data
      */
     public List<String> conversionFullData(TableMetaData tableMetaData, List<String> data, String columnString,
-        Struct after) {
+                                           Struct after) {
         List<ColumnMetaData> columnList = tableMetaData.getColumnList();
         List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
         String[] columns = columnString.split(",");
@@ -290,5 +290,67 @@ public class SqlTools {
             }
         }
         return valueList;
+    }
+
+    /**
+     * Get read sql
+     *
+     * @param tableMetaData the tableMetaData
+     * @param struct the struct
+     * @param operation the operation
+     * @return read sql
+     */
+    public String getReadSql(TableMetaData tableMetaData, Struct struct, Envelope.Operation operation) {
+        StringBuilder sb = new StringBuilder();
+        ArrayList<String> valueList = new ArrayList<>();
+        sb.append("select * from ").append(tableMetaData.getSchemaName()).append(".")
+                .append(tableMetaData.getTableName()).append(" where ");
+        List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
+        String singleValue;
+        String columnName;
+        String columnType;
+        for (ColumnMetaData columnMetaData : columnMetaDataList) {
+            singleValue = DebeziumValueConverters.getValue(columnMetaData, struct);
+            columnName = "`" + columnMetaData.getColumnName() + "`";
+            columnType = columnMetaData.getColumnType();
+            switch (operation) {
+                case CREATE:
+                case UPDATE:
+                    valueList.add(columnName + " = " + singleValue);
+                    break;
+                case DELETE:
+                    if (singleValue == null) {
+                        valueList.add(columnName + " is null");
+                    } else if ("json".equals(columnType)) {
+                        valueList.add(columnName + "= CAST(" + singleValue + " AS json)");
+                    } else {
+                        valueList.add(columnName + " = " + singleValue);
+                    }
+                    break;
+            }
+        }
+        sb.append(String.join(" and ", valueList));
+        return sb.toString();
+    }
+
+    /**
+     * Is or not exist data
+     *
+     * @param sql the sql
+     * @return exist the data
+     */
+    public boolean isExistSql(String sql) {
+        boolean isExistSql = false;
+        try (
+                Connection connection = connectionInfo.createMysqlConnection();
+                Statement statement = connection.createStatement();
+                ResultSet rs = statement.executeQuery(sql)) {
+            if (rs.next()) {
+                isExistSql = true;
+            }
+        } catch (SQLException exception) {
+            LOGGER.error("SQL exception occurred, the sql statement is " + sql);
+        }
+        return isExistSql;
     }
 }

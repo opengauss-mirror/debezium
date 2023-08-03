@@ -47,15 +47,15 @@ public class SqlTools {
     private TableMetaData getTableMetaData(String schemaName, String tableName, long timeMillis) {
         List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
         String sql = String.format(Locale.ENGLISH, "select column_name, data_type, numeric_scale from " +
-                "information_schema.columns where table_schema = '%s' and table_name = '%s'" +
-                " order by ordinal_position;",
+                        "information_schema.columns where table_schema = '%s' and table_name = '%s'" +
+                        " order by ordinal_position;",
                 schemaName, tableName);
         TableMetaData tableMetaData = null;
         try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
             while (rs.next()) {
                 ColumnMetaData columnMetaData = new ColumnMetaData(rs.getString("column_name"),
                         rs.getString("data_type"), rs.getString("numeric_scale") == null ? -1
-                                : rs.getInt("numeric_scale"));
+                        : rs.getInt("numeric_scale"));
                 columnMetaDataList.add(columnMetaData);
             }
             for (int i = 0; i < columnMetaDataList.size(); i++) {
@@ -96,10 +96,10 @@ public class SqlTools {
      */
     public List<String> getRelyTableList(String oldTableName, String schemaName) {
         String sql = String.format(Locale.ENGLISH, "select c.relname, ns.nspname from pg_class c left join"
-                + " pg_namespace ns on c.relnamespace=ns.oid left join pg_constraint cons on c.oid=cons.conrelid"
-                + " left join pg_class oc on cons.confrelid=oc.oid"
-                + " left join  pg_namespace ons on oc.relnamespace=ons.oid"
-                + " where oc.relname='%s' and ons.nspname='%s';",
+                        + " pg_namespace ns on c.relnamespace=ns.oid left join pg_constraint cons on c.oid=cons.conrelid"
+                        + " left join pg_class oc on cons.confrelid=oc.oid"
+                        + " left join  pg_namespace ons on oc.relnamespace=ons.oid"
+                        + " where oc.relname='%s' and ons.nspname='%s';",
                 oldTableName, schemaName);
         try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
             List<String> tableList = new ArrayList<>();
@@ -240,7 +240,7 @@ public class SqlTools {
     public String getXlogLocation() {
         String xlogPosition = "";
         try (Statement statement = connection.createStatement();
-                ResultSet rs = statement.executeQuery("select pg_current_xlog_location();")) {
+             ResultSet rs = statement.executeQuery("select pg_current_xlog_location();")) {
             if (rs.next()) {
                 xlogPosition = rs.getString(1);
             }
@@ -249,6 +249,45 @@ public class SqlTools {
             LOGGER.error("Fail to get current xlog position.");
         }
         return xlogPosition;
+    }
+
+    /**
+     * Get read sql
+     *
+     * @param tableMetaData the tableMetaData
+     * @param struct the struct
+     * @param operation the operation
+     * @return read sql
+     */
+    public String getReadSql(TableMetaData tableMetaData, Struct struct, Envelope.Operation operation) {
+        StringBuilder sb = new StringBuilder();
+        ArrayList<String> valueList = new ArrayList<>();
+        sb.append("select * from ").append(tableMetaData.getSchemaName()).append(".")
+                .append(tableMetaData.getTableName()).append(" where ");
+        List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
+        ArrayList<String> readSetValueList = getValueList(columnMetaDataList, struct, operation);
+        sb.append(String.join(" and ", readSetValueList));
+        return sb.toString();
+    }
+
+    /**
+     * Is or not exist data
+     *
+     * @param sql the sql
+     * @return exist the data
+     */
+    public boolean isExistSql(String sql) {
+        boolean isExistSql = false;
+        try (
+                Statement statement = connection.createStatement();
+                ResultSet rs = statement.executeQuery(sql)) {
+            if (rs.next()) {
+                isExistSql = true;
+            }
+        } catch (SQLException exception) {
+            LOGGER.error("SQL exception occurred, the sql statement is " + sql);
+        }
+        return isExistSql;
     }
 
     /**

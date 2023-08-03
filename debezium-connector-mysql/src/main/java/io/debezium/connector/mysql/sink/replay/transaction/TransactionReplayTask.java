@@ -15,19 +15,26 @@ import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -37,6 +44,8 @@ import org.slf4j.LoggerFactory;
 import com.mysql.cj.jdbc.AbandonedConnectionCleanupThread;
 import com.mysql.cj.util.StringUtils;
 
+import io.debezium.config.Configuration;
+import io.debezium.connector.breakpoint.BreakPointRecord;
 import io.debezium.connector.mysql.process.MysqlProcessCommitter;
 import io.debezium.connector.mysql.process.MysqlSinkProcessInfo;
 import io.debezium.connector.mysql.sink.object.ConnectionInfo;
@@ -57,7 +66,7 @@ import io.debezium.data.Envelope;
  * Description: JdbcDbWriter
  *
  * @author douxin
- * @since 2022/10/31
+ * @since 2022-10-31
  **/
 public class TransactionReplayTask extends ReplayTask {
     /**
@@ -71,6 +80,8 @@ public class TransactionReplayTask extends ReplayTask {
     public static final int MAX_VALUE = 50000;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TransactionReplayTask.class);
+    private static final int TASK_GRACEFUL_SHUTDOWN_TIME = 5;
+    private static final long INVALID_VALUE = -1L;
 
     private int maxQueueSize;
     private double openFlowControlThreshold;
@@ -81,6 +92,7 @@ public class TransactionReplayTask extends ReplayTask {
     private SqlTools sqlTools;
     private TransactionDispatcher transactionDispatcher;
     private MySqlSinkConnectorConfig config;
+    private BreakPointRecord breakPointRecord;
 
     private int count = 0;
     private int queueIndex = 0;
@@ -88,6 +100,7 @@ public class TransactionReplayTask extends ReplayTask {
     private long skippedCount;
     private long skippedExcludeEventCount;
     private ArrayList<String> sqlList = new ArrayList<>();
+    private List<Long> toDeleteOffsets;
     private Transaction transaction = new Transaction();
     private String xlogLocation;
 
@@ -99,7 +112,9 @@ public class TransactionReplayTask extends ReplayTask {
     private ArrayList<String> changedTableNameList = new ArrayList<>();
     private ArrayList<SinkRecordObject> sinkRecordsArrayList = new ArrayList<>();
     private BlockingQueue<String> feedBackQueue = new LinkedBlockingQueue<>();
+    private BlockingQueue<SinkRecord> sinkQueue = new LinkedBlockingQueue<>();
     private ArrayList<ConcurrentLinkedQueue<Transaction>> transactionQueueList = new ArrayList<>();
+    private Map<Long, String> addedQueueMap = new ConcurrentHashMap<>();
 
     private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(3, 3, 100,
             TimeUnit.SECONDS, new LinkedBlockingQueue<>(3));
@@ -126,17 +141,28 @@ public class TransactionReplayTask extends ReplayTask {
     /**
      * Do stop
      */
+    @Override
     public void doStop() {
-        String result = sqlTools.getXlogLocation();
-        try (BufferedWriter bw = new BufferedWriter(new FileWriter(xlogLocation))) {
-            bw.write("xlog.location=" + result);
+        transactionDispatcher.setIsStop(true);
+        try {
+            // ensure this batch data all replay, wait 4s
+            TimeUnit.SECONDS.sleep(TASK_GRACEFUL_SHUTDOWN_TIME - 1);
+            writeXlogResult();
+        } catch (InterruptedException e) {
+            LOGGER.error("Interrupt exception");
         }
-        catch (IOException exp) {
-            LOGGER.error("Fail to write xlog location {}", result);
-        }
+    }
+
+    private void writeXlogResult() {
+        String xlogResult = sqlTools.getXlogLocation();
         sqlTools.closeConnection();
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(xlogLocation))) {
+            bw.write("xlog.location=" + xlogResult);
+        } catch (IOException exp) {
+            LOGGER.error("Fail to write xlog location {}", xlogResult);
+        }
         LOGGER.info("Online migration from mysql to openGauss has gracefully stopped and current xlog"
-                + "location in openGauss is {}", result);
+                + "location in openGauss is {}", xlogResult);
     }
 
     private void initObject(MySqlSinkConnectorConfig config) {
@@ -145,9 +171,39 @@ public class TransactionReplayTask extends ReplayTask {
         initSchemaMappingMap(config.schemaMappings);
         initTransactionQueueList(TRANSACTION_QUEUE_NUM);
         initSqlTools();
+        initRecordBreakpoint(config);
         initTransactionDispatcher(config.parallelReplayThreadNum);
         initXlogLocation(config.xlogLocation);
         initFlowControl(config);
+    }
+
+    /**
+     * Init breakpoint record properties
+     *
+     * @param config mysql sink connector config
+     */
+    private void initRecordBreakpoint(MySqlSinkConnectorConfig config) {
+        // properties configuration
+        Configuration configuration = Configuration.create()
+                .with(BreakPointRecord.BOOTSTRAP_SERVERS, config.getBootstrapServers())
+                .with(BreakPointRecord.TOPIC, config.getBpTopic())
+                .with(BreakPointRecord.RECOVERY_POLL_ATTEMPTS, config.getBpMaxRetries())
+                .with(BreakPointRecord.RECOVERY_POLL_INTERVAL_MS, 500)
+                .with(BreakPointRecord.consumerConfigPropertyName(
+                        ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG),
+                        100)
+                .with(BreakPointRecord.consumerConfigPropertyName(
+                        ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG),
+                        50000)
+                .build();
+        breakPointRecord = new BreakPointRecord(configuration);
+        toDeleteOffsets = breakPointRecord.getToDeleteOffsets();
+        breakPointRecord.setBpQueueTimeLimit(config.getBpQueueTimeLimit());
+        breakPointRecord.setBpQueueSizeLimit(config.getBpQueueSizeLimit());
+        breakPointRecord.start();
+        if (!breakPointRecord.isTopicExist()) {
+            breakPointRecord.initializeStorage();
+        }
     }
 
     private void initOpenGaussConnection(MySqlSinkConnectorConfig config) {
@@ -182,13 +238,14 @@ public class TransactionReplayTask extends ReplayTask {
     private void initTransactionDispatcher(int threadNum) {
         if (threadNum > 0) {
             transactionDispatcher = new TransactionDispatcher(threadNum, openGaussConnection, transactionQueueList,
-                    changedTableNameList, feedBackQueue);
+                    sqlTools, feedBackQueue);
         }
         else {
             transactionDispatcher = new TransactionDispatcher(openGaussConnection, transactionQueueList,
-                    changedTableNameList, feedBackQueue);
+                    sqlTools, feedBackQueue);
         }
         transactionDispatcher.initProcessCommitter(config.getFailSqlPath(), config.getFileSizeLimit());
+        transactionDispatcher.initBreakPointRecord(breakPointRecord);
     }
 
     private void initFlowControl(MySqlSinkConnectorConfig config) {
@@ -196,6 +253,26 @@ public class TransactionReplayTask extends ReplayTask {
         openFlowControlThreshold = config.openFlowControlThreshold;
         closeFlowControlThreshold = config.closeFlowControlThreshold;
         monitorSinkQueueSize();
+    }
+
+    /**
+     * Batch write
+     *
+     * @param records Collection<SinkRecord> the sink records
+     */
+    @Override
+    public void batchWrite(Collection<SinkRecord> records) {
+        // if addedQueueMap is empty, explain occurred first booting or breakpoint,
+        // and if exist breakpoint info ,mean breakpoint condition
+        if (addedQueueMap.isEmpty() && breakPointRecord.isExists(records)) {
+            LOGGER.warn("There is a breakpoint condition");
+            transactionDispatcher.setIsBpCondition(true);
+            Collection<SinkRecord> filteredRecords = breakPointRecord.readRecord(records);
+            sinkQueue.addAll(filteredRecords);
+        }
+        else {
+            sinkQueue.addAll(records);
+        }
     }
 
     /**
@@ -231,6 +308,9 @@ public class TransactionReplayTask extends ReplayTask {
             catch (InterruptedException e) {
                 LOGGER.error("Interrupted exception occurred", e);
             }
+            if (addedQueueMap.containsKey(sinkRecord != null ? sinkRecord.kafkaOffset() : -1L)) {
+                continue;
+            }
             if (sinkRecord.value() instanceof Struct) {
                 value = (Struct) sinkRecord.value();
             }
@@ -242,6 +322,9 @@ public class TransactionReplayTask extends ReplayTask {
             }
             try {
                 if (TransactionRecordField.BEGIN.equals(value.getString(TransactionRecordField.STATUS))) {
+                    transaction.setTxnBeginOffset(sinkRecord.kafkaOffset());
+                    addedQueueMap.put(sinkRecord.kafkaOffset(),
+                            value.getString(TransactionRecordField.ID));
                     sinkRecordsArrayList.clear();
                 }
                 else {
@@ -249,11 +332,14 @@ public class TransactionReplayTask extends ReplayTask {
                         dmlEventCountMap.put(value.getString(TransactionRecordField.ID),
                                 value.getInt64(TransactionRecordField.EVENT_COUNT) - skipNum);
                     }
+                    addedQueueMap.put(sinkRecord.kafkaOffset(),
+                            value.getString(TransactionRecordField.ID));
                     if (value.getInt64(TransactionRecordField.EVENT_COUNT) == 0) {
                         statExtractCount();
                         skippedExcludeEventCount++;
                         MysqlSinkProcessInfo.SINK_PROCESS_INFO.setSkippedExcludeEventCount(skippedExcludeEventCount);
                     }
+                    transaction.setTxnEndOffset(sinkRecord.kafkaOffset());
                     try {
                         for (SinkRecordObject oneSinkRecordObject : sinkRecordsArrayList) {
                             constructDml(oneSinkRecordObject);
@@ -292,7 +378,9 @@ public class TransactionReplayTask extends ReplayTask {
                 }
                 sinkRecordObject = new SinkRecordObject();
                 sinkRecordObject.setSourceField(sourceField);
-
+                sinkRecordObject.setKafkaOffset(sinkRecord.kafkaOffset());
+                addedQueueMap.put(sinkRecord.kafkaOffset(),
+                        sourceField.getGtid());
                 try {
                     dataOperation = new DmlOperation(value);
                     sinkRecordObject.setDataOperation(dataOperation);
@@ -305,6 +393,50 @@ public class TransactionReplayTask extends ReplayTask {
                 }
             }
         }
+    }
+
+    /**
+     * Get the offset of already replayed record
+     *
+     * @return the continuous and maximum offset
+     */
+    @Override
+    public Long getReplayedOffset() {
+        PriorityBlockingQueue<Long> replayedOffsets = breakPointRecord.getReplayedOffset();
+        Long offset = replayedOffsets.peek();
+        Long endOffset = INVALID_VALUE;
+        if (replayedOffsets.isEmpty()) {
+            return endOffset;
+        }
+        boolean isContinuous = true;
+        while (isContinuous && !replayedOffsets.isEmpty()) {
+            Long num;
+            try {
+                num = replayedOffsets.take();
+                if (num.equals(offset)) {
+                    endOffset = num;
+                } else {
+                    replayedOffsets.offer(num);
+                    isContinuous = false;
+                }
+                offset++;
+            } catch (InterruptedException exp) {
+                LOGGER.error("Interrupted exception occurred", exp);
+            }
+        }
+        if (endOffset.equals(INVALID_VALUE)) {
+            return endOffset;
+        }
+        replayedOffsets.offer(endOffset);
+        Iterator<Map.Entry<Long, String>> iterator = addedQueueMap.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<Long, String> entry = iterator.next();
+            if (entry.getKey() < endOffset) {
+                iterator.remove();
+            }
+        }
+        toDeleteOffsets.add(endOffset);
+        return endOffset + 1;
     }
 
     private void parseSinkRecordThread() {
@@ -338,8 +470,7 @@ public class TransactionReplayTask extends ReplayTask {
         sqlList.add("set current_schema to " + newSchemaName + ";");
         if (StringUtils.isNullOrEmpty(tableName)) {
             sqlList.add(ddl);
-        }
-        else {
+        } else {
             String modifiedDdl = null;
             if (ddl.toLowerCase(Locale.ROOT).startsWith("alter table")
                     && ddl.toLowerCase(Locale.ROOT).contains("rename to")
@@ -350,15 +481,12 @@ public class TransactionReplayTask extends ReplayTask {
                 if (oldFullName.split("\\.").length == 2) {
                     String oldName = oldFullName.split("\\.")[1];
                     modifiedDdl = ddl.replaceFirst(oldFullName, oldName);
-                }
-                else {
+                } else {
                     modifiedDdl = ddl;
                 }
-            }
-            else if (ddl.toLowerCase(Locale.ROOT).startsWith("drop table")) {
+            } else if (ddl.toLowerCase(Locale.ROOT).startsWith("drop table")) {
                 modifiedDdl = ddl.replaceFirst(addingBackquote(schemaName) + ".", "");
-            }
-            else {
+            } else {
                 modifiedDdl = ignoreSchemaName(ddl, schemaName, tableName);
             }
             sqlList.add(modifiedDdl);
@@ -369,6 +497,8 @@ public class TransactionReplayTask extends ReplayTask {
         }
         transaction.setSqlList(sqlList);
         transaction.setIsDml(false);
+        transaction.setTxnBeginOffset(sinkRecordObject.getKafkaOffset());
+        transaction.setTxnEndOffset(sinkRecordObject.getKafkaOffset());
         splitTransactionQueue();
         sqlList.clear();
     }
@@ -395,7 +525,6 @@ public class TransactionReplayTask extends ReplayTask {
         SourceField sourceField = sinkRecordObject.getSourceField();
         transaction.setSourceField(sourceField);
         transaction.setIsDml(true);
-
         DmlOperation dmlOperation = null;
         if (sinkRecordObject.getDataOperation() instanceof DmlOperation) {
             dmlOperation = (DmlOperation) sinkRecordObject.getDataOperation();
@@ -505,7 +634,7 @@ public class TransactionReplayTask extends ReplayTask {
             if (fileIndex < snapshotFileIndex
                     || (fileIndex == snapshotFileIndex && binlogPosition <= snapshotBinlogPosition)) {
                 String skipInfo = String.format("Table %s snapshot is %s, current position is %s, which is less than "
-                        + "table snapshot, so skip the record.", fullName, snapshotPoint,
+                                + "table snapshot, so skip the record.", fullName, snapshotPoint,
                         binlogFile + ":" + binlogPosition);
                 LOGGER.warn(skipInfo);
                 return true;
@@ -552,7 +681,7 @@ public class TransactionReplayTask extends ReplayTask {
                 if (size > openFlowControlQueueSize) {
                     if (!isBlock.get()) {
                         LOGGER.warn("[start flow control] current isBlock is {}, queue size is {}, which is "
-                                + "more than {} * {}, so open flow control",
+                                        + "more than {} * {}, so open flow control",
                                 isBlock, size, openFlowControlThreshold, maxQueueSize);
                     }
                     isBlock.set(true);
@@ -560,7 +689,7 @@ public class TransactionReplayTask extends ReplayTask {
                 if (size < closeFlowControlQueueSize) {
                     if (isBlock.get()) {
                         LOGGER.warn("[close flow control] current isBlock is {}, queue size is {}, which is "
-                                + "less than {} * {}, so close flow control",
+                                        + "less than {} * {}, so close flow control",
                                 isBlock, size, closeFlowControlThreshold, maxQueueSize);
                     }
                     isBlock.set(false);

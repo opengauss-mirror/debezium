@@ -13,10 +13,13 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.PriorityBlockingQueue;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.debezium.connector.breakpoint.BreakPointObject;
+import io.debezium.connector.breakpoint.BreakPointRecord;
 import io.debezium.connector.mysql.sink.object.ConnectionInfo;
 import io.debezium.connector.mysql.sink.object.Transaction;
 import io.debezium.connector.mysql.sink.util.SqlTools;
@@ -39,24 +42,29 @@ public class WorkThread extends Thread {
     private int failCount;
     private Transaction txn = null;
     private final Object lock = new Object();
-    private ArrayList<String> changedTableNameList;
     private BlockingQueue<String> feedBackQueue;
     private List<String> failSqlList = new ArrayList<>();
+    private BreakPointRecord breakPointRecord;
+    private PriorityBlockingQueue<Long> replayedOffsets;
+    private List<Long> txnReplayedOffsets = new ArrayList<>();
+    private boolean isTransaction;
 
     /**
      * Constructor
      *
      * @param connectionInfo Connection the connection
-     * @param changedTableNameList ArrayList<String> the changedTableNameList
      * @param feedBackQueue BlockingQueue<String> the feedBackQueue
      * @param index int the index
+     * @param breakPointRecord record break point info
      */
-    public WorkThread(ConnectionInfo connectionInfo, ArrayList<String> changedTableNameList,
-                      BlockingQueue<String> feedBackQueue, int index) {
+    public WorkThread(ConnectionInfo connectionInfo, BlockingQueue<String> feedBackQueue,
+                      int index, BreakPointRecord breakPointRecord) {
         super("work-thread-" + index);
         this.connectionInfo = connectionInfo;
-        this.changedTableNameList = changedTableNameList;
         this.feedBackQueue = feedBackQueue;
+        this.breakPointRecord = breakPointRecord;
+        this.replayedOffsets = breakPointRecord.getReplayedOffset();
+        this.isTransaction = true;
     }
 
     /**
@@ -121,7 +129,7 @@ public class WorkThread extends Thread {
     @Override
     public void run() {
         try (Connection connection = connectionInfo.createOpenGaussConnection();
-                Statement statement = connection.createStatement()) {
+             Statement statement = connection.createStatement()) {
             while (true) {
                 pauseThread();
                 replayTransaction(statement);
@@ -144,8 +152,7 @@ public class WorkThread extends Thread {
                 statement.execute(COMMIT);
             }
             successCount++;
-        }
-        else {
+        } else {
             if (shouldStartTransaction) {
                 statement.execute(ROLLBACK);
             }
@@ -157,6 +164,12 @@ public class WorkThread extends Thread {
             tmpSqlList.add(System.lineSeparator());
             failSqlList.addAll(tmpSqlList);
         }
+        for (long i = txn.getTxnBeginOffset(); i <= txn.getTxnEndOffset(); i++) {
+            txnReplayedOffsets.add(i);
+        }
+        replayedOffsets.addAll(txnReplayedOffsets);
+        txnReplayedOffsets.clear();
+        savedBreakPointInfo(txn);
     }
 
     private boolean executeTxnSql(Statement statement) {
@@ -194,6 +207,22 @@ public class WorkThread extends Thread {
      */
     public List<String> getFailSqlList() {
         return failSqlList;
+    }
+
+    /**
+     * Save breakpoint data to kafka
+     *
+     * @param txn the replay transaction
+     */
+    private void savedBreakPointInfo(Transaction txn) {
+        BreakPointObject txnBpObject = new BreakPointObject();
+        txnBpObject.setBeginOffset(txn.getTxnBeginOffset());
+        txnBpObject.setEndOffset(txn.getTxnEndOffset());
+        txnBpObject.setTimeStamp(LocalDateTime.now().toString());
+        if (!txn.getSourceField().getGtid().isEmpty()) {
+            txnBpObject.setGtid(txn.getSourceField().getGtid());
+        }
+        breakPointRecord.storeRecord(txnBpObject, isTransaction);
     }
 
     /**

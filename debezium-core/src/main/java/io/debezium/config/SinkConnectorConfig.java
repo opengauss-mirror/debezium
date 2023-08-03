@@ -77,6 +77,31 @@ public class SinkConnectorConfig extends AbstractConfig {
     public static final String FILE_SIZE_LIMIT = "file.size.limit";
 
     /**
+     * breakpoint topic
+     */
+    public static final String BP_TOPIC = "record.breakpoint.kafka.topic";
+
+    /**
+     * breakpoint attempts
+     */
+    public static final String BP_ATTEMPTS = "record.breakpoint.kafka.recovery.attempts";
+
+    /**
+     * breakpoint kafka server
+     */
+    public static final String BP_BOOTSTRAP_SERVERS = "record.breakpoint.kafka.bootstrap.servers";
+
+    /**
+     * breakpoint kafka size limit
+     */
+    public static final String BP_QUEUE_MAX_SIZE = "record.breakpoint.kafka.size.limit";
+
+    /**
+     * breakpoint kafka size limit
+     */
+    public static final String BP_QUEUE_CLEAR_INTERVAL = "record.breakpoint.kafka.clear.interval";
+
+    /**
      * CONFIG_DEF
      */
     public static final ConfigDef CONFIG_DEF = new ConfigDef()
@@ -96,7 +121,15 @@ public class SinkConnectorConfig extends AbstractConfig {
             .define(PROCESS_FILE_TIME_LIMIT, ConfigDef.Type.STRING, "168",
                     ConfigDef.Importance.HIGH, "process file time limit")
             .define(APPEND_WRITE, ConfigDef.Type.STRING, "false", ConfigDef.Importance.HIGH, "append write")
-            .define(FILE_SIZE_LIMIT, ConfigDef.Type.STRING, "10", ConfigDef.Importance.HIGH, "file size limit");
+            .define(FILE_SIZE_LIMIT, ConfigDef.Type.STRING, "10", ConfigDef.Importance.HIGH, "file size limit")
+            .define(BP_BOOTSTRAP_SERVERS, ConfigDef.Type.STRING, "localhost:9092",
+                    ConfigDef.Importance.HIGH, "breakpoint kafka server")
+            .define(BP_TOPIC, ConfigDef.Type.STRING, "bp_topic", ConfigDef.Importance.HIGH, "breakpoint topic")
+            .define(BP_ATTEMPTS, ConfigDef.Type.STRING, "3", ConfigDef.Importance.HIGH, "breakpoint attempts")
+            .define(BP_QUEUE_MAX_SIZE, ConfigDef.Type.STRING, "30000000",
+                    ConfigDef.Importance.HIGH, "Exceeding this limit deletes the breakpoint record")
+            .define(BP_QUEUE_CLEAR_INTERVAL, ConfigDef.Type.STRING, "1",
+                    ConfigDef.Importance.HIGH, "Exceeding this time limit deletes the breakpoint record");
     private static final Logger LOGGER = LoggerFactory.getLogger(SinkConnectorConfig.class);
 
     /**
@@ -119,6 +152,15 @@ public class SinkConnectorConfig extends AbstractConfig {
     private int fileSizeLimit = 10;
 
     /**
+     * breakpoint config
+     */
+    private final String bpTopic;
+    private final String bootstrapServers;
+    private int bpMaxRetries = 1;
+    private int bpQueueSizeLimit = 30000000;
+    private int bpQueueTimeLimit = 1;
+
+    /**
      * Constructor
      *
      * @param configDef ConfigDef the configDef
@@ -128,10 +170,57 @@ public class SinkConnectorConfig extends AbstractConfig {
         super(configDef, originals, false);
         this.topics = getString(TOPICS);
         this.schemaMappings = getString(SCHEMA_MAPPINGS);
+        this.bootstrapServers = getString(BP_BOOTSTRAP_SERVERS);
+        this.bpTopic = getString(BP_TOPIC);
         if (isCommitProcess()) {
             rectifyParameter();
         }
         rectifyFailSqlPara();
+    }
+
+    /**
+     * Gets TOPICS.
+     *
+     * @return the value of TOPICS
+     */
+    public static String getTOPICS() {
+        return TOPICS;
+    }
+
+    /**
+     * Gets bpTopic.
+     *
+     * @return the value of bpTopic
+     */
+    public String getBpTopic() {
+        return bpTopic;
+    }
+
+    /**
+     * Gets bootstrapServers.
+     *
+     * @return the value of bootstrapServers
+     */
+    public String getBootstrapServers() {
+        return bootstrapServers;
+    }
+
+    /**
+     * Gets bpMaxRetries.
+     *
+     * @return the value of bpMaxRetries
+     */
+    public int getBpMaxRetries() {
+        return bpMaxRetries;
+    }
+
+    /**
+     * Sets the bpMaxRetries.
+     *
+     * @param bpMaxRetries the value of bpMaxRetries
+     */
+    public void setBpMaxRetries(int bpMaxRetries) {
+        this.bpMaxRetries = bpMaxRetries;
     }
 
     /**
@@ -256,6 +345,24 @@ public class SinkConnectorConfig extends AbstractConfig {
         return fileSizeLimit;
     }
 
+    /**
+     * Gets bpQueueSizeLimit.
+     *
+     * @return the value of bpQueueSizeLimit
+     */
+    public int getBpQueueSizeLimit() {
+        return bpQueueSizeLimit;
+    }
+
+    /**
+     * Gets bpQueueTimeLimit.
+     *
+     * @return the value of bpQueueTimeLimit
+     */
+    public int getBpQueueTimeLimit() {
+        return bpQueueTimeLimit;
+    }
+
     private boolean isFilePathValid(String parameterName, String defaultValue) {
         String value = getString(parameterName);
         if ("".equals(value) || value.charAt(0) != File.separatorChar) {
@@ -310,6 +417,15 @@ public class SinkConnectorConfig extends AbstractConfig {
         }
         if (isNumberValid(PROCESS_FILE_TIME_LIMIT, processFileTimeLimit)) {
             processFileTimeLimit = Integer.parseInt(getString(PROCESS_FILE_TIME_LIMIT));
+        }
+        if (isNumberValid(BP_ATTEMPTS, bpMaxRetries)) {
+            bpMaxRetries = Integer.parseInt(getString(BP_ATTEMPTS));
+        }
+        if (isNumberValid(BP_QUEUE_MAX_SIZE, bpQueueSizeLimit)) {
+            bpQueueSizeLimit = Integer.parseInt(getString(BP_QUEUE_MAX_SIZE)) * 10000;
+        }
+        if (isNumberValid(BP_QUEUE_CLEAR_INTERVAL, bpQueueTimeLimit)) {
+            bpQueueTimeLimit = Integer.parseInt(getString(BP_QUEUE_CLEAR_INTERVAL));
         }
     }
 
