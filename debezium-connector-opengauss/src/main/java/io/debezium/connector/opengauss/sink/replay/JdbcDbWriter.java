@@ -28,6 +28,7 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
@@ -50,6 +51,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 /**
  * Description: JdbcDbWriter
@@ -101,6 +103,9 @@ public class JdbcDbWriter {
     private List<TableInfo> tableList;
     private boolean isBpCondition = false;
     private int filterCount = 0;
+    private int sqlErrCount;
+    private int filterBpCount;
+    private Collection<SinkRecord> finalFilteredRecords = new ArrayList<>();
 
     /**
      * Constructor
@@ -129,6 +134,10 @@ public class JdbcDbWriter {
      */
     public void doStop() {
         isStop = true;
+        for (WorkThread workThread : threadList) {
+            workThread.setIsStop(true);
+
+        }
         try {
             TimeUnit.SECONDS.sleep(TASK_GRACEFUL_SHUTDOWN_TIME - 1);
             closeConnection();
@@ -139,13 +148,15 @@ public class JdbcDbWriter {
 
     private void closeConnection() {
         for (WorkThread workThread : threadList) {
-            try {
-                workThread.getConnection().close();
-            } catch (SQLException exp) {
-                LOGGER.error("Unexpected error while closing the connection, the exception message is {}",
-                        exp.getMessage());
-            } finally {
-                workThread.setConnection(null);
+            if (workThread.getConnection() != null) {
+                try {
+                    workThread.getConnection().close();
+                } catch (SQLException exp) {
+                    LOGGER.error("Unexpected error while closing the connection, the exception message is {}",
+                            exp.getMessage());
+                } finally {
+                    workThread.setConnection(null);
+                }
             }
         }
     }
@@ -201,9 +212,9 @@ public class JdbcDbWriter {
     public void batchWrite(Collection<SinkRecord> records) {
         if (addedQueueMap.isEmpty() && breakPointRecord.isExists(records)) {
             LOGGER.info("There is a breakpoint condition");
-            Collection<SinkRecord> filteredRecords = breakPointRecord.readRecord(records);
             // kill -9 or kafka shutdown occurred record already replayed,
             // but breakpoint not store the record
+            Collection<SinkRecord> filteredRecords = breakPointRecord.readRecord(records);
             isBpCondition = true;
             sinkQueue.addAll(filteredRecords);
         } else {
@@ -269,6 +280,19 @@ public class JdbcDbWriter {
             filterByDb(sinkRecord, lsn, kafkaOffset);
             addedQueueMap.put(sinkRecord.kafkaOffset(), lsn);
             String schemaName = sourceField.getSchema();
+            if (schemaMappingMap.get(schemaName) == null) {
+                LOGGER.warn("Not specified schema [{}] mapping library relation.", schemaName);
+                sqlErrCount++;
+                long replayedCount = OgSinkProcessInfo.SINK_PROCESS_INFO.getReplayedCount();
+                OgSinkProcessInfo.SINK_PROCESS_INFO.setReplayedCount(++replayedCount);
+                String path = dmlOperation.getPath();
+                if (!"".equals(path) && config.isDelCsv) {
+                    if (!new File(path).delete()) {
+                        LOGGER.warn("clear csv file failure.");
+                    }
+                }
+                continue;
+            }
             String tableName = sourceField.getTable();
             while (isWorkQueueBlock()) {
                 try {
@@ -524,7 +548,7 @@ public class JdbcDbWriter {
 
     private int[] getSuccessAndFailCount() {
         int successCount = 0;
-        int failCount = 0;
+        int failCount = sqlErrCount;
         for (WorkThread workThread : threadList) {
             successCount += workThread.getSuccessCount();
             failCount += workThread.getFailCount();
@@ -617,25 +641,34 @@ public class JdbcDbWriter {
         double complete = 0d;
         for (TableInfo table : tableList) {
             String tableFullName = schemaMappingMap.get(table.getSchema()) + "." + table.getName();
-            if (runnableMap.containsKey(tableFullName)) {
-                WorkThread workThread = threadList.get(runnableMap.get(tableFullName));
-                int count = workThread.processRecordMap.computeIfAbsent(tableFullName, k -> 0);
-                table.setProcessRecord(count);
-                BigDecimal decimal = new BigDecimal(count).divide(new BigDecimal(table.getRecord())).setScale(1,
+            if (!runnableMap.containsKey(tableFullName)) {
+                continue;
+            }
+            WorkThread workThread = threadList.get(runnableMap.get(tableFullName));
+            int count = workThread.processRecordMap.computeIfAbsent(tableFullName, k -> 0);
+            table.setProcessRecord(count);
+            BigDecimal decimal;
+            table.updateStatus(ProgressStatus.IN_MIGRATED);
+            if (table.getRecord() == 0) {
+                decimal = new BigDecimal(0).setScale(1, BigDecimal.ROUND_HALF_UP);
+                table.updateStatus(ProgressStatus.MIGRATED_COMPLETE);
+            } else {
+                decimal = new BigDecimal(count).divide(new BigDecimal(table.getRecord())).setScale(1,
                         BigDecimal.ROUND_HALF_UP);
-                table.setPercent(decimal.floatValue());
-                table.updateStatus(ProgressStatus.IN_MIGRATED);
-                complete += decimal.floatValue() * table.getData();
+                double data = (int) table.getData() == 0 ? 1 : table.getData();
+                complete += decimal.floatValue() * data;
                 if (count / table.getRecord() == 1) {
                     table.updateStatus(ProgressStatus.MIGRATED_COMPLETE);
                 }
             }
+            table.setPercent(decimal.floatValue());
         }
         TotalInfo totalInfo = ogFullSinkProcessInfo.getTotal();
         int time = (int) (totalInfo.getTime() + config.getCommitTimeInterval());
         BigDecimal divide = new BigDecimal(complete).divide(new BigDecimal(time)).setScale(2, BigDecimal.ROUND_HALF_UP);
         totalInfo.setSpeed(divide.doubleValue());
         totalInfo.setTime(time);
+        ogFullSinkProcessInfo.setTotal(totalInfo);
         wirteFullToFile();
         boolean hasMatch = tableList.stream().anyMatch(o -> ((int) o.getPercent()) != 1);
         if (!hasMatch) {
@@ -651,8 +684,9 @@ public class JdbcDbWriter {
                 return;
             }
             ogFullSinkProcessInfo = new OgFullSinkProcessInfo();
-            ogFullSinkProcessInfo.setTable(ogFullSourceProcessInfo.getTableList());
-            tableList = ogFullSourceProcessInfo.getTableList();
+            tableList = ogFullSourceProcessInfo.getTableList().stream()
+                    .filter(o -> schemaMappingMap.get(o.getSchema()) != null).collect(Collectors.toList());
+            ogFullSinkProcessInfo.setTable(tableList);
             int record = 0;
             double data = 0d;
             int time = 0;
