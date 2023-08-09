@@ -48,6 +48,7 @@ public class WorkThread extends Thread {
     private PriorityBlockingQueue<Long> replayedOffsets;
     private List<Long> txnReplayedOffsets = new ArrayList<>();
     private boolean isTransaction;
+    private boolean isConnection = true;
 
     /**
      * Constructor
@@ -129,10 +130,10 @@ public class WorkThread extends Thread {
     @Override
     public void run() {
         try (Connection connection = connectionInfo.createOpenGaussConnection();
-             Statement statement = connection.createStatement()) {
-            while (true) {
+                Statement statement = connection.createStatement()) {
+            while (isConnection) {
                 pauseThread();
-                replayTransaction(statement);
+                replayTransaction(statement, connection);
             }
         }
         catch (Throwable exp) {
@@ -141,18 +142,19 @@ public class WorkThread extends Thread {
         }
     }
 
-    private void replayTransaction(Statement statement) throws SQLException {
+    private void replayTransaction(Statement statement, Connection connection) throws SQLException {
         boolean shouldStartTransaction = txn.getSqlList().size() > 1;
         if (shouldStartTransaction) {
             statement.execute(BEGIN);
         }
-        boolean isSuccess = executeTxnSql(statement);
+        boolean isSuccess = executeTxnSql(statement, connection);
         if (isSuccess) {
             if (shouldStartTransaction) {
                 statement.execute(COMMIT);
             }
             successCount++;
-        } else {
+        }
+        else {
             if (shouldStartTransaction) {
                 statement.execute(ROLLBACK);
             }
@@ -164,20 +166,28 @@ public class WorkThread extends Thread {
             tmpSqlList.add(System.lineSeparator());
             failSqlList.addAll(tmpSqlList);
         }
-        for (long i = txn.getTxnBeginOffset(); i <= txn.getTxnEndOffset(); i++) {
-            txnReplayedOffsets.add(i);
+        if (isConnection) {
+            buildAndSaveBpInfo();
         }
-        replayedOffsets.addAll(txnReplayedOffsets);
-        txnReplayedOffsets.clear();
-        savedBreakPointInfo(txn);
     }
 
-    private boolean executeTxnSql(Statement statement) {
+    private boolean executeTxnSql(Statement statement, Connection connection) {
         for (String sql : txn.getSqlList()) {
             try {
                 statement.execute(sql);
             }
             catch (SQLException exp) {
+                try {
+                    if (!connection.isValid(1)) {
+                        LOGGER.error("There is a connection problem with the openGauss,"
+                                + " check the database status or connection");
+                        isConnection = false;
+                        return false;
+                    }
+                }
+                catch (SQLException exception) {
+                    LOGGER.error("the cause of the exception is {}", exception.getMessage());
+                }
                 LOGGER.error("SQL exception occurred in transaction {}", txn.getSourceField());
                 LOGGER.error("The error SQL statement executed is: {}", sql);
                 LOGGER.error("the cause of the exception is {}", exp.getMessage());
@@ -189,6 +199,17 @@ public class WorkThread extends Thread {
             }
         }
         return true;
+    }
+
+    private void buildAndSaveBpInfo() {
+        if (txn != null) {
+            for (long i = txn.getTxnBeginOffset(); i <= txn.getTxnEndOffset(); i++) {
+                txnReplayedOffsets.add(i);
+            }
+            replayedOffsets.addAll(txnReplayedOffsets);
+            txnReplayedOffsets.clear();
+            savedBreakPointInfo(txn);
+        }
     }
 
     /**

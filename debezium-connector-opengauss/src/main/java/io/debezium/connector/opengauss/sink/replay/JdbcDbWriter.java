@@ -104,8 +104,6 @@ public class JdbcDbWriter {
     private boolean isBpCondition = false;
     private int filterCount = 0;
     private int sqlErrCount;
-    private int filterBpCount;
-    private Collection<SinkRecord> finalFilteredRecords = new ArrayList<>();
 
     /**
      * Constructor
@@ -136,7 +134,6 @@ public class JdbcDbWriter {
         isStop = true;
         for (WorkThread workThread : threadList) {
             workThread.setIsStop(true);
-
         }
         try {
             TimeUnit.SECONDS.sleep(TASK_GRACEFUL_SHUTDOWN_TIME - 1);
@@ -148,7 +145,7 @@ public class JdbcDbWriter {
 
     private void closeConnection() {
         for (WorkThread workThread : threadList) {
-            if (workThread.getConnection() != null) {
+            if (workThread.getConnection() != null){
                 try {
                     workThread.getConnection().close();
                 } catch (SQLException exp) {
@@ -212,9 +209,9 @@ public class JdbcDbWriter {
     public void batchWrite(Collection<SinkRecord> records) {
         if (addedQueueMap.isEmpty() && breakPointRecord.isExists(records)) {
             LOGGER.info("There is a breakpoint condition");
+            Collection<SinkRecord> filteredRecords = breakPointRecord.readRecord(records);
             // kill -9 or kafka shutdown occurred record already replayed,
             // but breakpoint not store the record
-            Collection<SinkRecord> filteredRecords = breakPointRecord.readRecord(records);
             isBpCondition = true;
             sinkQueue.addAll(filteredRecords);
         } else {

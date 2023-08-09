@@ -74,9 +74,9 @@ public class OpengaussSinkConnectorTask extends SinkTask {
         OffsetAndMetadata offsetAndMetadata = currentOffsetAndMetadataList.get(0);
         long currentOffset = offsetAndMetadata.offset();
         Map<TopicPartition, OffsetAndMetadata> preCommitOffsets = new HashMap<>();
-        Long maxReplayedOffset = jdbcDbWriter.getReplayedOffset();
-        if (maxReplayedOffset < currentOffset && maxReplayedOffset > 0L) {
-            OffsetAndMetadata replayedOffset = new OffsetAndMetadata(maxReplayedOffset, "");
+        Long minReplayedOffset = jdbcDbWriter.getReplayedOffset();
+        if (minReplayedOffset < currentOffset && minReplayedOffset > 0L) {
+            OffsetAndMetadata replayedOffset = new OffsetAndMetadata(minReplayedOffset, "");
             Set<TopicPartition> topicPartitions = currentOffsets.keySet();
             TopicPartition topicPartition = topicPartitions.iterator().next();
             preCommitOffsets.put(topicPartition, replayedOffset);

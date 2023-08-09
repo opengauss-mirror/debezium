@@ -27,25 +27,25 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import io.debezium.config.Configuration;
-import io.debezium.connector.breakpoint.BreakPointRecord;
-import io.debezium.connector.mysql.sink.object.TableMetaData;
-import io.debezium.data.Envelope;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.debezium.config.Configuration;
+import io.debezium.connector.breakpoint.BreakPointRecord;
 import io.debezium.connector.mysql.process.MysqlProcessCommitter;
 import io.debezium.connector.mysql.process.MysqlSinkProcessInfo;
 import io.debezium.connector.mysql.sink.object.ConnectionInfo;
 import io.debezium.connector.mysql.sink.object.DmlOperation;
 import io.debezium.connector.mysql.sink.object.SinkRecordObject;
 import io.debezium.connector.mysql.sink.object.SourceField;
+import io.debezium.connector.mysql.sink.object.TableMetaData;
 import io.debezium.connector.mysql.sink.replay.ReplayTask;
 import io.debezium.connector.mysql.sink.task.MySqlSinkConnectorConfig;
 import io.debezium.connector.mysql.sink.util.SqlTools;
+import io.debezium.data.Envelope;
 
 /**
  * Description: JdbcDbWriter
@@ -197,7 +197,8 @@ public class TableReplayTask extends ReplayTask {
             // but breakpoint not store the record
             isBpCondition = true;
             sinkQueue.addAll(filteredRecords);
-        } else {
+        }
+        else {
             sinkQueue.addAll(records);
         }
     }
@@ -207,11 +208,15 @@ public class TableReplayTask extends ReplayTask {
      */
     public void doStop() {
         isStop = true;
+        for (WorkThread workThread : threadList) {
+            workThread.setIsStop(isStop);
+        }
         try {
             TimeUnit.SECONDS.sleep(TASK_GRACEFUL_SHUTDOWN_TIME - 1);
             writeXlogResult();
             closeConnection();
-        } catch (InterruptedException exp) {
+        }
+        catch (InterruptedException exp) {
             LOGGER.error("Interrupt exception");
         }
     }
@@ -221,7 +226,8 @@ public class TableReplayTask extends ReplayTask {
         sqlTools.closeConnection();
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(xlogLocation))) {
             bw.write("xlog.location=" + xlogResult);
-        } catch (IOException exp) {
+        }
+        catch (IOException exp) {
             LOGGER.error("Fail to write xlog location {}", xlogResult);
         }
         LOGGER.info("Online migration from mysql to openGauss has gracefully stopped and current xlog"
@@ -232,10 +238,12 @@ public class TableReplayTask extends ReplayTask {
         for (WorkThread workThread : threadList) {
             try {
                 workThread.getConnection().close();
-            } catch (SQLException exp) {
+            }
+            catch (SQLException exp) {
                 LOGGER.error("Unexpected error while closing the connection, the exception message is {}",
                         exp.getMessage());
-            } finally {
+            }
+            finally {
                 workThread.setConnection(null);
             }
         }
@@ -328,7 +336,8 @@ public class TableReplayTask extends ReplayTask {
         Struct value;
         if (sinkRecord.value() instanceof Struct) {
             value = (Struct) sinkRecord.value();
-        } else {
+        }
+        else {
             value = null;
         }
         if (value == null) {
@@ -342,7 +351,8 @@ public class TableReplayTask extends ReplayTask {
         TableMetaData tableMetaData;
         if (oldTableMap.containsKey(tableFullName)) {
             tableMetaData = oldTableMap.get(tableFullName);
-        } else {
+        }
+        else {
             tableMetaData = sqlTools.getTableMetaData(schemaName, sourceField.getTable());
             oldTableMap.put(tableFullName, tableMetaData);
         }
@@ -376,12 +386,14 @@ public class TableReplayTask extends ReplayTask {
                 num = replayedOffsets.take();
                 if (num.equals(offset)) {
                     endOffset = num;
-                } else {
+                }
+                else {
                     replayedOffsets.offer(num);
                     isContinuous = false;
                 }
                 offset++;
-            } catch (InterruptedException exp) {
+            }
+            catch (InterruptedException exp) {
                 LOGGER.error("Interrupted exception occurred", exp);
             }
         }
@@ -466,7 +478,7 @@ public class TableReplayTask extends ReplayTask {
         if (size > openFlowControlQueueSize) {
             if (!isSinkQueueBlock.get()) {
                 LOGGER.warn("[start flow control sink queue] current isSinkQueueBlock is {}, queue size is {}, which is "
-                                + "more than {} * {}, so open flow control",
+                        + "more than {} * {}, so open flow control",
                         isSinkQueueBlock, size, openFlowControlThreshold, maxQueueSize);
                 isSinkQueueBlock.set(true);
             }
@@ -474,7 +486,7 @@ public class TableReplayTask extends ReplayTask {
         if (size < closeFlowControlQueueSize) {
             if (isSinkQueueBlock.get()) {
                 LOGGER.warn("[close flow control sink queue] current isSinkQueueBlock is {}, queue size is {}, which is "
-                                + "less than {} * {}, so close flow control",
+                        + "less than {} * {}, so close flow control",
                         isSinkQueueBlock, size, closeFlowControlThreshold, maxQueueSize);
                 isSinkQueueBlock.set(false);
             }
@@ -491,7 +503,7 @@ public class TableReplayTask extends ReplayTask {
             if (size > openFlowControlQueueSize) {
                 if (!isWorkQueueBlock.get()) {
                     LOGGER.warn("[start flow control work queue] current isWorkQueueBlock is {}, queue size is {}, which is "
-                                    + "more than {} * {}, so open flow control",
+                            + "more than {} * {}, so open flow control",
                             isWorkQueueBlock, size, openFlowControlThreshold, maxQueueSize);
                     isWorkQueueBlock.set(true);
                     return;
@@ -506,7 +518,7 @@ public class TableReplayTask extends ReplayTask {
         }
         if (freeBlock && isWorkQueueBlock()) {
             LOGGER.warn("[close flow control work queue] current isWorkQueueBlock is {}, all the queue size is "
-                            + "less than {} * {}, so close flow control",
+                    + "less than {} * {}, so close flow control",
                     isWorkQueueBlock, closeFlowControlThreshold, maxQueueSize);
             isWorkQueueBlock.set(false);
         }
@@ -552,7 +564,7 @@ public class TableReplayTask extends ReplayTask {
                     Thread.sleep(1000);
                     if (LOGGER.isInfoEnabled()) {
                         LOGGER.info("have replayed {} data, and current time is {}, and current "
-                                        + "speed is {}", getSuccessAndFailCount()[2],
+                                + "speed is {}", getSuccessAndFailCount()[2],
                                 ofPattern.format(LocalDateTime.now()),
                                 getSuccessAndFailCount()[2] - before);
                     }

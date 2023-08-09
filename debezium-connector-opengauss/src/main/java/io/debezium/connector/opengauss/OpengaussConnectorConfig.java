@@ -1422,11 +1422,7 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
      * @return EXPORT_CSV_PATH
      */
     public String getExportCsvPath() {
-        String csvPath = getConfig().getString(EXPORT_CSV_PATH);
-        if (csvPath == null) {
-            throw new DebeziumException("config " + EXPORT_CSV_PATH.name() + " must not null.");
-        }
-        return csvPath;
+        return getConfig().getString(EXPORT_CSV_PATH);
     }
 
     /**

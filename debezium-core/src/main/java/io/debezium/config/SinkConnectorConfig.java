@@ -5,13 +5,16 @@
  */
 package io.debezium.config;
 
+import java.io.File;
+import java.util.Map;
+
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
+import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.util.Map;
+import io.debezium.util.Strings;
 
 /**
  * Description: OpengaussSinkConnectorConfig class
@@ -126,7 +129,7 @@ public class SinkConnectorConfig extends AbstractConfig {
                     ConfigDef.Importance.HIGH, "breakpoint kafka server")
             .define(BP_TOPIC, ConfigDef.Type.STRING, "bp_topic", ConfigDef.Importance.HIGH, "breakpoint topic")
             .define(BP_ATTEMPTS, ConfigDef.Type.STRING, "3", ConfigDef.Importance.HIGH, "breakpoint attempts")
-            .define(BP_QUEUE_MAX_SIZE, ConfigDef.Type.STRING, "30000000",
+            .define(BP_QUEUE_MAX_SIZE, ConfigDef.Type.STRING, "3000",
                     ConfigDef.Importance.HIGH, "Exceeding this limit deletes the breakpoint record")
             .define(BP_QUEUE_CLEAR_INTERVAL, ConfigDef.Type.STRING, "1",
                     ConfigDef.Importance.HIGH, "Exceeding this time limit deletes the breakpoint record");
@@ -154,10 +157,10 @@ public class SinkConnectorConfig extends AbstractConfig {
     /**
      * breakpoint config
      */
-    private final String bpTopic;
-    private final String bootstrapServers;
-    private int bpMaxRetries = 1;
-    private int bpQueueSizeLimit = 30000000;
+    private String bpTopic = "bp_topic";
+    private String bootstrapServers = "localhost:9092";
+    private int bpMaxRetries = 3;
+    private int bpQueueSizeLimit = 3000;
     private int bpQueueTimeLimit = 1;
 
     /**
@@ -170,12 +173,31 @@ public class SinkConnectorConfig extends AbstractConfig {
         super(configDef, originals, false);
         this.topics = getString(TOPICS);
         this.schemaMappings = getString(SCHEMA_MAPPINGS);
-        this.bootstrapServers = getString(BP_BOOTSTRAP_SERVERS);
-        this.bpTopic = getString(BP_TOPIC);
         if (isCommitProcess()) {
             rectifyParameter();
         }
         rectifyFailSqlPara();
+    }
+
+    protected void logAll(Map<?, ?> props, String name) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(getClass().getSimpleName());
+        sb.append(" values: ");
+        sb.append(Utils.NL);
+
+        for (Map.Entry entry : props.entrySet()) {
+            sb.append('\t');
+            sb.append(entry.getKey());
+            sb.append(" = ");
+            if (name.equals(entry.getKey())) {
+                sb.append("********");
+            }
+            else {
+                sb.append(entry.getValue());
+            }
+            sb.append(Utils.NL);
+        }
+        LOGGER.info(sb.toString());
     }
 
     /**
@@ -381,8 +403,32 @@ public class SinkConnectorConfig extends AbstractConfig {
                         + " will adopt it's default value: " + defaultValue);
                 return false;
             }
-        } catch (NumberFormatException e) {
+        }
+        catch (NumberFormatException e) {
             LOGGER.warn("The parameter " + parameterName + " is invalid, it must be integer,"
+                    + " will adopt it's default value: " + defaultValue);
+            return false;
+        }
+        return true;
+    }
+
+    private Boolean isSeverPathValid(String parameterName, String defaultValue) {
+        String value = getString(parameterName);
+        String regex = "((25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)\\.)"
+                + "{3}(25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)"
+                + "(:([0-9]|[1-9]\\d|[1-9]\\d{2}|[1-9]\\d{3}|[1-5]\\d{4}|6[0-4]\\d{2}|655[0-2]\\d|6553[0-5])$)";
+        if ("".equals(value) || !value.matches(regex)) {
+            LOGGER.warn("The parameter " + parameterName + " is invalid, it must be server path,"
+                    + " will adopt it's default value: " + defaultValue);
+            return false;
+        }
+        return true;
+    }
+
+    private Boolean isStringValid(String parameterName, String defaultValue) {
+        String value = getString(parameterName);
+        if (Strings.isNullOrEmpty(value)) {
+            LOGGER.warn("The parameter " + parameterName + " is invalid, it must be string,"
                     + " will adopt it's default value: " + defaultValue);
             return false;
         }
@@ -417,6 +463,12 @@ public class SinkConnectorConfig extends AbstractConfig {
         }
         if (isNumberValid(PROCESS_FILE_TIME_LIMIT, processFileTimeLimit)) {
             processFileTimeLimit = Integer.parseInt(getString(PROCESS_FILE_TIME_LIMIT));
+        }
+        if (isSeverPathValid(BP_BOOTSTRAP_SERVERS, bootstrapServers)) {
+            bootstrapServers = getString(BP_BOOTSTRAP_SERVERS);
+        }
+        if (isStringValid(BP_TOPIC, bpTopic)) {
+            bpTopic = getString(BP_TOPIC);
         }
         if (isNumberValid(BP_ATTEMPTS, bpMaxRetries)) {
             bpMaxRetries = Integer.parseInt(getString(BP_ATTEMPTS));

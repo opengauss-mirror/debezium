@@ -103,6 +103,8 @@ public class TransactionReplayTask extends ReplayTask {
     private List<Long> toDeleteOffsets;
     private Transaction transaction = new Transaction();
     private String xlogLocation;
+    private boolean isConnection = true;
+    private Long sinkQueueFirstOffset;
 
     private HashMap<String, Long> dmlEventCountMap = new HashMap<String, Long>();
     private HashMap<String, String> tableSnapshotHashmap = new HashMap<>();
@@ -148,7 +150,8 @@ public class TransactionReplayTask extends ReplayTask {
             // ensure this batch data all replay, wait 4s
             TimeUnit.SECONDS.sleep(TASK_GRACEFUL_SHUTDOWN_TIME - 1);
             writeXlogResult();
-        } catch (InterruptedException e) {
+        }
+        catch (InterruptedException e) {
             LOGGER.error("Interrupt exception");
         }
     }
@@ -158,7 +161,8 @@ public class TransactionReplayTask extends ReplayTask {
         sqlTools.closeConnection();
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(xlogLocation))) {
             bw.write("xlog.location=" + xlogResult);
-        } catch (IOException exp) {
+        }
+        catch (IOException exp) {
             LOGGER.error("Fail to write xlog location {}", xlogResult);
         }
         LOGGER.info("Online migration from mysql to openGauss has gracefully stopped and current xlog"
@@ -301,7 +305,7 @@ public class TransactionReplayTask extends ReplayTask {
         String snapshot;
         SinkRecordObject sinkRecordObject;
         DataOperation dataOperation;
-        while (true) {
+        while (isConnection) {
             try {
                 sinkRecord = sinkQueue.take();
             }
@@ -323,6 +327,7 @@ public class TransactionReplayTask extends ReplayTask {
             try {
                 if (TransactionRecordField.BEGIN.equals(value.getString(TransactionRecordField.STATUS))) {
                     transaction.setTxnBeginOffset(sinkRecord.kafkaOffset());
+                    sinkQueueFirstOffset = sinkRecord.kafkaOffset();
                     addedQueueMap.put(sinkRecord.kafkaOffset(),
                             value.getString(TransactionRecordField.ID));
                     sinkRecordsArrayList.clear();
@@ -343,6 +348,13 @@ public class TransactionReplayTask extends ReplayTask {
                     try {
                         for (SinkRecordObject oneSinkRecordObject : sinkRecordsArrayList) {
                             constructDml(oneSinkRecordObject);
+                        }
+                        if (!isConnection) {
+                            LOGGER.error("There is a connection problem with the openGauss,"
+                                    + " check the database status or connection");
+                            statExtractCount();
+                            count++;
+                            transactionDispatcher.addFailTransaction();
                         }
                     }
                     catch (Exception e) {
@@ -406,7 +418,12 @@ public class TransactionReplayTask extends ReplayTask {
         Long offset = replayedOffsets.peek();
         Long endOffset = INVALID_VALUE;
         if (replayedOffsets.isEmpty()) {
-            return endOffset;
+            if (sinkQueueFirstOffset != null) {
+                return sinkQueueFirstOffset;
+            }
+            else {
+                return endOffset;
+            }
         }
         boolean isContinuous = true;
         while (isContinuous && !replayedOffsets.isEmpty()) {
@@ -415,12 +432,14 @@ public class TransactionReplayTask extends ReplayTask {
                 num = replayedOffsets.take();
                 if (num.equals(offset)) {
                     endOffset = num;
-                } else {
+                }
+                else {
                     replayedOffsets.offer(num);
                     isContinuous = false;
                 }
                 offset++;
-            } catch (InterruptedException exp) {
+            }
+            catch (InterruptedException exp) {
                 LOGGER.error("Interrupted exception occurred", exp);
             }
         }
@@ -470,7 +489,8 @@ public class TransactionReplayTask extends ReplayTask {
         sqlList.add("set current_schema to " + newSchemaName + ";");
         if (StringUtils.isNullOrEmpty(tableName)) {
             sqlList.add(ddl);
-        } else {
+        }
+        else {
             String modifiedDdl = null;
             if (ddl.toLowerCase(Locale.ROOT).startsWith("alter table")
                     && ddl.toLowerCase(Locale.ROOT).contains("rename to")
@@ -481,12 +501,15 @@ public class TransactionReplayTask extends ReplayTask {
                 if (oldFullName.split("\\.").length == 2) {
                     String oldName = oldFullName.split("\\.")[1];
                     modifiedDdl = ddl.replaceFirst(oldFullName, oldName);
-                } else {
+                }
+                else {
                     modifiedDdl = ddl;
                 }
-            } else if (ddl.toLowerCase(Locale.ROOT).startsWith("drop table")) {
+            }
+            else if (ddl.toLowerCase(Locale.ROOT).startsWith("drop table")) {
                 modifiedDdl = ddl.replaceFirst(addingBackquote(schemaName) + ".", "");
-            } else {
+            }
+            else {
                 modifiedDdl = ignoreSchemaName(ddl, schemaName, tableName);
             }
             sqlList.add(modifiedDdl);
@@ -557,6 +580,11 @@ public class TransactionReplayTask extends ReplayTask {
         }
         else {
             tableMetaData = tableMetaDataMap.get(tableFullName);
+        }
+        if (tableMetaData == null && !sqlTools.getIsConnection()) {
+            isConnection = false;
+            sqlList.clear();
+            return;
         }
         String operation = dmlOperation.getOperation();
         Envelope.Operation operationEnum = Envelope.Operation.forCode(operation);
@@ -634,7 +662,7 @@ public class TransactionReplayTask extends ReplayTask {
             if (fileIndex < snapshotFileIndex
                     || (fileIndex == snapshotFileIndex && binlogPosition <= snapshotBinlogPosition)) {
                 String skipInfo = String.format("Table %s snapshot is %s, current position is %s, which is less than "
-                                + "table snapshot, so skip the record.", fullName, snapshotPoint,
+                        + "table snapshot, so skip the record.", fullName, snapshotPoint,
                         binlogFile + ":" + binlogPosition);
                 LOGGER.warn(skipInfo);
                 return true;
@@ -681,7 +709,7 @@ public class TransactionReplayTask extends ReplayTask {
                 if (size > openFlowControlQueueSize) {
                     if (!isBlock.get()) {
                         LOGGER.warn("[start flow control] current isBlock is {}, queue size is {}, which is "
-                                        + "more than {} * {}, so open flow control",
+                                + "more than {} * {}, so open flow control",
                                 isBlock, size, openFlowControlThreshold, maxQueueSize);
                     }
                     isBlock.set(true);
@@ -689,7 +717,7 @@ public class TransactionReplayTask extends ReplayTask {
                 if (size < closeFlowControlQueueSize) {
                     if (isBlock.get()) {
                         LOGGER.warn("[close flow control] current isBlock is {}, queue size is {}, which is "
-                                        + "less than {} * {}, so close flow control",
+                                + "less than {} * {}, so close flow control",
                                 isBlock, size, closeFlowControlThreshold, maxQueueSize);
                     }
                     isBlock.set(false);

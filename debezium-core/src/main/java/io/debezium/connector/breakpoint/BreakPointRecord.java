@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -56,6 +57,7 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import com.google.common.collect.Queues;
 
 import io.debezium.config.Configuration;
@@ -154,7 +156,6 @@ public class BreakPointRecord {
     private static final long RETENTION_MS_MAX = Long.MAX_VALUE;
     private static final long RETENTION_MS_MIN = Duration.of(5 * 365, ChronoUnit.DAYS).toMillis(); // 5 years
     private static final String RETENTION_BYTES_NAME = "retention.bytes";
-    private static final String PATH = "p";
 
     /**
      * The name of broker property defining default replication factor for topics without the explicit setting.
@@ -176,7 +177,7 @@ public class BreakPointRecord {
     private Configuration producerConfig;
     private volatile KafkaProducer<String, String> producer;
     private KafkaConsumer<String, String> bpRecordConsumer;
-    private Set<String> breakpointFilterSet = new HashSet<>();
+    private LinkedList<String> breakpointFilterList = new LinkedList<>();
     private Map<Long, Boolean> breakpointFilterMap = new HashMap<>();
     private BlockingQueue<BreakPointInfo> storeToKafkaQueue = new LinkedBlockingQueue<>();
     private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(2, 2, 100,
@@ -307,7 +308,8 @@ public class BreakPointRecord {
             admin.createTopics(Collections.singleton(topic));
 
             LOGGER.info("Breakpoint record topic '{}' created", topic);
-        } catch (InterruptedException | TimeoutException | ExecutionException e) {
+        }
+        catch (InterruptedException | TimeoutException | ExecutionException e) {
             throw new ConnectException("Creation of breakpoint record topic failed, "
                     + "please create the topic manually", e);
         }
@@ -322,8 +324,7 @@ public class BreakPointRecord {
      * @throws TimeoutException throw TimeoutException
      * @throws ExecutionException throw ExecutionException
      */
-    private short getDefaultTopicReplicationFactor(AdminClient admin) throws
-            InterruptedException, TimeoutException, ExecutionException {
+    private short getDefaultTopicReplicationFactor(AdminClient admin) throws InterruptedException, TimeoutException, ExecutionException {
         try {
             Config brokerConfig = getKafkaBrokerConfig(admin);
             String defaultReplicationFactorValue = brokerConfig.get(DEFAULT_TOPIC_REPLICATION_FACTOR_PROP_NAME).value();
@@ -332,7 +333,8 @@ public class BreakPointRecord {
             if (defaultReplicationFactorValue != null) {
                 return Short.parseShort(defaultReplicationFactorValue);
             }
-        } catch (ExecutionException ex) {
+        }
+        catch (ExecutionException ex) {
             // ignore UnsupportedVersionException, e.g. due to older broker version
             if (!(ex.getCause() instanceof UnsupportedVersionException)) {
                 throw ex;
@@ -357,8 +359,7 @@ public class BreakPointRecord {
      * @throws InterruptedException throw InterruptedException
      * @throws TimeoutException throw TimeoutException
      */
-    private Config getKafkaBrokerConfig(AdminClient admin) throws
-            ExecutionException, InterruptedException, TimeoutException {
+    private Config getKafkaBrokerConfig(AdminClient admin) throws ExecutionException, InterruptedException, TimeoutException {
         final Collection<Node> nodes = admin.describeCluster().nodes()
                 .get(KAFKA_QUERY_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
         if (nodes.isEmpty()) {
@@ -407,21 +408,24 @@ public class BreakPointRecord {
                                 int index = record.key().lastIndexOf("-");
                                 long recordEndOffset = Long.parseLong(record.key().substring(index + 1));
                                 breakpointEndOffset = Math.max(breakpointEndOffset, recordEndOffset);
-                            } else {
+                            }
+                            else {
                                 long recordEndOffset = Long.parseLong(record.key());
                                 breakpointEndOffset = Math.max(breakpointEndOffset, recordEndOffset);
                             }
                         }
                         lastProcessedOffset = record.offset();
                         ++numRecordsProcessed;
-                    } catch (NumberFormatException e) {
+                    }
+                    catch (NumberFormatException e) {
                         LOGGER.error("NumberFormat exception while processing record '{}'", record, e);
                     }
                 }
                 if (numRecordsProcessed == 0) {
                     LOGGER.debug("No new records found in the breakpoint record; will retry");
                     recoveryAttempts++;
-                } else {
+                }
+                else {
                     LOGGER.debug("Processed {} records from breakpoint record", numRecordsProcessed);
                 }
             } while (lastProcessedOffset < endOffset - 1);
@@ -468,7 +472,8 @@ public class BreakPointRecord {
                     + ", endOffset=" + record.getEndOffset()
                     + ", gtid=" + record.getGtid()
                     + ", timestamp=" + record.getTimeStamp();
-        } else {
+        }
+        else {
             key = record.getBeginOffset().toString();
             if (record.getLsn() != null) {
                 value = "kafkaOffset=" + record.getBeginOffset()
@@ -482,8 +487,9 @@ public class BreakPointRecord {
             }
         }
         if (isFull) {
-            storeRecordToKafka(key,value);
-        } else {
+            storeRecordToKafka(key, value);
+        }
+        else {
             storeToKafkaQueue.add(
                     new BreakPointInfo()
                             .setKey(key)
@@ -501,7 +507,8 @@ public class BreakPointRecord {
                         storeRecordToKafka(breakPointInfo.getKey(), breakPointInfo.getValue());
                         this.producer.flush();
                     }
-                } catch (InterruptedException e) {
+                }
+                catch (InterruptedException e) {
                     LOGGER.error("occurred exception is {}", e.getMessage());
                 }
             }
@@ -527,10 +534,12 @@ public class BreakPointRecord {
                         metadata.topic(), metadata.partition(), metadata.offset());
             }
             totalMessageCount++;
-        } catch (InterruptedException e) {
+        }
+        catch (InterruptedException e) {
             LOGGER.trace("Interrupted before record was written into kafka file");
             Thread.currentThread().interrupt();
-        } catch (ExecutionException e) {
+        }
+        catch (ExecutionException e) {
             LOGGER.error("");
         }
     }
@@ -554,7 +563,7 @@ public class BreakPointRecord {
      */
     public Collection<SinkRecord> readRecord(Collection<SinkRecord> records) {
         LOGGER.info("start sinkRecords size is {}", records.size());
-        if (breakpointFilterSet.isEmpty() && breakpointFilterMap.isEmpty()) {
+        if (breakpointFilterList.isEmpty() && breakpointFilterMap.isEmpty()) {
             isGetBp = false;
         }
         if (this.bpRecordConsumer == null && !isGetBp) {
@@ -562,7 +571,8 @@ public class BreakPointRecord {
             this.bpRecordConsumer.subscribe(Collect.arrayListOf(bpRecordTopicName));
         }
         long lastProcessedOffset = UNLIMITED_VALUE;
-        Long endOffset = getEndOffsetOfDbBreakPointTopic(null, bpRecordConsumer);;
+        Long endOffset = getEndOffsetOfDbBreakPointTopic(null, bpRecordConsumer);
+        ;
         int recoveryAttempts = 0;
         boolean isTxnRecord = false;
         while (lastProcessedOffset < endOffset - 1 && !isGetBp) {
@@ -584,10 +594,19 @@ public class BreakPointRecord {
                 if (isTxnRecord) {
                     int index = record.key().lastIndexOf("-");
                     long bpBeginOffset = Long.parseLong(record.key().substring(0, index));
+                    long bpEndOffset = Long.parseLong(record.key().substring(index + 1));
                     if (bpBeginOffset >= firstSinkRecord.kafkaOffset()) {
-                        breakpointFilterSet.add(record.key());
+                        if (!breakpointFilterList.isEmpty() && Long.parseLong(breakpointFilterList.getLast().split("-")[1]) == (bpBeginOffset - 1)) {
+                            long preBeginOffset = Long.parseLong(breakpointFilterList.getLast().split("-")[0]);
+                            breakpointFilterList.removeLast();
+                            breakpointFilterList.add(preBeginOffset + "-" + bpEndOffset);
+                        }
+                        else {
+                            breakpointFilterList.add(record.key());
+                        }
                     }
-                } else {
+                }
+                else {
                     breakpointFilterMap.put(Long.parseLong(record.key()), Boolean.TRUE);
                 }
                 lastProcessedOffset = record.offset();
@@ -596,7 +615,8 @@ public class BreakPointRecord {
             if (numRecordsProcessed == 0) {
                 LOGGER.debug("No new records found in the breakpoint record; will retry");
                 recoveryAttempts++;
-            } else {
+            }
+            else {
                 LOGGER.debug("Processed {} records from breakpoint record", numRecordsProcessed);
             }
         }
@@ -612,7 +632,7 @@ public class BreakPointRecord {
             SinkRecord sinkRecord = iterator.next();
             long kafkaOffset = sinkRecord.kafkaOffset();
             if (isTxnRecord) {
-                for (String key : breakpointFilterSet) {
+                for (String key : breakpointFilterList) {
                     int index = key.lastIndexOf("-");
                     long bpBeginOffset = Long.parseLong(key.substring(0, index));
                     long bpEndOffset = Long.parseLong(key.substring(index + 1));
@@ -622,7 +642,8 @@ public class BreakPointRecord {
                         iterator.remove();
                     }
                 }
-            } else {
+            }
+            else {
                 if (breakpointFilterMap.containsKey(kafkaOffset)) {
                     if (breakpointFilterMap.get(kafkaOffset)) {
                         replayedRecord.add(sinkRecord.kafkaOffset());
@@ -632,7 +653,7 @@ public class BreakPointRecord {
                 }
             }
         }
-        LOGGER.info("this offsets:{} is already successful replayed,skip the records",
+        LOGGER.info("this offsets:{} is already successful replayed, skip the records",
                 replayedRecord);
         LOGGER.info("filtered sinkRecords size is {}", records.size());
         if (records.size() > 0) {
@@ -683,7 +704,8 @@ public class BreakPointRecord {
         for (Map.Entry<TopicPartition, KafkaFuture<DeletedRecords>> entry : topicPartitionKafkaFutureMap.entrySet()) {
             try {
                 lowWatermark = Math.min(entry.getValue().get().lowWatermark(), lowWatermark);
-            } catch (InterruptedException | ExecutionException e) {
+            }
+            catch (InterruptedException | ExecutionException e) {
                 LOGGER.error("Deleting the breakpoint kafka offset occur exception");
             }
         }
@@ -722,7 +744,8 @@ public class BreakPointRecord {
                         lastProcessedOffset = endOffset;
                         break;
                     }
-                } else {
+                }
+                else {
                     Long bpOffset = Long.parseLong(record.key()) + 1;
                     if (bpOffset.equals(committedOffset)) {
                         preDeleteOffset = record.offset();
@@ -759,11 +782,17 @@ public class BreakPointRecord {
             while (true) {
                 // Additional thread monitor the queue size and delete them if the limit is exceeded
                 if (totalMessageCount >= bpQueueSizeLimit) {
-                    LOGGER.warn("the kafka offsets size is {},it exceeded the limit", totalMessageCount);
+                    LOGGER.warn("the kafka offsets size is {}, it exceeded the limit", totalMessageCount);
                     Long maxCommittedOffset = Collections.max(toDeleteOffsets);
                     Long realBreakpointOffset = preDeleteOffset(maxCommittedOffset);
                     deleteBreakpoint(realBreakpointOffset);
                     totalMessageCount = 0L;
+                }
+                try {
+                    Thread.sleep(5000);
+                }
+                catch (InterruptedException e) {
+                    LOGGER.warn("Receive interrupted exception while delete breakpoint records from kafka.");
                 }
             }
         });

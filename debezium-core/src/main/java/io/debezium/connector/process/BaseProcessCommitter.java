@@ -5,23 +5,24 @@
  */
 package io.debezium.connector.process;
 
-import com.alibaba.fastjson.JSON;
-import io.debezium.config.SinkConnectorConfig;
-import io.debezium.relational.RelationalDatabaseConnectorConfig;
-import org.apache.kafka.common.utils.Utils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.IOException;
 import java.io.FileWriter;
-
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+
+import org.apache.kafka.common.utils.Utils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.alibaba.fastjson.JSON;
+
+import io.debezium.config.SinkConnectorConfig;
+import io.debezium.relational.RelationalDatabaseConnectorConfig;
 
 /**
  * Description: BaseProcessCommitter
@@ -137,10 +138,11 @@ public abstract class BaseProcessCommitter {
         File processFile = null;
         try {
             processFile = new File(processFilePath);
-            if (! processFile.exists()) {
+            if (!processFile.exists()) {
                 Files.createDirectories(Paths.get(processFilePath));
             }
-        } catch (IOException exp) {
+        }
+        catch (IOException exp) {
             LOGGER.warn("Failed to create directors, please check file path.", exp);
         }
         return processFile;
@@ -171,9 +173,10 @@ public abstract class BaseProcessCommitter {
             currentFile = new File(fileFullPath);
         }
         if (file.exists()) {
-            try(FileWriter fileWriter = new FileWriter(fileFullPath, isAppend)) {
+            try (FileWriter fileWriter = new FileWriter(fileFullPath, isAppend)) {
                 fileWriter.write(string + Utils.NL);
-            } catch (IOException exp) {
+            }
+            catch (IOException exp) {
                 LOGGER.warn("IO exception occurred while committing message, process or fail sql will not be committed",
                         exp);
             }
@@ -199,7 +202,8 @@ public abstract class BaseProcessCommitter {
             fileContent = new byte[fileLength.intValue()];
             try (FileInputStream in = new FileInputStream(createCountFile)) {
                 in.read(fileContent);
-            } catch (IOException exp) {
+            }
+            catch (IOException exp) {
                 LOGGER.warn("IO exception occurred while reading source create count,"
                         + " the overallPipe will always be 0", exp);
                 return -1L;
@@ -213,7 +217,8 @@ public abstract class BaseProcessCommitter {
         }
         if (!"".equals(result[1])) {
             return Long.parseLong(result[1]);
-        } else {
+        }
+        else {
             return -1L;
         }
     }
@@ -260,7 +265,8 @@ public abstract class BaseProcessCommitter {
     protected void outputCreateCountInfo(String filePath, long number) {
         try (FileWriter fileWriter = new FileWriter(filePath)) {
             fileWriter.write(System.currentTimeMillis() + ":" + number + "");
-        } catch (IOException exp) {
+        }
+        catch (IOException exp) {
             LOGGER.warn("IO exception occurred while output source create count,"
                     + " the overallPipe will always be 0", exp);
         }

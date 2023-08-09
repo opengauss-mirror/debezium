@@ -18,6 +18,8 @@ import java.util.regex.Pattern;
 import org.apache.kafka.common.config.ConfigDef.Importance;
 import org.apache.kafka.common.config.ConfigDef.Type;
 import org.apache.kafka.common.config.ConfigDef.Width;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.debezium.config.CommonConnectorConfig;
 import io.debezium.config.ConfigDefinition;
@@ -35,8 +37,6 @@ import io.debezium.relational.Selectors.TableIdToStringMapper;
 import io.debezium.relational.Tables.ColumnNameFilter;
 import io.debezium.relational.Tables.ColumnNameFilterFactory;
 import io.debezium.relational.Tables.TableFilter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Configuration options shared across the relational CDC connectors.
@@ -946,7 +946,8 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
                         + " will adopt it's default value: " + defaultValue);
                 return false;
             }
-        } catch (NumberFormatException e) {
+        }
+        catch (NumberFormatException e) {
             LOGGER.warn("The parameter " + parameterName + " is invalid, it must be integer,"
                     + " will adopt it's default value: " + defaultValue);
             return false;
