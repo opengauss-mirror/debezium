@@ -19,6 +19,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -33,6 +34,7 @@ public class SqlTools {
     private static final Logger LOGGER = LoggerFactory.getLogger(SqlTools.class);
     private ConnectionInfo connectionInfo;
     private static Map<String, String> primeKeyTableMap = new HashMap<>();
+    private List<String> binaryTypes = Arrays.asList("tinyblob", "mediumblob", "longblob", "binary", "varbinary");
 
     /**
      * Constructor
@@ -186,7 +188,7 @@ public class SqlTools {
         List<String> result = new ArrayList<>();
         for (String datum : data) {
             StringBuilder sb = new StringBuilder();
-            String[] colDatas = datum.split(",");
+            String[] colDatas = datum.split(" \\| ");
             for (int i = 0; i < colDatas.length; i++) {
                 String colData = colDatas[i];
                 ColumnMetaData columnMetaData = columnMetaDataList.get(i);
@@ -212,21 +214,29 @@ public class SqlTools {
     public String sqlAddBitCast(TableMetaData tableMetaData, String columnString, String sql) {
         List<ColumnMetaData> columnList = tableMetaData.getColumnList();
         StringBuilder condition = new StringBuilder(" set");
-        boolean hasBitType = false;
+        boolean hasSpecialType = false;
         String column = columnString;
         String query = sql;
         for (ColumnMetaData columnMetaData : columnList) {
             if ("bit".equals(columnMetaData.getColumnType())) {
-                hasBitType = true;
+                hasSpecialType = true;
                 column = column.replace(columnMetaData.getColumnName(),
                         "@" + columnMetaData.getColumnName());
                 condition.append(String.format(Locale.ROOT, " %s=cast(@%s as signed)",
                         columnMetaData.getColumnName(), columnMetaData.getColumnName()));
                 condition.append(",");
             }
+            if (binaryTypes.contains(columnMetaData.getColumnType())) {
+                hasSpecialType = true;
+                column = column.replace(columnMetaData.getColumnName(),
+                        "@" + columnMetaData.getColumnName());
+                condition.append(String.format(Locale.ROOT, " %s=UNHEX(@%s)",
+                        columnMetaData.getColumnName(), columnMetaData.getColumnName()));
+                condition.append(",");
+            }
         }
         query = query + "(" + column + ")";
-        if (hasBitType) {
+        if (hasSpecialType) {
             condition.deleteCharAt(condition.length() - 1);
             return query + condition.toString();
         }

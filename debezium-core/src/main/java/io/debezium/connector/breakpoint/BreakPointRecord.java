@@ -154,6 +154,7 @@ public class BreakPointRecord {
     private static final long RETENTION_MS_MAX = Long.MAX_VALUE;
     private static final long RETENTION_MS_MIN = Duration.of(5 * 365, ChronoUnit.DAYS).toMillis(); // 5 years
     private static final String RETENTION_BYTES_NAME = "retention.bytes";
+    private static final String PATH = "p";
 
     /**
      * The name of broker property defining default replication factor for topics without the explicit setting.
@@ -447,6 +448,17 @@ public class BreakPointRecord {
      * @param isTransaction boolean whether it is transaction
      */
     public void storeRecord(BreakPointObject record, Boolean isTransaction) {
+        storeRecord(record, isTransaction, false);
+    }
+
+    /**
+     * Store breakpoint object to kafka topic
+     *
+     * @param record the replayed record
+     * @param isTransaction boolean whether it is transaction
+     * @param isFull boolean whether it is full
+     */
+    public void storeRecord(BreakPointObject record, Boolean isTransaction, boolean isFull) {
         LOGGER.debug("Storing Breakpoint record into breakpoint topic: {}", record.toString());
         String key = "";
         String value = "";
@@ -469,10 +481,14 @@ public class BreakPointRecord {
                         + ", timestamp=" + record.getTimeStamp();
             }
         }
-        storeToKafkaQueue.add(
-                new BreakPointInfo()
-                        .setKey(key)
-                        .setValue(value));
+        if (isFull) {
+            storeRecordToKafka(key,value);
+        } else {
+            storeToKafkaQueue.add(
+                    new BreakPointInfo()
+                            .setKey(key)
+                            .setValue(value));
+        }
     }
 
     private void storeToKafkaThread() {
@@ -546,10 +562,10 @@ public class BreakPointRecord {
             this.bpRecordConsumer.subscribe(Collect.arrayListOf(bpRecordTopicName));
         }
         long lastProcessedOffset = UNLIMITED_VALUE;
-        Long endOffset = null;
+        Long endOffset = getEndOffsetOfDbBreakPointTopic(null, bpRecordConsumer);;
         int recoveryAttempts = 0;
         boolean isTxnRecord = false;
-        do {
+        while (lastProcessedOffset < endOffset - 1 && !isGetBp) {
             if (recoveryAttempts > maxRecoveryAttempts) {
                 LOGGER.warn("The breakpoint record couldn't be read. Consider to increase the value for "
                         + RECOVERY_POLL_ATTEMPTS.name());
@@ -583,7 +599,7 @@ public class BreakPointRecord {
             } else {
                 LOGGER.debug("Processed {} records from breakpoint record", numRecordsProcessed);
             }
-        } while (lastProcessedOffset < endOffset - 1 && !isGetBp);
+        }
         isGetBp = true;
         return filterByBp(records, isTxnRecord, endOffset);
     }

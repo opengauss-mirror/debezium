@@ -64,6 +64,7 @@ public class WorkThread extends Thread {
     private static final String LOAD_SQL = "LOAD DATA LOCAL INFILE 'sql.csv' "
             + " INTO TABLE %s"
             + " FIELDS TERMINATED BY ','"
+            + " enclosed by '\\''"
             + " LINES TERMINATED BY '%s' ";
     private static final String DELIMITER = System.lineSeparator();
 
@@ -86,6 +87,7 @@ public class WorkThread extends Thread {
     private ClientPreparedStatement clientPreparedStatement;
     private boolean isClearFile;
     private boolean isTransaction;
+    private boolean isStop;
 
     /**
      * Constructor
@@ -117,12 +119,14 @@ public class WorkThread extends Thread {
             LOGGER.error("SQL exception occurred in work thread", exp);
         }
         String sql = null;
-        while (true) {
+        while (!isStop) {
             try {
                 sinkRecordObject = sinkRecordQueue.take();
                 sql = constructSql(sinkRecordObject);
                 if ("".equals(sql)) {
-                    breakPointRecord.getReplayedOffset().offer(sinkRecordObject.getKafkaOffset());
+                    if (!PATH.equals(sinkRecordObject.getDmlOperation().getOperation())) {
+                        breakPointRecord.getReplayedOffset().offer(sinkRecordObject.getKafkaOffset());
+                    }
                     continue;
                 }
                 if (clientPreparedStatement != null) {
@@ -135,7 +139,7 @@ public class WorkThread extends Thread {
                 successCount++;
                 threadSinkRecordObject = sinkRecordObject;
                 replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
-                savedBreakPointInfo(sinkRecordObject);
+                savedBreakPointInfo(sinkRecordObject, false);
             } catch (CommunicationsException exp) {
                 updateConnectionAndExecuteSql(sql, sinkRecordObject);
             } catch (SQLException exp) {
@@ -194,7 +198,7 @@ public class WorkThread extends Thread {
                 sql = String.format(Locale.ROOT, "truncate table %s", tableFullName);
                 break;
             case PATH:
-                processFullData(dmlOperation, tableFullName, tableMetaData);
+                processFullData(dmlOperation, tableFullName, tableMetaData, sinkRecordObject);
                 break;
             case INSERT:
                 sql = sqlTools.getInsertSql(tableMetaData, dmlOperation.getAfter());
@@ -220,7 +224,8 @@ public class WorkThread extends Thread {
         isClearFile = isDelCsv;
     }
 
-    private void processFullData(DmlOperation dmlOperation, String tableFullName, TableMetaData tableMetaData) {
+    private void processFullData(DmlOperation dmlOperation, String tableFullName, TableMetaData tableMetaData,
+                                 SinkRecordObject sinkRecordObject) {
         String columnString = dmlOperation.getColumnString();
         String loadSql = String.format(Locale.ROOT, LOAD_SQL, tableFullName, System.lineSeparator());
         loadSql = sqlTools.sqlAddBitCast(tableMetaData, columnString, loadSql);
@@ -247,10 +252,11 @@ public class WorkThread extends Thread {
         }
         Struct after = dmlOperation.getAfter();
         List<String> list = sqlTools.conversionFullData(tableMetaData, lineList, columnString, after);
-        loadData(path, list, loadSql, tableFullName);
+        loadData(path, list, loadSql, tableFullName, sinkRecordObject);
     }
 
-    private void loadData(String path, List<String> list, String sql, String tableName) {
+    private void loadData(String path, List<String> list, String sql, String tableName,
+                          SinkRecordObject sinkRecordObject) {
         ByteArrayInputStream inputStream = getInputStream(list);
         int count = processRecordMap.computeIfAbsent(tableName, k -> 0);
         try {
@@ -260,9 +266,11 @@ public class WorkThread extends Thread {
             connection.commit();
             successCount++;
             processRecordMap.put(tableName, count + list.size());
+            replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
+            savedBreakPointInfo(sinkRecordObject, true);
         } catch (CommunicationsException exp) {
             LOGGER.error("statement closed unexpectedly.");
-            retryLoad(sql, inputStream);
+            retryLoad(sql, inputStream, sinkRecordObject);
             processRecordMap.put(tableName, count + list.size());
         } catch (SQLException e) {
             failCount++;
@@ -282,7 +290,7 @@ public class WorkThread extends Thread {
         }
     }
 
-    private void retryLoad(String sql, InputStream ins) {
+    private void retryLoad(String sql, InputStream ins, SinkRecordObject sinkRecordObject) {
         try {
             clientPreparedStatement.close();
             connection.close();
@@ -294,6 +302,8 @@ public class WorkThread extends Thread {
                 clientPreparedStatement.executeUpdate();
                 successCount++;
             }
+            replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
+            savedBreakPointInfo(sinkRecordObject, false);
         } catch (SQLException e) {
             LOGGER.error("SQL exception occurred in work thread.", e);
         }
@@ -304,7 +314,7 @@ public class WorkThread extends Thread {
             return;
         }
         File file = new File(path);
-        if (file.delete()) {
+        if (!file.delete()) {
             LOGGER.info("clear csv file failure.");
         }
     }
@@ -351,7 +361,7 @@ public class WorkThread extends Thread {
         } catch (SQLException exp) {
             LOGGER.error("SQL exception occurred in work thread", exp);
         }
-        savedBreakPointInfo(sinkRecordObject);
+        savedBreakPointInfo(sinkRecordObject, false);
     }
 
     /**
@@ -417,12 +427,16 @@ public class WorkThread extends Thread {
         this.isFreeBlock = isFreeBlock;
     }
 
+    public void setIsStop(boolean isStop) {
+        this.isStop = isStop;
+    }
+
     /**
      * Save breakpoint data to kafka
      *
      * @param sinkRecordObject sink record object
      */
-    private void savedBreakPointInfo(SinkRecordObject sinkRecordObject) {
+    private void savedBreakPointInfo(SinkRecordObject sinkRecordObject, boolean isFull) {
         BreakPointObject openGaussBpObject = new BreakPointObject();
         SourceField sourceField = sinkRecordObject.getSourceField();
         Long lsn = sourceField.getLsn();
@@ -430,6 +444,6 @@ public class WorkThread extends Thread {
         openGaussBpObject.setBeginOffset(kafkaOffset);
         openGaussBpObject.setLsn(lsn);
         openGaussBpObject.setTimeStamp(LocalDateTime.now().toString());
-        breakPointRecord.storeRecord(openGaussBpObject, isTransaction);
+        breakPointRecord.storeRecord(openGaussBpObject, isTransaction, isFull);
     }
 }

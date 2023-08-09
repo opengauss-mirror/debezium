@@ -51,7 +51,7 @@ public class FullDataConverters {
             put("float", (columnName, value, after) -> objectConvertNumberType(columnName, value, after));
             put("tinyblob", (columnName, value, after) -> objectConvertBlob(columnName, value, after));
             put("mediumblob", (columnName, value, after) -> objectConvertBlob(columnName, value, after));
-            put("blob", (columnName, value, after) -> objectConvertBlob(columnName, value, after));
+//            put("blob", (columnName, value, after) -> objectConvertBlob(columnName, value, after));
             put("longblob", (columnName, value, after) -> objectConvertBlob(columnName, value, after));
             put("datetime", (columnName, value, after) -> objectConvertDatetimeAndTimestamp(columnName, value, after));
             put("timestamp", (columnName, value, after) -> objectConvertDatetimeAndTimestamp(columnName, value, after));
@@ -60,7 +60,7 @@ public class FullDataConverters {
             put("binary", (columnName, value, after) -> objectConvertBinary(columnName, value, after));
             put("varbinary", (columnName, value, after) -> objectConvertBinary(columnName, value, after));
             put("bit", (columnName, value, after) -> objectConvertBit(columnName, value, after));
-            put("set", (columnName, value, after) -> objectConvertSet(columnName, value, after));
+//            put("set", (columnName, value, after) -> objectConvertSet(columnName, value, after));
             put("point", (columnName, value, after) -> objectConvertPoint(columnName, value, after));
             put("geometry", (columnName, value, after) -> objectConvertPoint(columnName, value, after));
             put("linestring", (columnName, value, after) -> objectConvertLinestring(columnName, value, after));
@@ -91,19 +91,25 @@ public class FullDataConverters {
     }
 
     private static String objectConvertNumberType(String columnName, Object value, Struct valueStruct) {
-        if (value != null) {
-            return value.toString();
+        if (value == null) {
+            return "";
         }
-        return "";
+        String object = String.valueOf(value);
+        if (object.equalsIgnoreCase("true") || object.equalsIgnoreCase("false")) {
+            return Boolean.parseBoolean(object) ? "1" : "0";
+        }
+        return addingSingleQuotation(object);
     }
 
     private static String objectConvertBlob(String columnName, Object value, Struct valueStruct) {
         if (value == null) {
             return "";
         }
-        String hexString = String.valueOf(value);
-        byte[] indexes = parseHexStr2bytes(hexString);
-        return addingSingleQuotation(new String(indexes, Charset.defaultCharset()));
+        String str = String.valueOf(value);
+        if (str.startsWith("\\x")) {
+            str = str.substring(2);
+        }
+        return addingSingleQuotation(str);
     }
 
     private static String objectConvertDatetimeAndTimestamp(String columnName, Object value, Struct valueStruct) {
@@ -157,8 +163,11 @@ public class FullDataConverters {
     }
 
     private static String objectConvertBinary(String columnName, Object value, Struct valueStruct) {
-        String hexString = String.valueOf(value);
-        return addingSingleQuotation(new String(Objects.requireNonNull(parseHexStr2bytes(hexString))));
+        String str = String.valueOf(value);
+        if (str.startsWith("\\x")) {
+            str = str.substring(2);
+        }
+        return addingSingleQuotation(str);
     }
 
     private static String convertHexString(byte[] bytes) {
@@ -173,7 +182,7 @@ public class FullDataConverters {
         if (object.equalsIgnoreCase("true") || object.equalsIgnoreCase("false")) {
             return Boolean.parseBoolean(value.toString()) ? "1" : "0";
         }
-        return object;
+        return addingSingleQuotation(object);
     }
 
     private static String objectConvertSet(String columnName, Object value, Struct after) {
@@ -181,8 +190,9 @@ public class FullDataConverters {
     }
 
     private static String objectConvertPoint(String columnName, Object value, Struct after) {
-        return value == null ? ""
+        Object obj = value == null ? ""
                 : formatPoint(Point.parseWKBPoint(value.toString().getBytes(Charset.defaultCharset())));
+        return addingSingleQuotation(obj);
     }
 
     private static String objectConvertLinestring(String columnName, Object value, Struct after) {
@@ -196,7 +206,7 @@ public class FullDataConverters {
             return HEX_PREFIX + addingSingleQuotation(HEX_FORMAT_PREFIX + convertHexString(bytes));
         }
         String[] coordinateArr = getCoordinate(bytes);
-        return formatLinestring(coordinateArr);
+        return addingSingleQuotation(formatLinestring(coordinateArr));
     }
 
     private static String objectConvertPolygon(String columnName, Object value, Struct after) {
@@ -210,7 +220,7 @@ public class FullDataConverters {
             return HEX_PREFIX + addingSingleQuotation(HEX_FORMAT_PREFIX + convertHexString(bytes));
         }
         String[] coordinateArr = getCoordinate(bytes);
-        return formatPolygon(coordinateArr);
+        return addingSingleQuotation(formatPolygon(coordinateArr));
     }
 
     private static String objectConvertMultipoint(String columnName, Object value, Struct after) {
@@ -420,8 +430,8 @@ public class FullDataConverters {
     }
 
     private static String addingSingleQuotation(Object originValue) {
-        return originValue.toString()
+        return SINGLE_QUOTE + originValue.toString()
                 .replaceAll(SINGLE_QUOTE, SINGLE_QUOTE + SINGLE_QUOTE)
-                .replaceAll(BACKSLASH, BACKSLASH + BACKSLASH);
+                .replaceAll(BACKSLASH, BACKSLASH + BACKSLASH) + SINGLE_QUOTE;
     }
 }
