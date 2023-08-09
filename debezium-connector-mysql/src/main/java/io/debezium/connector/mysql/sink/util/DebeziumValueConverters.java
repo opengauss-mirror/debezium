@@ -47,7 +47,6 @@ public class DebeziumValueConverters {
     private static final String TIMESTAMP_FORMAT_STRING = "yyyy-MM-dd HH:mm:ss.SSSSSS";
     private static final long NANOSECOND_OF_DAY = 86400000000000L;
     private static final long EQUATION_OF_TIME = 48576000L;
-    private static final String INVALID_TIME_FORMAT_STRING = "HH:mm:ss.SSSSSS";
 
     private static HashMap<String, ValueConverter> dataTypeConverterMap = new HashMap<String, ValueConverter>() {
         {
@@ -60,6 +59,8 @@ public class DebeziumValueConverters {
             put("integer", (columnName, value) -> convertInteger(columnName, value));
             put("bigint", (columnName, value) -> convertInteger(columnName, value));
             put("character", (columnName, value) -> convertChar(columnName, value));
+            put("character varying", (columnName, value) -> convertChar(columnName, value));
+            put("text", (columnName, value) -> convertChar(columnName, value));
             put("tinyblob", (columnName, value) -> convertBinary(columnName, value));
             put("mediumblob", (columnName, value) -> convertBinary(columnName, value));
             put("blob", (columnName, value) -> convertBinary(columnName, value));
@@ -76,7 +77,12 @@ public class DebeziumValueConverters {
             put("time without time zone", (columnName, value) -> convertTime(columnName, value));
             put("timestamp without time zone", (columnName, value) -> convertTimestamp(columnName, value));
             put("timestamp with time zone", (columnName, value) -> convertTimestamp(columnName, value));
+            put("year", (columnName, value) -> convertInteger(columnName, value));
             put("bit", ((columnName, value) -> convertBit(columnName, value)));
+            put("enum", (columnName, value) -> convertChar(columnName, value));
+            put("set", (columnName, value) -> convertChar(columnName, value));
+            put("json", (columnName, value) -> convertChar(columnName, value));
+            put("real", ((columnName, value) -> convertInteger(columnName, value)));
         }
     };
 
