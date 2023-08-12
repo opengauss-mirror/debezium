@@ -232,7 +232,8 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
             while (true) {
                 try {
                     Thread.sleep(1000);
-                } catch (InterruptedException exp) {
+                }
+                catch (InterruptedException exp) {
                     LOGGER.error("Interrupted exception occurred while thread sleeping", exp);
                 }
                 outputCreateCountInfo(dirPath + CREATE_COUNT_INFO_NAME, getCurrentEventIndex()

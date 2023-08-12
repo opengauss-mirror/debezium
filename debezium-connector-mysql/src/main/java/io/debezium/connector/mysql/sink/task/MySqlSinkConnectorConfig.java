@@ -8,7 +8,6 @@ package io.debezium.connector.mysql.sink.task;
 import java.util.Map;
 
 import org.apache.kafka.common.config.ConfigDef;
-import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -167,28 +166,15 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
         this.maxQueueSize = getInt(MAX_QUEUE_SIZE);
         this.openFlowControlThreshold = getDouble(OPEN_FLOW_CONTROL_THRESHOLD);
         this.closeFlowControlThreshold = getDouble(CLOSE_FLOW_CONTROL_THRESHOLD);
-
-        logAll(props);
-    }
-
-    private void logAll(Map<?, ?> props) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(getClass().getSimpleName());
-        sb.append(" values: ");
-        sb.append(Utils.NL);
-
-        for (Map.Entry entry : props.entrySet()) {
-            sb.append('\t');
-            sb.append(entry.getKey());
-            sb.append(" = ");
-            if (OPENGAUSS_PASSWORD.equals(entry.getKey())) {
-                sb.append("********");
+        Map<String, Object> allConfig = CONFIG_DEF.defaultValues();
+        allConfig.forEach((k, v) -> {
+            if (!props.containsKey(k)) {
+                LOGGER.warn("The configuration {} item is not configured and uses the default value {}", k, v);
             }
-            else {
-                sb.append(entry.getValue());
-            }
-            sb.append(Utils.NL);
-        }
-        LOGGER.info(sb.toString());
+        });
+        props.forEach((k, v) -> {
+            allConfig.put(String.valueOf(k), v);
+        });
+        logAll(allConfig, OPENGAUSS_PASSWORD);
     }
 }

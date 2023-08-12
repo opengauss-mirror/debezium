@@ -130,8 +130,6 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
      */
     public final boolean isDelCsv;
 
-    private final Map<String, Object> values;
-
     public OpengaussSinkConnectorConfig(Map<?, ?> props){
         super(CONFIG_DEF, props);
         this.maxThreadCount = getInt(MAX_THREAD_COUNT);
@@ -146,30 +144,15 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
         this.closeFlowControlThreshold = getDouble(CLOSE_FLOW_CONTROL_THRESHOLD);
         this.isDelCsv = getBoolean(DELETE_FULL_CSV_FILE);
 
-        this.values = (Map<String, Object>) props;
-        logAll();
-    }
-
-    private void logAll() {
-        StringBuilder b = new StringBuilder();
-        b.append(this.getClass().getSimpleName());
-        b.append(" values: ");
-        b.append(Utils.NL);
-        Iterator set = (new TreeMap(this.values)).entrySet().iterator();
-
-        while(set.hasNext()) {
-            Map.Entry<String, Object> entry = (Map.Entry) set.next();
-            b.append('\t');
-            b.append(entry.getKey());
-            b.append(" = ");
-            if (MYSQL_PASSWORD.equals(entry.getKey())) {
-                b.append("*******");
-            } else {
-                b.append(entry.getValue());
+        Map<String, Object> allConfig = CONFIG_DEF.defaultValues();
+        allConfig.forEach((k, v) -> {
+            if (!props.containsKey(k)) {
+                LOGGER.warn("The configuration {} item is not configured and uses the default value {}", k, v);
             }
-            b.append(Utils.NL);
-        }
-
-        LOGGER.info(b.toString());
+        });
+        props.forEach((k, v) -> {
+            allConfig.put(String.valueOf(k), v);
+        });
+        logAll(allConfig, MYSQL_PASSWORD);
     }
 }

@@ -946,7 +946,8 @@ public class JdbcValueConverters implements ValueConverterProvider {
     protected Object convertFloat(Column column, Field fieldDefn, Object data) {
         try {
             column.scale().get();
-        } catch (NoSuchElementException e) {
+        }
+        catch (NoSuchElementException e) {
             BigDecimal decimal = new BigDecimal(String.valueOf(data));
             BigDecimal result = decimal.setScale(FLOAT_SCALE, RoundingMode.HALF_UP);
             return convertDouble(column, fieldDefn, Double.valueOf(result.toString()));

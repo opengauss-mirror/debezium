@@ -17,14 +17,14 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.PriorityBlockingQueue;
 
-import io.debezium.connector.breakpoint.BreakPointObject;
-import io.debezium.connector.breakpoint.BreakPointRecord;
 import org.apache.kafka.connect.errors.DataException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.mysql.cj.jdbc.exceptions.CommunicationsException;
 
+import io.debezium.connector.breakpoint.BreakPointObject;
+import io.debezium.connector.breakpoint.BreakPointRecord;
 import io.debezium.connector.mysql.sink.object.ConnectionInfo;
 import io.debezium.connector.mysql.sink.object.DmlOperation;
 import io.debezium.connector.mysql.sink.object.SinkRecordObject;
@@ -58,6 +58,8 @@ public class WorkThread extends Thread {
     private List<String> failSqlList = new ArrayList<>();
     private SinkRecordObject threadSinkRecordObject = null;
     private boolean isTransaction;
+    private boolean isConnection = true;
+    private boolean isStop = false;
 
     /**
      * Constructor
@@ -99,10 +101,13 @@ public class WorkThread extends Thread {
             LOGGER.error("SQL exception occurred in work thread", exp);
         }
         String sql = null;
-        while (true) {
+        while (!isStop) {
             try {
                 sinkRecordObject = sinkRecordQueue.take();
                 sql = constructSql(sinkRecordObject);
+                if (!isConnection) {
+                    break;
+                }
                 if ("".equals(sql)) {
                     replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
                     continue;
@@ -173,6 +178,12 @@ public class WorkThread extends Thread {
             oldTableMap.put(tableFullName, tableMetaData);
         }
         String sql = "";
+        if (tableMetaData == null && !sqlTools.getIsConnection()) {
+            isConnection = false;
+            LOGGER.error("There is a connection problem with the mysql,"
+                    + " check the database status or connection");
+            return sql;
+        }
         String operation = dmlOperation.getOperation();
         switch (operation) {
             case INSERT:
@@ -240,12 +251,12 @@ public class WorkThread extends Thread {
             connection = connectionInfo.createOpenGaussConnection();
             statement = connection.createStatement();
             statement.executeUpdate(sql);
+            savedBreakPointInfo(sinkRecordObject);
             successCount++;
         }
         catch (SQLException exp) {
             LOGGER.error("SQL exception occurred in work thread", exp);
         }
-        savedBreakPointInfo(sinkRecordObject);
     }
 
     /**
@@ -264,6 +275,15 @@ public class WorkThread extends Thread {
      */
     public int getFailCount() {
         return failCount;
+    }
+
+    /**
+     * Sets the isStop.
+     *
+     * @param isStop boolean isStop
+     */
+    public void setIsStop(boolean isStop) {
+        this.isStop = isStop;
     }
 
     private void savedBreakPointInfo(SinkRecordObject sinkRecordObject) {

@@ -87,7 +87,8 @@ public class WorkThread extends Thread {
     private ClientPreparedStatement clientPreparedStatement;
     private boolean isClearFile;
     private boolean isTransaction;
-    private boolean isStop;
+    private boolean isConnection = true;
+    private boolean isStop = false;
 
     /**
      * Constructor
@@ -119,14 +120,15 @@ public class WorkThread extends Thread {
             LOGGER.error("SQL exception occurred in work thread", exp);
         }
         String sql = null;
-        while (!isStop) {
+        while (true) {
             try {
                 sinkRecordObject = sinkRecordQueue.take();
                 sql = constructSql(sinkRecordObject);
+                if (!isConnection) {
+                    break;
+                }
                 if ("".equals(sql)) {
-                    if (!PATH.equals(sinkRecordObject.getDmlOperation().getOperation())) {
-                        breakPointRecord.getReplayedOffset().offer(sinkRecordObject.getKafkaOffset());
-                    }
+                    replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
                     continue;
                 }
                 if (clientPreparedStatement != null) {
@@ -193,6 +195,12 @@ public class WorkThread extends Thread {
             oldTableMap.put(tableFullName, tableMetaData);
         }
         String sql = "";
+        if (tableMetaData == null && !sqlTools.getIsConnection()) {
+            isConnection = false;
+            LOGGER.error("There is a connection problem with the mysql,"
+                    + " check the database status or connection");
+            return sql;
+        }
         switch (operation) {
             case TRUNCATE:
                 sql = String.format(Locale.ROOT, "truncate table %s", tableFullName);
@@ -357,11 +365,11 @@ public class WorkThread extends Thread {
             connection = connectionInfo.createMysqlConnection();
             statement = connection.createStatement();
             statement.executeUpdate(sql);
+            savedBreakPointInfo(sinkRecordObject, false);
             successCount++;
         } catch (SQLException exp) {
             LOGGER.error("SQL exception occurred in work thread", exp);
         }
-        savedBreakPointInfo(sinkRecordObject, false);
     }
 
     /**

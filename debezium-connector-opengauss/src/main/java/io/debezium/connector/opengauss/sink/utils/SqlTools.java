@@ -33,6 +33,7 @@ import java.util.Map;
 public class SqlTools {
     private static final Logger LOGGER = LoggerFactory.getLogger(SqlTools.class);
     private ConnectionInfo connectionInfo;
+    private boolean isConnection;
     private static Map<String, String> primeKeyTableMap = new HashMap<>();
     private List<String> binaryTypes = Arrays.asList("tinyblob", "mediumblob", "longblob", "binary", "varbinary");
 
@@ -43,6 +44,7 @@ public class SqlTools {
      */
     public SqlTools(ConnectionInfo connectionInfo) {
         this.connectionInfo= connectionInfo;
+        this.isConnection = true;
     }
 
     /**
@@ -69,6 +71,14 @@ public class SqlTools {
             tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
         }
         catch (SQLException exp) {
+            try {
+                if (!connectionInfo.createMysqlConnection().isValid(1)) {
+                    isConnection = false;
+                    return tableMetaData;
+                }
+            } catch (SQLException exception) {
+                LOGGER.error("Connection exception occurred");
+            }
             LOGGER.error("SQL exception occurred, the sql statement is " + sql);
         }
         return tableMetaData;
@@ -201,6 +211,15 @@ public class SqlTools {
             result.add(sb.toString());
         }
         return result;
+    }
+
+    /**
+     * Gets isConnection.
+     *
+     * @return the value of isConnection
+     */
+    public Boolean getIsConnection() {
+        return isConnection;
     }
 
     /**

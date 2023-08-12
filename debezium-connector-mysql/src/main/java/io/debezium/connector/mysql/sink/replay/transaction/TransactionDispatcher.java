@@ -25,8 +25,8 @@ import io.debezium.connector.breakpoint.BreakPointRecord;
 import io.debezium.connector.mysql.process.MysqlProcessCommitter;
 import io.debezium.connector.mysql.process.MysqlSinkProcessInfo;
 import io.debezium.connector.mysql.sink.object.ConnectionInfo;
-import io.debezium.connector.mysql.sink.object.Transaction;
 import io.debezium.connector.mysql.sink.object.TableMetaData;
+import io.debezium.connector.mysql.sink.object.Transaction;
 import io.debezium.connector.mysql.sink.util.SqlTools;
 
 /**
@@ -60,7 +60,7 @@ public class TransactionDispatcher {
     private MysqlProcessCommitter processCommitter;
     private BreakPointRecord breakPointRecord;
     private boolean isStop = false;
-    private Boolean isBpCondition = false;
+    private boolean isBpCondition = false;
     private int filterCount = 0;
 
     /**
@@ -251,7 +251,8 @@ public class TransactionDispatcher {
                 sb.append(String.join(" and ", valueList));
                 builtSql = sb.toString();
                 return sqlTools.isExistSql(builtSql);
-            } else if (firstSql.contains("update")) {
+            }
+            else if (firstSql.contains("update")) {
                 int setIndex = firstSql.indexOf("set");
                 String schemaAndTable = firstSql.substring(7, setIndex);
                 sb.append("select * from ").append(schemaAndTable).append(" where ");
@@ -262,10 +263,12 @@ public class TransactionDispatcher {
                 sb.append(condition);
                 builtSql = sb.toString();
                 return sqlTools.isExistSql(builtSql);
-            } else if (firstSql.contains("delete from")) {
+            }
+            else if (firstSql.contains("delete from")) {
                 builtSql = firstSql.replace("delete from", "select * from");
-                return sqlTools.isExistSql(builtSql);
-            } else {
+                return !sqlTools.isExistSql(builtSql);
+            }
+            else {
                 return false;
             }
         }
