@@ -19,6 +19,7 @@ import io.debezium.connector.mysql.MySqlConnection;
 import io.debezium.connector.mysql.MySqlConnectorConfig;
 import io.debezium.connector.mysql.sink.task.MySqlSinkConnectorConfig;
 import io.debezium.connector.process.BaseProcessCommitter;
+import io.debezium.connector.process.BaseSourceProcessInfo;
 
 /**
  * Description: MysqlProcessCommitter
@@ -36,11 +37,12 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
 
     private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(1, 1, 100,
             TimeUnit.SECONDS, new LinkedBlockingQueue<>(1));
-    private MysqlSourceProcessInfo sourceProcessInfo;
+    private BaseSourceProcessInfo sourceProcessInfo;
     private MysqlSinkProcessInfo sinkProcessInfo;
     private MySqlConnection mysqlConnection;
     private long createCount;
     private String[] gtidSet;
+    private boolean isParallelBasedTransaction;
 
     /**
      * Constructor
@@ -58,6 +60,13 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
         deleteRedundantFiles(connectorConfig.filePath(),
                 connectorConfig.processFileCountLimit(), connectorConfig.processFileTimeLimit());
         this.mysqlConnection = connection;
+        this.isParallelBasedTransaction = connectorConfig.shouldProvideTransactionMetadata();
+        if (isParallelBasedTransaction) {
+            this.sourceProcessInfo = BaseSourceProcessInfo.TRANSACTION_SOURCE_PROCESS_INFO;
+        }
+        else {
+            this.sourceProcessInfo = BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO;
+        }
         initOriginGtidSet(originGtidSet.split(","));
         executeOutPutThread(connectorConfig.createCountInfoPath() + File.separator);
     }
@@ -90,6 +99,8 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
         this.currentFile = new File(fileFullPath);
         this.isAppendWrite = connectorConfig.isAppend();
         this.createCountInfoPath = connectorConfig.getCreateCountInfoPath();
+        this.isParallelBasedTransaction = connectorConfig.isParallelBasedTransaction;
+        sinkProcessInfo = MysqlSinkProcessInfo.SINK_PROCESS_INFO;
         deleteRedundantFiles(connectorConfig.getSinkProcessFilePath(),
                 connectorConfig.getProcessFileCountLimit(), connectorConfig.getProcessFileTimeLimit());
     }
@@ -109,15 +120,16 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
      *
      * @return MysqlSourceProcessInfo the mysqlSourceProcessInfo
      */
-    protected MysqlSourceProcessInfo statSourceProcessInfo() {
+    protected String statSourceProcessInfo() {
         long before = waitTimeInterval(true);
-        sourceProcessInfo = MysqlSourceProcessInfo.SOURCE_PROCESS_INFO;
         sourceProcessInfo.setSpeed(before, commitTimeInterval);
-        refreshCreateCount();
-        sourceProcessInfo.setCreateCount(createCount);
-        sourceProcessInfo.setRest(0);
+        if (isParallelBasedTransaction) {
+            refreshCreateCount();
+            sourceProcessInfo.setCreateCount(createCount);
+        }
+        sourceProcessInfo.setRest();
         sourceProcessInfo.setTimestamp();
-        return sourceProcessInfo;
+        return sourceProcessInfo.toString();
     }
 
     private void refreshCreateCount() {
@@ -144,9 +156,8 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
      *
      * @return MysqlSinkProcessInfo the mysqlSinkProcessInfo
      */
-    protected MysqlSinkProcessInfo statSinkProcessInfo() {
+    protected String statSinkProcessInfo() {
         long before = waitTimeInterval(false);
-        sinkProcessInfo = MysqlSinkProcessInfo.SINK_PROCESS_INFO;
         sinkProcessInfo.setSpeed(before, commitTimeInterval);
         sinkProcessInfo.setRest(sinkProcessInfo.getSkippedExcludeEventCount(), sinkProcessInfo.getSkippedCount());
         sinkProcessInfo.setTimestamp();
@@ -160,7 +171,7 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
         if (sourceCreateCount != -1) {
             sinkProcessInfo.setOverallPipe(sourceCreateCount);
         }
-        return sinkProcessInfo;
+        return sinkProcessInfo.toString();
     }
 
     private String[] getCurrentGtid() {
@@ -184,11 +195,9 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
     private long waitTimeInterval(boolean isSource) {
         long before;
         if (isSource) {
-            sourceProcessInfo = MysqlSourceProcessInfo.SOURCE_PROCESS_INFO;
             before = sourceProcessInfo.getPollCount();
         }
         else {
-            sinkProcessInfo = MysqlSinkProcessInfo.SINK_PROCESS_INFO;
             before = sinkProcessInfo.getReplayedCount();
         }
         try {
@@ -214,7 +223,8 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
                 catch (InterruptedException exp) {
                     LOGGER.error("Interrupted exception occurred while thread sleeping", exp);
                 }
-                outputCreateCountInfo(dirPath + CREATE_COUNT_INFO_NAME, createCount);
+                outputCreateCountInfo(dirPath + CREATE_COUNT_INFO_NAME, sourceProcessInfo
+                        .getCreateCount() - sourceProcessInfo.getSkippedExcludeCount());
             }
         });
     }

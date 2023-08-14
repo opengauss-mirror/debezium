@@ -34,10 +34,10 @@ public class SqlTools {
     private static final String POINT_POLYGON_PREFIX = "~";
     private static final long ATTEMPTS = 5000L;
     private static final String B_COMPATIBILITY = "B";
-    private static final String BACK_QUOTE = "`";
+    private static final char BACK_QUOTE = '`';
     // default use double quotes to wrap object name, however when database compatibility is B
     // and contains dolphin extension, use back quote to wrap object name
-    private static String objectWrappedSymbol = "\"";
+    private static char objectWrappedSymbol = '"';
 
     private Connection connection;
     private boolean isConnection;
@@ -193,6 +193,19 @@ public class SqlTools {
      */
     public static String addingBackQuote(String name) {
         return BACK_QUOTE + name + BACK_QUOTE;
+    }
+
+    /**
+     * Remove back quote
+     *
+     * @param target String the target name
+     * @return String the name wrapped by back quote
+     */
+    public static String removeBackQuote(String target) {
+        if (target.charAt(0) == BACK_QUOTE && target.charAt(target.length() - 1) == BACK_QUOTE) {
+            return target.substring(1, target.length() - 1);
+        }
+        return target;
     }
 
     public String getInsertSql(TableMetaData tableMetaData, Struct after) {

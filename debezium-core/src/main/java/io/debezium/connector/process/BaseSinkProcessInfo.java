@@ -16,13 +16,41 @@ public class BaseSinkProcessInfo {
      * overallPipe
      */
     protected long overallPipe;
-    private long timestamp;
-    private long extractCount;
-    private long replayedCount;
-    private long successCount;
-    private long failCount;
-    private long rest;
-    private long speed;
+
+    /**
+     * timestamp
+     */
+    protected long timestamp;
+
+    /**
+     * extract count
+     */
+    protected long extractCount;
+
+    /**
+     * replayed count
+     */
+    protected long replayedCount;
+
+    /**
+     * success count
+     */
+    protected long successCount;
+
+    /**
+     * fail count
+     */
+    protected long failCount;
+
+    /**
+     * rest
+     */
+    protected long rest;
+
+    /**
+     * speed
+     */
+    protected long speed;
 
     /**
      * get timestamp
@@ -157,5 +185,26 @@ public class BaseSinkProcessInfo {
      */
     public long getOverallPipe() {
         return overallPipe;
+    }
+
+    /**
+     * Extract count increase automatically
+     */
+    public void autoIncreaseExtractCount() {
+        extractCount++;
+    }
+
+    @Override
+    public String toString() {
+        return "{"
+                + "\"timestamp\":" + timestamp
+                + ",\"extractCount\":" + extractCount
+                + ",\"replayedCount\":" + replayedCount
+                + ",\"successCount\":" + successCount
+                + ",\"failCount\":" + failCount
+                + ",\"speed\":" + speed
+                + ",\"rest\":" + rest
+                + ",\"overallPipe\":" + overallPipe
+                + '}';
     }
 }

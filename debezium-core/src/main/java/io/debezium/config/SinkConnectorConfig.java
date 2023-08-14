@@ -6,6 +6,7 @@
 package io.debezium.config;
 
 import java.io.File;
+import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.kafka.common.config.AbstractConfig;
@@ -14,6 +15,7 @@ import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.debezium.connector.kafka.KafkaClient;
 import io.debezium.util.Strings;
 
 /**
@@ -110,6 +112,21 @@ public class SinkConnectorConfig extends AbstractConfig {
     public static final String BP_QUEUE_CLEAR_INTERVAL = "record.breakpoint.kafka.clear.interval";
 
     /**
+     * Max Queue size
+     */
+    public static final String MAX_QUEUE_SIZE = "max.queue.size";
+
+    /**
+     * Open flow control threshold
+     */
+    public static final String OPEN_FLOW_CONTROL_THRESHOLD = "open.flow.control.threshold";
+
+    /**
+     * Close flow control threshold
+     */
+    public static final String CLOSE_FLOW_CONTROL_THRESHOLD = "close.flow.control.threshold";
+
+    /**
      * CONFIG_DEF
      */
     public static final ConfigDef CONFIG_DEF = new ConfigDef()
@@ -122,8 +139,6 @@ public class SinkConnectorConfig extends AbstractConfig {
             .define(FAIL_SQL_PATH, ConfigDef.Type.STRING, getCurrentPluginPath() + "fail-sqls" + File.separator,
                     ConfigDef.Importance.HIGH, "fail sql file path")
             .define(COMMIT_TIME_INTERVAL, ConfigDef.Type.STRING, "1", ConfigDef.Importance.HIGH, "commit time interval")
-            .define(CREATE_COUNT_INFO_PATH, ConfigDef.Type.STRING, getCurrentPluginPath(),
-                    ConfigDef.Importance.HIGH, "create count information path")
             .define(PROCESS_FILE_COUNT_LIMIT, ConfigDef.Type.STRING, "10",
                     ConfigDef.Importance.HIGH, "process file count limit")
             .define(PROCESS_FILE_TIME_LIMIT, ConfigDef.Type.STRING, "168",
@@ -137,7 +152,12 @@ public class SinkConnectorConfig extends AbstractConfig {
             .define(BP_QUEUE_MAX_SIZE, ConfigDef.Type.STRING, "3000",
                     ConfigDef.Importance.HIGH, "Exceeding this limit deletes the breakpoint record")
             .define(BP_QUEUE_CLEAR_INTERVAL, ConfigDef.Type.STRING, "1",
-                    ConfigDef.Importance.HIGH, "Exceeding this time limit deletes the breakpoint record");
+                    ConfigDef.Importance.HIGH, "Exceeding this time limit deletes the breakpoint record")
+            .define(MAX_QUEUE_SIZE, ConfigDef.Type.INT, 1000000, ConfigDef.Importance.HIGH, "max queue size")
+            .define(OPEN_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.8, ConfigDef.Importance.HIGH,
+                    "open flow control threshold")
+            .define(CLOSE_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.7, ConfigDef.Importance.HIGH,
+                    "close flow control threshold");
     private static final Logger LOGGER = LoggerFactory.getLogger(SinkConnectorConfig.class);
 
     /**
@@ -149,6 +169,26 @@ public class SinkConnectorConfig extends AbstractConfig {
      * Schema mapping
      */
     public final String schemaMappings;
+
+    /**
+     * Max queue size
+     */
+    public final int maxQueueSize;
+
+    /**
+     * Open flow control threshold
+     */
+    public final double openFlowControlThreshold;
+
+    /**
+     * Close flow control threshold
+     */
+    public final double closeFlowControlThreshold;
+
+    /**
+     * Config map
+     */
+    protected Map<String, String> configMap = new HashMap<>();
     private boolean isCommitProcess = false;
     private String sinkProcessFilePath = getCurrentPluginPath() + "sink" + File.separator;
     private String failSqlPath = getCurrentPluginPath() + "fail-sqls" + File.separator;
@@ -178,7 +218,26 @@ public class SinkConnectorConfig extends AbstractConfig {
         super(configDef, originals, false);
         this.topics = getString(TOPICS);
         this.schemaMappings = getString(SCHEMA_MAPPINGS);
+        this.bootstrapServers = getBootstrapServers();
+        this.maxQueueSize = getInt(MAX_QUEUE_SIZE);
+        this.openFlowControlThreshold = getDouble(OPEN_FLOW_CONTROL_THRESHOLD);
+        this.closeFlowControlThreshold = getDouble(CLOSE_FLOW_CONTROL_THRESHOLD);
+        initCouplingConfig();
         rectifyParameter();
+    }
+
+    private void initCouplingConfig() {
+        KafkaClient client = new KafkaClient(bootstrapServers, topics);
+        String sourceConfig = client.readSourceConfig();
+        String[] configs = sourceConfig.split(System.lineSeparator());
+        if (!"".equals(sourceConfig)) {
+            for (String value : configs) {
+                configMap.put(value.trim().split("=")[0], value.trim().split("=")[1]);
+            }
+        }
+        else {
+            initDefaultConfigMap();
+        }
     }
 
     protected void logAll(Map<?, ?> props, String name) {
@@ -226,6 +285,9 @@ public class SinkConnectorConfig extends AbstractConfig {
      * @return the value of bootstrapServers
      */
     public String getBootstrapServers() {
+        if (isSeverPathValid(BP_BOOTSTRAP_SERVERS, bootstrapServers)) {
+            bootstrapServers = getString(BP_BOOTSTRAP_SERVERS);
+        }
         return bootstrapServers;
     }
 
@@ -458,9 +520,6 @@ public class SinkConnectorConfig extends AbstractConfig {
             if (isFilePathValid(PROCESS_FILE_PATH, sinkProcessFilePath)) {
                 sinkProcessFilePath = getString(PROCESS_FILE_PATH);
             }
-            if (isFilePathValid(CREATE_COUNT_INFO_PATH, createCountInfoPath)) {
-                createCountInfoPath = getString(CREATE_COUNT_INFO_PATH);
-            }
             if (isNumberValid(COMMIT_TIME_INTERVAL, commitTimeInterval)) {
                 commitTimeInterval = Integer.parseInt(getString(COMMIT_TIME_INTERVAL));
             }
@@ -470,9 +529,7 @@ public class SinkConnectorConfig extends AbstractConfig {
             if (isNumberValid(PROCESS_FILE_TIME_LIMIT, processFileTimeLimit)) {
                 processFileTimeLimit = Integer.parseInt(getString(PROCESS_FILE_TIME_LIMIT));
             }
-        }
-        if (isSeverPathValid(BP_BOOTSTRAP_SERVERS, bootstrapServers)) {
-            bootstrapServers = getString(BP_BOOTSTRAP_SERVERS);
+            this.createCountInfoPath = configMap.get(CREATE_COUNT_INFO_PATH);
         }
         if (isStringValid(BP_TOPIC, bpTopic)) {
             bpTopic = getString(BP_TOPIC);
@@ -492,5 +549,12 @@ public class SinkConnectorConfig extends AbstractConfig {
         if (isNumberValid(FILE_SIZE_LIMIT, fileSizeLimit)) {
             fileSizeLimit = Integer.parseInt(getString(FILE_SIZE_LIMIT));
         }
+    }
+
+    /**
+     * Ininialize config map
+     */
+    protected void initDefaultConfigMap() {
+        configMap.put(CREATE_COUNT_INFO_PATH, getCurrentPluginPath());
     }
 }

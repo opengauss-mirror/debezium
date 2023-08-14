@@ -5,6 +5,9 @@
  */
 package io.debezium.connector.mysql.sink.object;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Description: SinkRecordObject
  * @author douxin
@@ -14,6 +17,8 @@ public class SinkRecordObject {
     private SourceField sourceField;
     private DataOperation dataOperation;
     private long kafkaOffset;
+    private List<String> ddlSqlList = new ArrayList<>();
+    private List<String> changedTableList = new ArrayList<>();
 
     /**
      * Gets source field
@@ -67,6 +72,24 @@ public class SinkRecordObject {
      */
     public void setKafkaOffset(long kafkaOffset) {
         this.kafkaOffset = kafkaOffset;
+    }
+
+    /**
+     * Gets ddl sql list
+     *
+     * @return List<String> the ddl sql list
+     */
+    public List<String> getDdlSqlList() {
+        return ddlSqlList;
+    }
+
+    /**
+     * Gets changed table name list
+     *
+     * @return List<String> the changed table name list
+     */
+    public List<String> getChangedTableList() {
+        return changedTableList;
     }
 
     @Override
