@@ -113,6 +113,15 @@ public class OracleConnectorConfig extends HistorizedRelationalDatabaseConnector
                     + "'initial' (the default) to specify the connector should run a snapshot only when no offsets are available for the logical server name; "
                     + "'schema_only' to specify the connector should run a snapshot of the schema when no offsets are available for the logical server name. ");
 
+    /**
+     * Snapshot offset scn
+     */
+    public static final Field SNAPSHOT_OFFSET_SCN = Field.create("snapshot.offset.scn")
+            .withDisplayName("Snapshot offset scn")
+            .withDefault(-1)
+            .withImportance(Importance.LOW)
+            .withDescription("Specify starting SCN.");
+
     public static final Field SNAPSHOT_LOCKING_MODE = Field.create("snapshot.locking.mode")
             .withDisplayName("Snapshot locking mode")
             .withEnum(SnapshotLockingMode.class, SnapshotLockingMode.SHARED)
@@ -513,6 +522,7 @@ public class OracleConnectorConfig extends HistorizedRelationalDatabaseConnector
     private final int logMiningScnGapDetectionGapSizeMin;
     private final int logMiningScnGapDetectionTimeIntervalMaxMs;
     private final int logMiningLogFileQueryMaxRetries;
+    private Scn snapshotOffsetScn;
 
     public OracleConnectorConfig(Configuration config) {
         super(OracleConnector.class, config, config.getString(SERVER_NAME), new SystemTablesPredicate(config), x -> x.schema() + "." + x.table(), true,
@@ -528,6 +538,10 @@ public class OracleConnectorConfig extends HistorizedRelationalDatabaseConnector
         this.connectorAdapter = ConnectorAdapter.parse(config.getString(CONNECTOR_ADAPTER));
         this.snapshotLockingMode = SnapshotLockingMode.parse(config.getString(SNAPSHOT_LOCKING_MODE), SNAPSHOT_LOCKING_MODE.defaultValueAsString());
         this.lobEnabled = config.getBoolean(LOB_ENABLED);
+        long scn = config.getLong(SNAPSHOT_OFFSET_SCN);
+        if (scn > 0) {
+            this.snapshotOffsetScn = Scn.valueOf(scn);
+        }
 
         this.streamingAdapter = this.connectorAdapter.getInstance(this);
         if (this.streamingAdapter == null) {
@@ -585,6 +599,10 @@ public class OracleConnectorConfig extends HistorizedRelationalDatabaseConnector
 
     public SnapshotMode getSnapshotMode() {
         return snapshotMode;
+    }
+
+    public Scn getSnapshotOffsetScn() {
+        return snapshotOffsetScn;
     }
 
     public SnapshotLockingMode getSnapshotLockingMode() {
