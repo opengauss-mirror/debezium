@@ -507,7 +507,7 @@ public class TransactionReplayTask extends ReplayTask {
                 }
             }
             else if (ddl.toLowerCase(Locale.ROOT).startsWith("drop table")) {
-                modifiedDdl = ddl.replaceFirst(addingBackquote(schemaName) + ".", "");
+                modifiedDdl = ddl.replaceFirst(SqlTools.addingBackQuote(schemaName) + ".", "");
             }
             else {
                 modifiedDdl = ignoreSchemaName(ddl, schemaName, tableName);
@@ -529,19 +529,15 @@ public class TransactionReplayTask extends ReplayTask {
     private String ignoreSchemaName(String ddl, String schemaName, String tableName) {
         Set<String> schemaTableSet = new HashSet<>();
         schemaTableSet.add(schemaName + "." + tableName);
-        schemaTableSet.add(addingBackquote(schemaName) + "." + tableName);
-        schemaTableSet.add(schemaName + "." + addingBackquote(tableName));
-        schemaTableSet.add(addingBackquote(schemaName) + "." + addingBackquote(tableName));
+        schemaTableSet.add(SqlTools.addingBackQuote(schemaName) + "." + tableName);
+        schemaTableSet.add(schemaName + "." + SqlTools.addingBackQuote(tableName));
+        schemaTableSet.add(SqlTools.addingBackQuote(schemaName) + "." + SqlTools.addingBackQuote(tableName));
         for (String name : schemaTableSet) {
             if (ddl.contains(name)) {
-                return ddl.replaceFirst(name, addingBackquote(tableName));
+                return ddl.replaceFirst(name, SqlTools.addingBackQuote(tableName));
             }
         }
         return ddl;
-    }
-
-    private String addingBackquote(String name) {
-        return "`" + name + "`";
     }
 
     private void constructDml(SinkRecordObject sinkRecordObject) {
@@ -657,15 +653,19 @@ public class TransactionReplayTask extends ReplayTask {
             long binlogPosition = sourceField.getPosition();
             String snapshotPoint = tableSnapshotHashmap.get(fullName);
             String snapshotBinlogFile = snapshotPoint.split(":")[0];
-            long snapshotFileIndex = Long.valueOf(snapshotBinlogFile.split("\\.")[1]);
-            long snapshotBinlogPosition = Long.valueOf(snapshotPoint.split(":")[1]);
-            if (fileIndex < snapshotFileIndex
-                    || (fileIndex == snapshotFileIndex && binlogPosition <= snapshotBinlogPosition)) {
-                String skipInfo = String.format("Table %s snapshot is %s, current position is %s, which is less than "
-                        + "table snapshot, so skip the record.", fullName, snapshotPoint,
-                        binlogFile + ":" + binlogPosition);
-                LOGGER.warn(skipInfo);
-                return true;
+            String[] file = snapshotBinlogFile.split("\\.");
+            String[] position = snapshotPoint.split(":");
+            if (file.length >= 2 && position.length >= 2) {
+                long snapshotFileIndex = Long.valueOf(file[1]);
+                long snapshotBinlogPosition = Long.valueOf(position[1]);
+                if (fileIndex < snapshotFileIndex
+                        || (fileIndex == snapshotFileIndex && binlogPosition <= snapshotBinlogPosition)) {
+                    String skipInfo = String.format("Table %s snapshot is %s, current position is %s, which is less than "
+                                    + "table snapshot, so skip the record.", fullName, snapshotPoint,
+                            binlogFile + ":" + binlogPosition);
+                    LOGGER.warn(skipInfo);
+                    return true;
+                }
             }
         }
         return false;

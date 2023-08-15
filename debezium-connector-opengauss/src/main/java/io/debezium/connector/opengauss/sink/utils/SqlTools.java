@@ -125,6 +125,16 @@ public class SqlTools {
     }
 
     /**
+     * Adding back quote
+     *
+     * @param String the name
+     * @return String the name wrapped by back quote
+     */
+    public static String addingBackQuote(String name) {
+        return "`" + name + "`";
+    }
+
+    /**
      * Gets insert sql
      *
      * @param tableMetaData TableMetaData the table meta data
@@ -133,8 +143,7 @@ public class SqlTools {
      */
     public String getInsertSql(TableMetaData tableMetaData, Struct after){
         StringBuilder sb = new StringBuilder();
-        sb.append("insert into ").append(tableMetaData.getSchemaName()).append(".")
-                .append(tableMetaData.getTableName()).append(" values(");
+        sb.append("insert into ").append(tableMetaData.getTableFullName()).append(" values(");
         ArrayList<String> valueList = getValueList(tableMetaData, after, Envelope.Operation.CREATE);
         sb.append(String.join(", ", valueList));
         sb.append(");");
@@ -152,8 +161,7 @@ public class SqlTools {
     public String getUpdateSql(TableMetaData tableMetaData, Struct before, Struct after) {
         List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
         StringBuilder sb = new StringBuilder();
-        sb.append("update ").append(tableMetaData.getSchemaName()).append(".")
-                .append(tableMetaData.getTableName()).append(" set ");
+        sb.append("update ").append(tableMetaData.getTableFullName()).append(" set ");
         ArrayList<String> updateSetValueList = getValueList(tableMetaData, after, Envelope.Operation.UPDATE);
         sb.append(String.join(", ", updateSetValueList));
         sb.append(" where ");
@@ -170,8 +178,7 @@ public class SqlTools {
     public String getDeleteSql(TableMetaData tableMetaData, Struct before) {
         List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
         StringBuilder sb = new StringBuilder();
-        sb.append("delete from ").append(tableMetaData.getSchemaName()).append(".")
-                .append(tableMetaData.getTableName()).append(" where ");
+        sb.append("delete from ").append(tableMetaData.getTableFullName()).append(" where ");
         return sb + getWhereCondition(tableMetaData, before, columnMetaDataList);
     }
 
@@ -298,7 +305,7 @@ public class SqlTools {
         String columnType;
         for (ColumnMetaData columnMetaData : columnMetaDataList) {
             singleValue = DebeziumValueConverters.getValue(columnMetaData, after);
-            columnName = "`" + columnMetaData.getColumnName() + "`";
+            columnName = columnMetaData.getWrappedColumnName();
             columnType = columnMetaData.getColumnType();
             switch (operation) {
                 case CREATE:
@@ -332,15 +339,14 @@ public class SqlTools {
     public String getReadSql(TableMetaData tableMetaData, Struct struct, Envelope.Operation operation) {
         StringBuilder sb = new StringBuilder();
         ArrayList<String> valueList = new ArrayList<>();
-        sb.append("select * from ").append(tableMetaData.getSchemaName()).append(".")
-                .append(tableMetaData.getTableName()).append(" where ");
+        sb.append("select * from ").append(tableMetaData.getTableFullName()).append(" where ");
         List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
         String singleValue;
         String columnName;
         String columnType;
         for (ColumnMetaData columnMetaData : columnMetaDataList) {
             singleValue = DebeziumValueConverters.getValue(columnMetaData, struct);
-            columnName = "`" + columnMetaData.getColumnName() + "`";
+            columnName = columnMetaData.getWrappedColumnName();
             columnType = columnMetaData.getColumnType();
             switch (operation) {
                 case CREATE:

@@ -5,6 +5,8 @@
  */
 package io.debezium.connector.opengauss.sink.object;
 
+import io.debezium.connector.opengauss.sink.utils.SqlTools;
+
 /**
  * Description: ColumnMetaData
  * @author wangzhengyuan
@@ -60,5 +62,13 @@ public class ColumnMetaData {
      */
     public void setColumnType(String columnType) {
         this.columnType = columnType;
+    }
+
+    /**
+     * Get wrapped column name
+     *
+     */
+    public String getWrappedColumnName() {
+        return SqlTools.addingBackQuote(columnName);
     }
 }

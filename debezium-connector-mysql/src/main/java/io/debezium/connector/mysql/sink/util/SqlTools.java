@@ -33,6 +33,12 @@ public class SqlTools {
     private static final String JSON_PREFIX = "::jsonb";
     private static final String POINT_POLYGON_PREFIX = "~";
     private static final long ATTEMPTS = 5000L;
+    private static final String B_COMPATIBILITY = "B";
+    private static final String BACK_QUOTE = "`";
+    // default use double quotes to wrap object name, however when database compatibility is B
+    // and contains dolphin extension, use back quote to wrap object name
+    private static String objectWrappedSymbol = "\"";
+
 
     private Connection connection;
     private boolean isConnection;
@@ -40,6 +46,7 @@ public class SqlTools {
     public SqlTools(Connection connection) {
         this.connection = connection;
         this.isConnection = true;
+        getObjectWrapSymbol();
     }
 
     public TableMetaData getTableMetaData(String schemaName, String tableName) {
@@ -146,10 +153,51 @@ public class SqlTools {
         return new String[0];
     }
 
+    /**
+     * Get object wrap symbol
+     */
+    public void getObjectWrapSymbol() {
+        String sql_compatibility = "show sql_compatibility";
+        String dolphin_extension = "select * from pg_extension where extname = 'dolphin';";
+        try (Statement statement1 = connection.createStatement();
+             ResultSet rs1 = statement1.executeQuery(sql_compatibility);
+             Statement statement2 = connection.createStatement();
+             ResultSet rs2 = statement2.executeQuery(dolphin_extension)) {
+            while (rs1.next() && rs2.next()) {
+                if (B_COMPATIBILITY.equals(rs1.getString(1))) {
+                    // when database compatibility is B and contains dolphin extension,
+                    // use back quote to wrap object name
+                    objectWrappedSymbol = BACK_QUOTE;
+                }
+            }
+        } catch (SQLException exp) {
+            LOGGER.error("SQL exception occurred in get sql compatibility and dolphin extension", exp);
+        }
+    }
+
+    /**
+     * Adding quote
+     *
+     * @param String the name
+     * @return String the name wrapped by quote
+     */
+    public static String addingQuote(String name) {
+        return objectWrappedSymbol + name + objectWrappedSymbol;
+    }
+
+    /**
+     * Adding back quote
+     *
+     * @param String the name
+     * @return String the name wrapped by back quote
+     */
+    public static String addingBackQuote(String name) {
+        return BACK_QUOTE + name + BACK_QUOTE;
+    }
+
     public String getInsertSql(TableMetaData tableMetaData, Struct after) {
         StringBuilder sb = new StringBuilder();
-        sb.append("insert into \"").append(tableMetaData.getSchemaName()).append("\".\"")
-                .append(tableMetaData.getTableName()).append("\"").append(" values (");
+        sb.append("insert into ").append(tableMetaData.getTableFullName()).append(" values (");
         ArrayList<String> valueList = getValueList(tableMetaData.getColumnList(), after, Envelope.Operation.CREATE);
         sb.append(String.join(", ", valueList));
         sb.append(");");
@@ -159,8 +207,7 @@ public class SqlTools {
     public String getUpdateSql(TableMetaData tableMetaData, Struct before, Struct after) {
         List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
         StringBuilder sb = new StringBuilder();
-        sb.append("update \"").append(tableMetaData.getSchemaName()).append("\".\"")
-                .append(tableMetaData.getTableName()).append("\"").append(" set ");
+        sb.append("update ").append(tableMetaData.getTableFullName()).append(" set ");
         ArrayList<String> updateSetValueList = getValueList(tableMetaData.getColumnList(), after,
                 Envelope.Operation.UPDATE);
         sb.append(String.join(", ", updateSetValueList));
@@ -171,8 +218,7 @@ public class SqlTools {
 
     public String getDeleteSql(TableMetaData tableMetaData, Struct before) {
         StringBuilder sb = new StringBuilder();
-        sb.append("delete from \"").append(tableMetaData.getSchemaName()).append("\".\"")
-                .append(tableMetaData.getTableName()).append("\"").append(" where ");
+        sb.append("delete from ").append(tableMetaData.getTableFullName()).append(" where ");
         sb.append(getWhereCondition(tableMetaData, before, Envelope.Operation.DELETE));
         return sb.toString();
     }
@@ -205,7 +251,7 @@ public class SqlTools {
         String columnType;
         for (ColumnMetaData columnMetaData : columnMetaDataList) {
             singleValue = DebeziumValueConverters.getValue(columnMetaData, after);
-            columnName = "\"" + columnMetaData.getColumnName() + "\"";
+            columnName = columnMetaData.getWrappedColumnName();
             columnType = columnMetaData.getColumnType();
             switch (operation) {
                 case CREATE:
@@ -274,13 +320,13 @@ public class SqlTools {
     public String getReadSql(TableMetaData tableMetaData, Struct struct, Envelope.Operation operation) {
         StringBuilder sb = new StringBuilder();
         ArrayList<String> valueList = new ArrayList<>();
-        sb.append("select * from ").append(tableMetaData.getSchemaName()).append(".")
-                .append(tableMetaData.getTableName()).append(" where ");
+        sb.append("select * from ").append(tableMetaData.getTableFullName()).append(" where ");
         List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
         ArrayList<String> readSetValueList = getValueList(columnMetaDataList, struct, operation);
         sb.append(String.join(" and ", readSetValueList));
         return sb.toString();
     }
+
 
     /**
      * Is or not exist data

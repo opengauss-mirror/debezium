@@ -5,6 +5,8 @@
  */
 package io.debezium.connector.opengauss.sink.object;
 
+import io.debezium.connector.opengauss.sink.utils.SqlTools;
+
 import java.util.List;
 
 /**
@@ -66,4 +68,13 @@ public class TableMetaData {
         return columnList;
     }
 
+    /**
+     * Get table full name
+     *
+     * @param TableMetaData the tableMetaData
+     * @return String the table full name
+     */
+    public String getTableFullName() {
+        return SqlTools.addingBackQuote(schemaName) + "." + SqlTools.addingBackQuote(tableName);
+    }
 }
