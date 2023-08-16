@@ -18,16 +18,16 @@ import io.debezium.connector.mysql.sink.replay.JdbcDbWriter;
 
 /**
  * Description: MysqlSinkConnectorTask class
+ *
  * @author douxin
- * @date 2022/10/17
+ * @since 2022/10/17
  **/
 public class MysqlSinkConnectorTask extends SinkTask {
     private static final Logger LOGGER = LoggerFactory.getLogger(MysqlSinkConnectorTask.class);
 
-    private int remainRetries = 0;
-
     private MySqlSinkConnectorConfig config;
     private JdbcDbWriter jdbcDbWriter;
+    private int count = 0;
 
     @Override
     public String version() {
@@ -39,20 +39,33 @@ public class MysqlSinkConnectorTask extends SinkTask {
         config = new MySqlSinkConnectorConfig(props);
         jdbcDbWriter = new JdbcDbWriter(config);
         jdbcDbWriter.createWorkThreads();
-        remainRetries = config.maxRetries;
     }
 
     @Override
     public void put(Collection<SinkRecord> records) {
+        while (jdbcDbWriter.isBlock()) {
+            count++;
+            if (count >= 300) {
+                count = 0;
+                LOGGER.warn("have wait 15s, so skip the loop");
+                break;
+            }
+            try {
+                Thread.sleep(50);
+            }
+            catch (InterruptedException exp) {
+                LOGGER.warn("Receive interrupted exception while put records from kafka.", exp.getMessage());
+            }
+        }
+        count = 0;
         if (records == null || records.isEmpty()) {
             return;
         }
-        Thread.currentThread().setName("sink-record-thread");
         jdbcDbWriter.batchWrite(records);
     }
 
     @Override
     public void stop() {
-
+        jdbcDbWriter.doStop();
     }
 }

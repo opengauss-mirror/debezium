@@ -35,9 +35,10 @@ import java.sql.SQLException;
 import java.sql.SQLWarning;
 import java.sql.Statement;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
-import java.util.Objects;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -74,6 +75,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
     private Lsn defaultStartingPos;
     private SlotCreationResult slotCreationInfo;
     private boolean hasInitedSlot;
+    private Connection connection;
 
     /**
      * Creates a new replication connection with the given params.
@@ -120,6 +122,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
         this.streamParams = streamParams;
         this.slotCreationInfo = null;
         this.hasInitedSlot = false;
+        this.connection = config.getConnection(config);
     }
 
     private ServerInfo.ReplicationSlot getSlotInfo() throws SQLException, InterruptedException {
@@ -130,12 +133,11 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
 
     protected void initPublication() {
         String createPublicationStmt;
-        String tableFilterString = null;
         if (OpengaussConnectorConfig.LogicalDecoder.PGOUTPUT.equals(plugin)) {
             LOGGER.info("Initializing PgOutput logical decoder publication");
             try {
                 String selectPublication = String.format("SELECT COUNT(1) FROM pg_publication WHERE pubname = '%s'", publicationName);
-                try (Statement stmt = pgConnection().createStatement();ResultSet rs = stmt.executeQuery(selectPublication)) {
+                try (Statement stmt = connection.createStatement();ResultSet rs = stmt.executeQuery(selectPublication)) {
                     if (rs.next()) {
                         Long count = rs.getLong(1);
                         if (count == 0L) {
@@ -150,21 +152,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
                                     stmt.execute(createPublicationStmt);
                                     break;
                                 case FILTERED:
-                                    try {
-                                        Set<TableId> tablesToCapture = determineCapturedTables();
-                                        tableFilterString = tablesToCapture.stream().map(TableId::toDoubleQuotedString).collect(Collectors.joining(", "));
-                                        if (tableFilterString.isEmpty()) {
-                                            throw new DebeziumException(String.format("No table filters found for filtered publication %s", publicationName));
-                                        }
-                                        createPublicationStmt = String.format("CREATE PUBLICATION %s FOR TABLE %s;", publicationName, tableFilterString);
-                                        LOGGER.info("Creating Publication with statement '{}'", createPublicationStmt);
-                                        // Publication doesn't exist, create it but restrict to the tableFilter.
-                                        stmt.execute(createPublicationStmt);
-                                    }
-                                    catch (Exception e) {
-                                        throw new ConnectException(String.format("Unable to create filtered publication %s for %s", publicationName, tableFilterString),
-                                                e);
-                                    }
+                                    appointTableCreatePublication(stmt);
                                     break;
                             }
                         }
@@ -180,6 +168,35 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
             catch (SQLException e) {
                 throw new JdbcConnectionException(e);
             }
+        }
+    }
+
+    private void appointTableCreatePublication(Statement stmt) {
+        String tableFilterString = null;
+        String createPublicationStmt;
+        List<String> schemaList = new ArrayList<>();
+        try (ResultSet rs = stmt.executeQuery("SELECT pn.oid AS schema_oid, iss.catalog_name, iss.schema_owner, "
+                + "iss.schema_name FROM information_schema.schemata iss "
+                + "INNER JOIN pg_namespace pn ON pn.nspname = iss.schema_name "
+                + "where iss.schema_name = 'public' or pn.oid > 16384;")) {
+            Set<TableId> tablesToCapture = determineCapturedTables();
+            while (rs.next()) {
+                schemaList.add(rs.getString("schema_name"));
+            }
+            Set<TableId> newTablesToCapture = tablesToCapture.stream().filter(o -> schemaList.contains(o.schema()))
+                    .collect(Collectors.toSet());
+            tableFilterString = newTablesToCapture.stream().map(TableId::toDoubleQuotedString).collect(Collectors.joining(", "));
+            if (tableFilterString.isEmpty()) {
+                throw new DebeziumException(String.format("No table filters found for filtered publication %s", publicationName));
+            }
+            createPublicationStmt = String.format("CREATE PUBLICATION %s FOR TABLE %s;", publicationName, tableFilterString);
+            LOGGER.info("Creating Publication with statement '{}'", createPublicationStmt);
+            // Publication doesn't exist, create it but restrict to the tableFilter.
+            stmt.execute(createPublicationStmt);
+        }
+        catch (Exception e) {
+            throw new ConnectException(String.format("Unable to create filtered publication %s for %s", publicationName, tableFilterString),
+                    e);
         }
     }
 
@@ -632,6 +649,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
             // we're dropping the replication slot via a regular - i.e. not a replication - connection
             try (OpengaussConnection connection = new OpengaussConnection(originalConfig.getJdbcConfig())) {
                 connection.dropReplicationSlot(slotName);
+                connection.dropPublication(publicationName);
             }
             catch (Throwable e) {
                 LOGGER.error("Unexpected error while dropping replication slot", e);
@@ -660,7 +678,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
         private String slotName = DEFAULT_SLOT_NAME;
         private String publicationName = DEFAULT_PUBLICATION_NAME;
         private RelationalTableFilters tableFilter;
-        private OpengaussConnectorConfig.AutoCreateMode publicationAutocreateMode = OpengaussConnectorConfig.AutoCreateMode.ALL_TABLES;
+        private OpengaussConnectorConfig.AutoCreateMode publicationAutocreateMode = OpengaussConnectorConfig.AutoCreateMode.FILTERED;
         private OpengaussConnectorConfig.LogicalDecoder plugin = OpengaussConnectorConfig.LogicalDecoder.DECODERBUFS;
         private boolean dropSlotOnClose = DEFAULT_DROP_SLOT_ON_CLOSE;
         private Duration statusUpdateIntervalVal;

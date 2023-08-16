@@ -5,6 +5,7 @@
  */
 package io.debezium.relational;
 
+import java.io.File;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.Collections;
@@ -34,6 +35,8 @@ import io.debezium.relational.Selectors.TableIdToStringMapper;
 import io.debezium.relational.Tables.ColumnNameFilter;
 import io.debezium.relational.Tables.ColumnNameFilterFactory;
 import io.debezium.relational.Tables.TableFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Configuration options shared across the relational CDC connectors.
@@ -41,7 +44,7 @@ import io.debezium.relational.Tables.TableFilter;
  * @author Gunnar Morling
  */
 public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorConfig {
-
+    private static final Logger LOGGER = LoggerFactory.getLogger(RelationalDatabaseConnectorConfig.class);
     protected static final String SCHEMA_INCLUDE_LIST_NAME = "schema.include.list";
     protected static final String SCHEMA_EXCLUDE_LIST_NAME = "schema.exclude.list";
     protected static final String DATABASE_WHITELIST_NAME = "database.whitelist";
@@ -579,9 +582,98 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
             .withDescription("Specify the constant that will be provided by Debezium to indicate that " +
                     "the original value is unavailable and not provided by the database.");
 
+    /**
+     * commit process while running
+     */
+    public static final Field COMMIT_PROCESS_WHILE_RUNNING = Field.create("commit.process.while.running")
+            .withDisplayName("commit process while running")
+            .withType(Type.STRING)
+            .withWidth(Width.MEDIUM)
+            .withDefault("false")
+            .withImportance(Importance.MEDIUM)
+            .withDescription("commit process while running");
+
+    /**
+     * source process file path
+     */
+    public static final Field PROCESS_FILE_PATH = Field.create("source.process.file.path")
+            .withDisplayName("source process file path")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDefault(getCurrentPluginPath() + "source" + File.separator)
+            .withDescription("source process file path");
+
+    /**
+     * commit time interval
+     */
+    public static final Field COMMIT_TIME_INTERVAL = Field.create("commit.time.interval")
+            .withDisplayName("commit time interval")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDefault("1")
+            .withDescription("commit time interval");
+
+    /**
+     * create count info path
+     */
+    public static final Field CREATE_COUNT_INFO_PATH = Field.create("create.count.info.path")
+            .withDisplayName("create count information path")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDefault(getCurrentPluginPath())
+            .withDescription("source create information file path");
+
+    /**
+     * process file count limit
+     */
+    public static final Field PROCESS_FILE_COUNT_LIMIT = Field.create("process.file.count.limit")
+            .withDisplayName("process file count limit")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDefault("10")
+            .withDescription("process file count limit");
+
+    /**
+     * process file count limit
+     */
+    public static final Field PROCESS_FILE_TIME_LIMIT = Field.create("process.file.time.limit")
+            .withDisplayName("process file time limit")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDefault("168")
+            .withDescription("process file time limit");
+
+    /**
+     * append write
+     */
+    public static final Field APPEND_WRITE = Field.create("append.write")
+            .withDisplayName("append write")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDefault("false")
+            .withDescription("append write");
+
+    /**
+     * file size limit
+     */
+    public static final Field FILE_SIZE_LIMIT = Field.create("file.size.limit")
+            .withDisplayName("file size limit")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDefault("10")
+            .withDescription("file size limit");
+
     protected static final ConfigDefinition CONFIG_DEFINITION = CommonConnectorConfig.CONFIG_DEFINITION.edit()
             .type(
-                    SERVER_NAME)
+                    SERVER_NAME,
+                    COMMIT_PROCESS_WHILE_RUNNING,
+                    PROCESS_FILE_PATH,
+                    COMMIT_TIME_INTERVAL,
+                    CREATE_COUNT_INFO_PATH,
+                    PROCESS_FILE_COUNT_LIMIT,
+                    PROCESS_FILE_TIME_LIMIT,
+                    APPEND_WRITE,
+                    FILE_SIZE_LIMIT)
             .connector(
                     DECIMAL_HANDLING_MODE,
                     TIME_PRECISION_MODE,
@@ -620,6 +712,13 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
     private final TableIdToStringMapper tableIdMapper;
     private final Configuration jdbcConfig;
     private final String heartbeatActionQuery;
+    private String processFilePath = getCurrentPluginPath() + "source" + File.separator;
+    private String countInfoPath = getCurrentPluginPath();
+    private boolean isAppend = false;
+    private int timeInterval = 1;
+    private int countLimit = 10;
+    private int timeLimit = 168;
+    private int sizeLimit = 10;
 
     protected RelationalDatabaseConnectorConfig(Configuration config, String logicalName, TableFilter systemTablesFilter,
                                                 TableIdToStringMapper tableIdMapper, int defaultSnapshotFetchSize,
@@ -723,6 +822,147 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
         return getConfig().getBoolean(SNAPSHOT_FULL_COLUMN_SCAN_FORCE);
     }
 
+    /**
+     * commit process
+     *
+     * @return Boolean the isCommitProcess
+     */
+    public Boolean isCommitProcess() {
+        if (!isBooleanValid("commit.process.while.running",
+                getConfig().getString(COMMIT_PROCESS_WHILE_RUNNING))) {
+            return false;
+        }
+        return getConfig().getBoolean(COMMIT_PROCESS_WHILE_RUNNING);
+    }
+
+    /**
+     * file path
+     *
+     * @return String the file path
+     */
+    public String filePath() {
+        return processFilePath;
+    }
+
+    /**
+     * commit time interval
+     *
+     * @return Integer the commit time interval
+     */
+    public Integer commitTimeInterval() {
+        return timeInterval;
+    }
+
+    /**
+     * create count information path
+     *
+     * @return String the create count information path
+     */
+    public String createCountInfoPath() {
+        return countInfoPath;
+    }
+
+    /**
+     * process file count limit
+     *
+     * @return Integer the process file count limit
+     */
+    public Integer processFileCountLimit() {
+        return countLimit;
+    }
+
+    /**
+     * process file time limit
+     *
+     * @return Integer the process file time limit
+     */
+    public Integer processFileTimeLimit() {
+        return timeLimit;
+    }
+
+    /**
+     * append write
+     *
+     * @return Boolean the append write
+     */
+    public Boolean appendWrite() {
+        return isAppend;
+    }
+
+    /**
+     * file size limit
+     *
+     * @return Integer the file size limit
+     */
+    public Integer fileSizeLimit() {
+        return sizeLimit;
+    }
+
+    /**
+     * rectify parameter
+     */
+    public void rectifyParameter() {
+        if (isBooleanValid("append.write", getConfig().getString(APPEND_WRITE))) {
+            isAppend = getConfig().getBoolean(APPEND_WRITE);
+        }
+        if (isFilePathValid("source.process.file.path", getConfig().getString(PROCESS_FILE_PATH),
+                processFilePath)) {
+            processFilePath = getConfig().getString(PROCESS_FILE_PATH);
+        }
+        if (isFilePathValid("create.count.info.path", getConfig().getString(CREATE_COUNT_INFO_PATH),
+                countInfoPath)) {
+            countInfoPath = getConfig().getString(CREATE_COUNT_INFO_PATH);
+        }
+        if (isNumberValid("commit.time.interval", getConfig().getString(COMMIT_TIME_INTERVAL),
+                timeInterval)) {
+            timeInterval = getConfig().getInteger(COMMIT_TIME_INTERVAL);
+        }
+        if (isNumberValid("process.file.time.limit", getConfig().getString(PROCESS_FILE_TIME_LIMIT),
+                timeLimit)) {
+            timeLimit = getConfig().getInteger(PROCESS_FILE_TIME_LIMIT);
+        }
+        if (isNumberValid("process.file.count.limit", getConfig().getString(PROCESS_FILE_COUNT_LIMIT),
+                countLimit)) {
+            countLimit = getConfig().getInteger(PROCESS_FILE_COUNT_LIMIT);
+        }
+        if (isNumberValid("file.size.limit", getConfig().getString(FILE_SIZE_LIMIT), sizeLimit)) {
+            sizeLimit = getConfig().getInteger(FILE_SIZE_LIMIT);
+        }
+    }
+
+    private boolean isFilePathValid(String parameterName, String value, String defaultValue) {
+        if ("".equals(value) || value.charAt(0) != File.separatorChar) {
+            LOGGER.warn("The parameter " + parameterName + " is invalid, it must be absolute path,"
+                    + " will adopt it's default value: " + defaultValue);
+            return false;
+        }
+        return true;
+    }
+
+    private Boolean isNumberValid(String parameterName, String value, int defaultValue) {
+        try {
+            if (Integer.parseInt(value) < 1) {
+                LOGGER.warn("The parameter " + parameterName + " is invalid, it must be greater than or equal to 1,"
+                        + " will adopt it's default value: " + defaultValue);
+                return false;
+            }
+        } catch (NumberFormatException e) {
+            LOGGER.warn("The parameter " + parameterName + " is invalid, it must be integer,"
+                    + " will adopt it's default value: " + defaultValue);
+            return false;
+        }
+        return true;
+    }
+
+    private Boolean isBooleanValid(String parameterName, String value) {
+        if (!value.equals("false") && !value.equals("true")) {
+            LOGGER.warn("The parameter " + parameterName + " is invalid, it must be true or false,"
+                    + " will adopt it's default value: false.");
+            return false;
+        }
+        return true;
+    }
+
     private static int validateColumnBlacklist(Configuration config, Field field, Field.ValidationOutput problems) {
         String blacklist = config.getFallbackStringPropertyWithWarning(COLUMN_INCLUDE_LIST, COLUMN_WHITELIST);
         String whitelist = config.getFallbackStringPropertyWithWarning(COLUMN_EXCLUDE_LIST, COLUMN_BLACKLIST);
@@ -743,6 +983,17 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
             return 1;
         }
         return 0;
+    }
+
+    private static String getCurrentPluginPath() {
+        String path = RelationalDatabaseConnectorConfig.class.getProtectionDomain()
+                .getCodeSource().getLocation().getPath();
+        StringBuilder sb = new StringBuilder();
+        String[] paths = path.split(File.separator);
+        for (int i = 0; i < paths.length - 2; i++) {
+            sb.append(paths[i]).append(File.separator);
+        }
+        return sb.toString();
     }
 
     @Override

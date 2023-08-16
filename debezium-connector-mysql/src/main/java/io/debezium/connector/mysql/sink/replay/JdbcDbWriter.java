@@ -5,6 +5,9 @@
  */
 package io.debezium.connector.mysql.sink.replay;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -22,6 +25,9 @@ import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
@@ -29,8 +35,11 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.mysql.cj.jdbc.AbandonedConnectionCleanupThread;
 import com.mysql.cj.util.StringUtils;
 
+import io.debezium.connector.mysql.process.MysqlProcessCommitter;
+import io.debezium.connector.mysql.process.MysqlSinkProcessInfo;
 import io.debezium.connector.mysql.sink.object.ConnectionInfo;
 import io.debezium.connector.mysql.sink.object.DataOperation;
 import io.debezium.connector.mysql.sink.object.DdlOperation;
@@ -46,8 +55,9 @@ import io.debezium.data.Envelope;
 
 /**
  * Description: JdbcDbWriter
+ *
  * @author douxin
- * @date 2022/10/31
+ * @since 2022/10/31
  **/
 public class JdbcDbWriter {
     /**
@@ -62,14 +72,24 @@ public class JdbcDbWriter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(JdbcDbWriter.class);
 
+    private int maxQueueSize;
+    private double openFlowControlThreshold;
+    private double closeFlowControlThreshold;
+
+    private volatile AtomicBoolean isBlock = new AtomicBoolean(false);
     private ConnectionInfo openGaussConnection;
     private SqlTools sqlTools;
     private TransactionDispatcher transactionDispatcher;
+    private MySqlSinkConnectorConfig config;
 
     private int count = 0;
     private int queueIndex = 0;
+    private long extractCount;
+    private long skippedCount;
+    private long skippedExcludeEventCount;
     private ArrayList<String> sqlList = new ArrayList<>();
     private Transaction transaction = new Transaction();
+    private String xlogLocation;
 
     private HashMap<String, Long> dmlEventCountMap = new HashMap<String, Long>();
     private HashMap<String, String> tableSnapshotHashmap = new HashMap<>();
@@ -82,27 +102,58 @@ public class JdbcDbWriter {
     private BlockingQueue<SinkRecord> sinkQueue = new LinkedBlockingQueue<>();
     private ArrayList<ConcurrentLinkedQueue<Transaction>> transactionQueueList = new ArrayList<>();
 
+    private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(3, 3, 100,
+            TimeUnit.SECONDS, new LinkedBlockingQueue<>(3));
     private final DateTimeFormatter ofPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
 
     /**
      * Constructor
      *
-     * @param MySqlSinkConnectorConfig mysql sink connector config
+     * @param config MySqlSinkConnectorConfig mysql sink connector config
      */
     public JdbcDbWriter(MySqlSinkConnectorConfig config) {
         initObject(config);
     }
 
+    /**
+     * Is block
+     *
+     * @return boolean true if is block
+     */
+    public boolean isBlock() {
+        return this.isBlock.get();
+    }
+
+    /**
+     * Do stop
+     */
+    public void doStop() {
+        String result = sqlTools.getXlogLocation();
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(xlogLocation))) {
+            bw.write("xlog.location=" + result);
+        }
+        catch (IOException exp) {
+            LOGGER.error("Fail to write xlog location {}", result);
+        }
+        sqlTools.closeConnection();
+        LOGGER.info("Online migration from mysql to openGauss has gracefully stopped and current xlog"
+                + "location in openGauss is {}", result);
+    }
+
     private void initObject(MySqlSinkConnectorConfig config) {
+        this.config = config;
         initOpenGaussConnection(config);
         initSchemaMappingMap(config.schemaMappings);
         initTransactionQueueList(TRANSACTION_QUEUE_NUM);
         initSqlTools();
         initTransactionDispatcher(config.parallelReplayThreadNum);
+        initXlogLocation(config.xlogLocation);
+        initFlowControl(config);
     }
 
     private void initOpenGaussConnection(MySqlSinkConnectorConfig config) {
-        openGaussConnection = new ConnectionInfo(config.openGaussUrl, config.openGaussUsername, config.openGaussPassword);
+        openGaussConnection = new ConnectionInfo(config.openGaussUrl, config.openGaussUsername,
+                config.openGaussPassword);
     }
 
     private void initSchemaMappingMap(String schemaMappings) {
@@ -125,19 +176,33 @@ public class JdbcDbWriter {
         sqlTools = new SqlTools(openGaussConnection.createOpenGaussConnection());
     }
 
+    private void initXlogLocation(String xlogLocation) {
+        this.xlogLocation = xlogLocation;
+    }
+
     private void initTransactionDispatcher(int threadNum) {
         if (threadNum > 0) {
-            transactionDispatcher = new TransactionDispatcher(threadNum, openGaussConnection, transactionQueueList, changedTableNameList, feedBackQueue);
+            transactionDispatcher = new TransactionDispatcher(threadNum, openGaussConnection, transactionQueueList,
+                    changedTableNameList, feedBackQueue);
         }
         else {
-            transactionDispatcher = new TransactionDispatcher(openGaussConnection, transactionQueueList, changedTableNameList, feedBackQueue);
+            transactionDispatcher = new TransactionDispatcher(openGaussConnection, transactionQueueList,
+                    changedTableNameList, feedBackQueue);
         }
+        transactionDispatcher.initProcessCommitter(config.getFailSqlPath(), config.getFileSizeLimit());
+    }
+
+    private void initFlowControl(MySqlSinkConnectorConfig config) {
+        maxQueueSize = config.maxQueueSize;
+        openFlowControlThreshold = config.openFlowControlThreshold;
+        closeFlowControlThreshold = config.closeFlowControlThreshold;
+        monitorSinkQueueSize();
     }
 
     /**
      * Batch write
      *
-     * @param Collection<SinkRecord> the sink records
+     * @param records Collection<SinkRecord> the sink records
      */
     public void batchWrite(Collection<SinkRecord> records) {
         sinkQueue.addAll(records);
@@ -151,27 +216,36 @@ public class JdbcDbWriter {
         parseSinkRecordThread();
         transactionDispatcherThread();
         statTask();
+        if (config.isCommitProcess()) {
+            statCommit();
+        }
+        AbandonedConnectionCleanupThread.uncheckedShutdown();
     }
 
-    private void parseSinkRecordThread() {
-        new Thread(() -> {
-            Thread.currentThread().setName("parse-sink-thread");
-            parseRecord();
-        }).start();
-    }
-
+    /**
+     * parse record
+     */
     public void parseRecord() {
         int skipNum = 0;
-        Struct value = null;
+        Struct value;
         SinkRecord sinkRecord = null;
+        SourceField sourceField;
+        String snapshot;
+        SinkRecordObject sinkRecordObject;
+        DataOperation dataOperation;
         while (true) {
             try {
                 sinkRecord = sinkQueue.take();
             }
             catch (InterruptedException e) {
-                e.printStackTrace();
+                LOGGER.error("Interrupted exception occurred", e);
             }
-            value = (Struct) sinkRecord.value();
+            if (sinkRecord.value() instanceof Struct) {
+                value = (Struct) sinkRecord.value();
+            }
+            else {
+                value = null;
+            }
             if (value == null) {
                 continue;
             }
@@ -180,34 +254,54 @@ public class JdbcDbWriter {
                     sinkRecordsArrayList.clear();
                 }
                 else {
-                    dmlEventCountMap.put(value.getString(TransactionRecordField.ID),
-                            value.getInt64(TransactionRecordField.EVENT_COUNT) - skipNum);
-                    for (SinkRecordObject sinkRecordObject : sinkRecordsArrayList) {
-                        constructDml(sinkRecordObject);
+                    if (skipNum < value.getInt64(TransactionRecordField.EVENT_COUNT)) {
+                        dmlEventCountMap.put(value.getString(TransactionRecordField.ID),
+                                value.getInt64(TransactionRecordField.EVENT_COUNT) - skipNum);
+                    }
+                    if (value.getInt64(TransactionRecordField.EVENT_COUNT) == 0) {
+                        statExtractCount();
+                        skippedExcludeEventCount++;
+                        MysqlSinkProcessInfo.SINK_PROCESS_INFO.setSkippedExcludeEventCount(skippedExcludeEventCount);
+                    }
+                    try {
+                        for (SinkRecordObject oneSinkRecordObject : sinkRecordsArrayList) {
+                            constructDml(oneSinkRecordObject);
+                        }
+                    }
+                    catch (Exception e) {
+                        LOGGER.error("The connector caught an exception that cannot be covered,"
+                                + " the transaction constructed failed.", e);
+                        statExtractCount();
+                        count++;
+                        sqlList.clear();
+                        transactionDispatcher.addFailTransaction();
                     }
                     if (skipNum > 0) {
-                        String skipLog = String.format(Locale.ROOT, "Transaction %s contains %s records, and " +
-                                "skips %s records because of table snapshot", value.get(TransactionRecordField.ID),
-                                value.getInt64(TransactionRecordField.EVENT_COUNT), skipNum);
-                        LOGGER.warn(skipLog);
+                        LOGGER.warn("Transaction {} contains {} records, and skips {} records due to table snapshot",
+                                value.get(TransactionRecordField.ID),
+                                value.getInt64(TransactionRecordField.EVENT_COUNT),
+                                skipNum);
                         skipNum = 0;
                     }
                 }
             }
             catch (DataException exp) {
-                SinkRecordObject sinkRecordObject = new SinkRecordObject();
-                SourceField sourceField = new SourceField(value);
-                String snapshot = sourceField.getSnapshot();
+                sourceField = new SourceField(value);
+                snapshot = sourceField.getSnapshot();
                 if ("true".equals(snapshot) || "last".equals(snapshot)) {
                     continue;
                 }
-                sinkRecordObject.setSourceField(sourceField);
-                DataOperation dataOperation = null;
                 if (isSkippedEvent(sourceField)) {
                     skipNum++;
-                    LOGGER.warn("Skip one record: " + sinkRecordObject);
+                    skippedCount++;
+                    statExtractCount();
+                    MysqlSinkProcessInfo.SINK_PROCESS_INFO.setSkippedCount(skippedCount);
+                    LOGGER.warn("Skip one record: {}", sourceField);
                     continue;
                 }
+                sinkRecordObject = new SinkRecordObject();
+                sinkRecordObject.setSourceField(sourceField);
+
                 try {
                     dataOperation = new DmlOperation(value);
                     sinkRecordObject.setDataOperation(dataOperation);
@@ -222,30 +316,43 @@ public class JdbcDbWriter {
         }
     }
 
+    private void parseSinkRecordThread() {
+        threadPool.execute(() -> {
+            Thread.currentThread().setName("parse-sink-thread");
+            parseRecord();
+        });
+    }
+
     private void transactionDispatcherThread() {
-        new Thread(() -> {
+        threadPool.execute(() -> {
             Thread.currentThread().setName("txn-dispatcher-thread");
             transactionDispatcher.dispatcher();
-        }).start();
+        });
     }
 
     private void constructDdl(SinkRecordObject sinkRecordObject) {
         SourceField sourceField = sinkRecordObject.getSourceField();
         transaction.setSourceField(sourceField);
-        DdlOperation ddlOperation = (DdlOperation) sinkRecordObject.getDataOperation();
+        DdlOperation ddlOperation = null;
+        if (sinkRecordObject.getDataOperation() instanceof DdlOperation) {
+            ddlOperation = (DdlOperation) sinkRecordObject.getDataOperation();
+        }
+        else {
+            return;
+        }
         String schemaName = sourceField.getDatabase();
         String tableName = sourceField.getTable();
         String newSchemaName = schemaMappingMap.getOrDefault(schemaName, schemaName);
         String ddl = ddlOperation.getDdl();
-        sqlList.add("set current_schema to " + newSchemaName);
+        sqlList.add("set current_schema to " + newSchemaName + ";");
         if (StringUtils.isNullOrEmpty(tableName)) {
             sqlList.add(ddl);
         }
         else {
             String modifiedDdl = null;
-            if (ddl.toLowerCase(Locale.ROOT).startsWith("alter table") &&
-                    ddl.toLowerCase(Locale.ROOT).contains("rename to") &&
-                    !ddl.toLowerCase(Locale.ROOT).contains("`rename to")) {
+            if (ddl.toLowerCase(Locale.ROOT).startsWith("alter table")
+                    && ddl.toLowerCase(Locale.ROOT).contains("rename to")
+                    && !ddl.toLowerCase(Locale.ROOT).contains("`rename to")) {
                 int preIndex = ddl.toLowerCase(Locale.ROOT).indexOf("table");
                 int postIndex = ddl.toLowerCase(Locale.ROOT).indexOf("rename");
                 String oldFullName = ddl.substring(preIndex + 6, postIndex).trim();
@@ -295,14 +402,13 @@ public class JdbcDbWriter {
 
     private void constructDml(SinkRecordObject sinkRecordObject) {
         SourceField sourceField = sinkRecordObject.getSourceField();
-        String currentGtid = sourceField.getGtid();
         transaction.setSourceField(sourceField);
         transaction.setIsDml(true);
 
-        DmlOperation dmlOperation = (DmlOperation) sinkRecordObject.getDataOperation();
-        String operation = dmlOperation.getOperation();
-        Envelope.Operation operationEnum = Envelope.Operation.forCode(operation);
-        String sql = "";
+        DmlOperation dmlOperation = null;
+        if (sinkRecordObject.getDataOperation() instanceof DmlOperation) {
+            dmlOperation = (DmlOperation) sinkRecordObject.getDataOperation();
+        }
         TableMetaData tableMetaData = null;
         String schemaName = transaction.getSourceField().getDatabase();
         String tableName = transaction.getSourceField().getTable();
@@ -332,6 +438,9 @@ public class JdbcDbWriter {
         else {
             tableMetaData = tableMetaDataMap.get(tableFullName);
         }
+        String operation = dmlOperation.getOperation();
+        Envelope.Operation operationEnum = Envelope.Operation.forCode(operation);
+        String sql = "";
         switch (operationEnum) {
             case CREATE:
                 sql = sqlTools.getInsertSql(tableMetaData, dmlOperation.getAfter());
@@ -346,6 +455,7 @@ public class JdbcDbWriter {
                 break;
         }
         sqlList.add(sql);
+        String currentGtid = sourceField.getGtid();
         if (currentGtid == null) {
             currentGtid = dmlOperation.getTransactionId();
         }
@@ -359,6 +469,7 @@ public class JdbcDbWriter {
 
     private void splitTransactionQueue() {
         count++;
+        statExtractCount();
         transactionQueueList.get(queueIndex).add(transaction.clone());
         if (count % MAX_VALUE == 0) {
             queueIndex++;
@@ -371,16 +482,16 @@ public class JdbcDbWriter {
     private void getTableSnapshot() {
         Connection conn = openGaussConnection.createOpenGaussConnection();
         try {
-            PreparedStatement ps = conn.prepareStatement("select v_schema_name, v_table_name, t_binlog_name," +
-                    " i_binlog_position from sch_chameleon.t_replica_tables;");
+            PreparedStatement ps = conn.prepareStatement("select v_schema_name, v_table_name, t_binlog_name,"
+                    + " i_binlog_position from sch_chameleon.t_replica_tables;");
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
                 String schemaName = rs.getString("v_schema_name");
                 String tableName = rs.getString("v_table_name");
-                String binlog_name = rs.getString("t_binlog_name");
-                String binlog_position = rs.getString("i_binlog_position");
+                String binlogName = rs.getString("t_binlog_name");
+                String binlogPosition = rs.getString("i_binlog_position");
                 tableSnapshotHashmap.put(schemaMappingMap.getOrDefault(schemaName, schemaName) + "." + tableName,
-                        binlog_name + ":" + binlog_position);
+                        binlogName + ":" + binlogPosition);
             }
         }
         catch (SQLException exp) {
@@ -400,10 +511,10 @@ public class JdbcDbWriter {
             String snapshotBinlogFile = snapshotPoint.split(":")[0];
             long snapshotFileIndex = Long.valueOf(snapshotBinlogFile.split("\\.")[1]);
             long snapshotBinlogPosition = Long.valueOf(snapshotPoint.split(":")[1]);
-            if (fileIndex < snapshotFileIndex ||
-                    (fileIndex == snapshotFileIndex && binlogPosition <= snapshotBinlogPosition)) {
-                String skipInfo = String.format("Table %s snapshot is %s, current position is %s, which is less than " +
-                        "table snapshot, so skip the record.", fullName, snapshotPoint,
+            if (fileIndex < snapshotFileIndex
+                    || (fileIndex == snapshotFileIndex && binlogPosition <= snapshotBinlogPosition)) {
+                String skipInfo = String.format("Table %s snapshot is %s, current position is %s, which is less than "
+                        + "table snapshot, so skip the record.", fullName, snapshotPoint,
                         binlogFile + ":" + binlogPosition);
                 LOGGER.warn(skipInfo);
                 return true;
@@ -413,18 +524,59 @@ public class JdbcDbWriter {
     }
 
     private void statTask() {
-        Timer timer = new Timer();
-        final int[] before = { count };
+        final int[] previousCount = { count };
         TimerTask task = new TimerTask() {
             @Override
             public void run() {
-                String date = ofPattern.format(LocalDateTime.now());
-                String result = String.format("have constructed %s transaction, and current time is %s, and current "
-                        + "speed is %s", count, date, count - before[0]);
-                LOGGER.warn(result);
-                before[0] = count;
+                Thread.currentThread().setName("timer-construct-txn");
+                LOGGER.warn("have constructed {} transaction, and current time is {}, and current speed is {}",
+                        count, ofPattern.format(LocalDateTime.now()), count - previousCount[0]);
+                previousCount[0] = count;
             }
         };
+        Timer timer = new Timer();
         timer.schedule(task, 1000, 1000);
+    }
+
+    private void statCommit() {
+        threadPool.execute(() -> {
+            MysqlProcessCommitter processCommitter = new MysqlProcessCommitter(config);
+            processCommitter.commitSinkProcessInfo();
+        });
+    }
+
+    private void statExtractCount() {
+        extractCount++;
+        MysqlSinkProcessInfo.SINK_PROCESS_INFO.setExtractCount(extractCount);
+    }
+
+    private void monitorSinkQueueSize() {
+        int openFlowControlQueueSize = (int) (openFlowControlThreshold * maxQueueSize);
+        int closeFlowControlQueueSize = (int) (closeFlowControlThreshold * maxQueueSize);
+        TimerTask task = new TimerTask() {
+            @Override
+            public void run() {
+                Thread.currentThread().setName("timer-queue-size");
+                int size = sinkQueue.size();
+                if (size > openFlowControlQueueSize) {
+                    if (!isBlock.get()) {
+                        LOGGER.warn("[start flow control] current isBlock is {}, queue size is {}, which is "
+                                        + "more than {} * {}, so open flow control",
+                                isBlock, size, openFlowControlThreshold, maxQueueSize);
+                    }
+                    isBlock.set(true);
+                }
+                if (size < closeFlowControlQueueSize) {
+                    if (isBlock.get()) {
+                        LOGGER.warn("[close flow control] current isBlock is {}, queue size is {}, which is "
+                                        + "less than {} * {}, so close flow control",
+                                isBlock, size, closeFlowControlThreshold, maxQueueSize);
+                    }
+                    isBlock.set(false);
+                }
+            }
+        };
+        Timer timer = new Timer();
+        timer.schedule(task, 10, 20);
     }
 }

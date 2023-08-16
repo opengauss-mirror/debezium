@@ -911,6 +911,7 @@ public class JdbcConnection implements AutoCloseable {
             if (!isConnected()) {
                 throw new SQLException("Unable to obtain a JDBC connection");
             }
+            setSessionTimeout();
             // Always run the initial operations on this new connection
             if (initialOps != null) {
                 execute(initialOps);
@@ -921,6 +922,13 @@ public class JdbcConnection implements AutoCloseable {
                 execute(splitStatements.toArray(new String[splitStatements.size()]));
             }
         }
+        return conn;
+    }
+
+    public void setSessionTimeout() {
+    }
+
+    public Connection getConnection() {
         return conn;
     }
 

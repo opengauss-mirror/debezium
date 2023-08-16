@@ -25,6 +25,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
@@ -36,6 +38,7 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
+import com.github.shyiko.mysql.binlog.event.deserialization.GtidEventDataDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
@@ -69,6 +72,8 @@ import io.debezium.config.CommonConnectorConfig.EventProcessingFailureHandlingMo
 import io.debezium.config.Configuration;
 import io.debezium.connector.mysql.MySqlConnectorConfig.GtidNewChannelPosition;
 import io.debezium.connector.mysql.MySqlConnectorConfig.SecureConnectionMode;
+import io.debezium.connector.mysql.process.MysqlProcessCommitter;
+import io.debezium.connector.mysql.process.MysqlSourceProcessInfo;
 import io.debezium.connector.mysql.sink.event.MyGtidEventData;
 import io.debezium.connector.mysql.sink.event.MyGtidEventDataDeserializer;
 import io.debezium.data.Envelope.Operation;
@@ -104,6 +109,10 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
     private long initialEventsToSkip = 0L;
     private boolean skipEvent = false;
     private boolean ignoreDmlEventByGtidSource = false;
+    private long convertCount;
+    private long pollCount;
+    private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(1, 1, 100,
+            TimeUnit.SECONDS, new LinkedBlockingQueue<>(1));
     private final Predicate<String> gtidDmlSourceFilter;
     private final AtomicLong totalRecordCounter = new AtomicLong();
     private volatile Map<String, ?> lastOffset = null;
@@ -266,7 +275,12 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
 
         // Add our custom deserializers ...
         eventDeserializer.setEventDataDeserializer(EventType.STOP, new StopEventDataDeserializer());
-        eventDeserializer.setEventDataDeserializer(EventType.GTID, new MyGtidEventDataDeserializer());
+        if (connection.isVersionLessThan57()) {
+            eventDeserializer.setEventDataDeserializer(EventType.GTID, new GtidEventDataDeserializer());
+        }
+        else {
+            eventDeserializer.setEventDataDeserializer(EventType.GTID, new MyGtidEventDataDeserializer());
+        }
         eventDeserializer.setEventDataDeserializer(EventType.WRITE_ROWS,
                 new RowDeserializers.WriteRowsDeserializer(tableMapEventByTableId));
         eventDeserializer.setEventDataDeserializer(EventType.UPDATE_ROWS,
@@ -531,6 +545,10 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
         QueryEventData command = unwrapData(event);
         LOGGER.debug("Received query command: {}", event);
         String sql = command.getSql().trim();
+        convertCount++;
+        MysqlSourceProcessInfo.SOURCE_PROCESS_INFO.setConvertCount(convertCount);
+        pollCount++;
+        MysqlSourceProcessInfo.SOURCE_PROCESS_INFO.setPollCount(pollCount);
         if (sql.equalsIgnoreCase("BEGIN")) {
             // We are starting a new transaction ...
             offsetContext.startNextTransaction();
@@ -559,7 +577,8 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
             LOGGER.debug("DDL '{}' was filtered out of processing", sql);
             return;
         }
-        if (upperCasedStatementBegin.equals("INSERT ") || upperCasedStatementBegin.equals("UPDATE ") || upperCasedStatementBegin.equals("DELETE ")) {
+        if (upperCasedStatementBegin.equals("INSERT ") || upperCasedStatementBegin.equals("UPDATE ")
+                || upperCasedStatementBegin.equals("DELETE ")) {
             if (eventDeserializationFailureHandlingMode == EventProcessingFailureHandlingMode.FAIL) {
                 throw new DebeziumException(
                         "Received DML '" + sql + "' for processing, binlog probably contains events generated with statement or mixed based replication format");
@@ -719,7 +738,8 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
      * @param event the database change data event to be processed; may not be null
      * @throws InterruptedException if this thread is interrupted while blocking
      */
-    protected void handleDelete(MySqlPartition partition, MySqlOffsetContext offsetContext, Event event) throws InterruptedException {
+    protected void handleDelete(MySqlPartition partition, MySqlOffsetContext offsetContext, Event event)
+            throws InterruptedException {
         handleChange(partition, offsetContext, event, "delete", DeleteRowsEventData.class, x -> taskContext.getSchema().getTableId(x.getTableId()),
                 DeleteRowsEventData::getRows,
                 (tableId, row) -> eventDispatcher.dispatchDataChangeEvent(tableId,
@@ -901,6 +921,10 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
                 client.setGtidSet(filteredGtidSetStr);
                 effectiveOffsetContext.setCompletedGtidSet(filteredGtidSetStr);
                 gtidSet = new com.github.shyiko.mysql.binlog.GtidSet(filteredGtidSetStr);
+                if (connectorConfig.isCommitProcess()) {
+                    connectorConfig.rectifyParameter();
+                    statCommit(filteredGtidSetStr);
+                }
             }
             else {
                 // We've not yet seen any GTIDs, so that means we have to start reading the binlog from the beginning ...
@@ -1098,7 +1122,8 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
      * @return A GTID set meant for consuming from a MySQL binlog; may return null if the SourceInfo has no GTIDs and therefore
      *         none were filtered
      */
-    public GtidSet filterGtidSet(MySqlOffsetContext offsetContext, GtidSet availableServerGtidSet, GtidSet purgedServerGtid) {
+    public GtidSet filterGtidSet(MySqlOffsetContext offsetContext, GtidSet availableServerGtidSet,
+                                 GtidSet purgedServerGtid) {
         String gtidStr = offsetContext.gtidSet();
         if (gtidStr == null) {
             return null;
@@ -1240,6 +1265,14 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
                 logStreamingSourceState(Level.DEBUG);
             }
         }
+    }
+
+    private void statCommit(String filteredGtidSetStr) {
+        threadPool.execute(() -> {
+            final MysqlProcessCommitter processCommitter = new MysqlProcessCommitter(connectorConfig,
+                    filteredGtidSetStr, connection);
+            processCommitter.commitSourceProcessInfo();
+        });
     }
 
     @FunctionalInterface

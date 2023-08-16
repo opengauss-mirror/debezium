@@ -7,7 +7,9 @@
 package io.debezium.connector.opengauss.connection;
 
 import java.nio.charset.Charset;
+import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -328,7 +330,6 @@ public class OpengaussConnection extends JdbcConnection {
      * @return {@code true} if the slot was dropped, {@code false} otherwise
      */
     public boolean dropReplicationSlot(String slotName) {
-        dropPublication("dbz_publication");
         final int ATTEMPTS = 3;
         for (int i = 0; i < ATTEMPTS; i++) {
             try {
@@ -445,20 +446,6 @@ public class OpengaussConnection extends JdbcConnection {
                 serverInfo.withServer(rs.getString(1)).withUsername(rs.getString(2)).withDatabase(rs.getString(3));
             }
         });
-        String username = serverInfo.username();
-        if (username != null) {
-            query("SELECT oid, rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication FROM pg_roles " +
-                    "WHERE pg_has_role('" + username + "', oid, 'member')",
-                    rs -> {
-                        while (rs.next()) {
-                            String roleInfo = "superuser: " + rs.getBoolean(3) + ", replication: " + rs.getBoolean(8) +
-                                    ", inherit: " + rs.getBoolean(4) + ", create role: " + rs.getBoolean(5) +
-                                    ", create db: " + rs.getBoolean(6) + ", can log in: " + rs.getBoolean(7);
-                            String roleName = rs.getString(2);
-                            serverInfo.addRole(roleName, roleInfo);
-                        }
-                    });
-        }
         return serverInfo;
     }
 
@@ -646,6 +633,16 @@ public class OpengaussConnection extends JdbcConnection {
         catch (SQLException e) {
             // not a known type
             return super.getColumnValue(rs, columnIndex, column, table, schema);
+        }
+    }
+
+    @Override
+    public synchronized void setSessionTimeout() {
+        Connection conn = getConnection();
+        try (PreparedStatement ps = conn.prepareStatement("set session_timeout = 0");) {
+            ps.execute();
+        } catch (SQLException exp) {
+            LOGGER.error("SQL Exception occurred when set session_timeout.");
         }
     }
 

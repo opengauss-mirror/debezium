@@ -14,6 +14,7 @@ public class ColumnMetaData {
     private String columnName;
     private String columnType;
     private Integer scale;
+    private boolean isPrimaryColumn;
 
     /**
      * Constructor
@@ -44,6 +45,24 @@ public class ColumnMetaData {
      */
     public void setColumnName(String columnName) {
         this.columnName = columnName;
+    }
+
+    /**
+     * Is primary key column
+     *
+     * @return boolean the isPrimaryColumn
+     */
+    public boolean isPrimaryColumn() {
+        return isPrimaryColumn;
+    }
+
+    /**
+     * Sets boolean about primary key column
+     *
+     * @param primaryColumn boolean the isPrimaryColumn
+     */
+    public void setPrimaryColumn(boolean primaryColumn) {
+        isPrimaryColumn = primaryColumn;
     }
 
     /**

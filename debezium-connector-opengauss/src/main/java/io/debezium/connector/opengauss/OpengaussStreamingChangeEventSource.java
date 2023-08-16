@@ -9,10 +9,13 @@ import java.sql.SQLException;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalLong;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+import io.debezium.connector.opengauss.process.OgSourceProcessInfo;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.postgresql.core.BaseConnection;
+import org.postgresql.replication.LogSequenceNumber;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +27,8 @@ import io.debezium.connector.opengauss.connection.ReplicationConnection;
 import io.debezium.connector.opengauss.connection.ReplicationMessage.Operation;
 import io.debezium.connector.opengauss.connection.ReplicationStream;
 import io.debezium.connector.opengauss.connection.WalPositionLocator;
+import io.debezium.connector.opengauss.connection.ReplicationMessage;
+import io.debezium.connector.opengauss.connection.ogoutput.OgOutputReplicationMessage;
 import io.debezium.connector.opengauss.spi.Snapshotter;
 import io.debezium.heartbeat.Heartbeat;
 import io.debezium.pipeline.ErrorHandler;
@@ -72,6 +77,8 @@ public class OpengaussStreamingChangeEventSource implements StreamingChangeEvent
      * number of event received since last WAL growing warning issued).
      */
     private long numberOfEventsSinceLastEventSentOrWalGrowingWarning = 0;
+    private long createCount;
+    private long skippedExcludeDataCount;
     private Lsn lastCompletelyProcessedLsn;
 
     public OpengaussStreamingChangeEventSource(OpengaussConnectorConfig connectorConfig, Snapshotter snapshotter,
@@ -120,15 +127,19 @@ public class OpengaussStreamingChangeEventSource implements StreamingChangeEvent
 
         try {
             final WalPositionLocator walPosition;
+            final Lsn lsn;
 
             if (hasStartLsnStoredInContext) {
                 // start streaming from the last recorded position in the offset
-                final Lsn lsn = offsetContext.lastCompletelyProcessedLsn() != null ? offsetContext.lastCompletelyProcessedLsn() : offsetContext.lsn();
+                lsn = offsetContext.lastCompletelyProcessedLsn() != null ? offsetContext.lastCompletelyProcessedLsn() : offsetContext.lsn();
                 LOGGER.info("Retrieved latest position from stored offset '{}'", lsn);
                 walPosition = new WalPositionLocator(offsetContext.lastCommitLsn(), lsn);
                 replicationStream.compareAndSet(null, replicationConnection.startStreaming(lsn, walPosition));
-            }
-            else {
+            } else if (connectorConfig.xlogLocation() != null) {
+                lsn = Lsn.valueOf(configXLogLocation());
+                walPosition = new WalPositionLocator();
+                replicationStream.compareAndSet(null, replicationConnection.startStreaming(lsn, walPosition));
+            } else {
                 LOGGER.info("No previous LSN found in Kafka, streaming from the latest xlogpos or flushed LSN...");
                 walPosition = new WalPositionLocator();
                 replicationStream.compareAndSet(null, replicationConnection.startStreaming(walPosition));
@@ -205,8 +216,17 @@ public class OpengaussStreamingChangeEventSource implements StreamingChangeEvent
                 (lastCompletelyProcessedLsn.compareTo(offsetContext.getStreamingStoppingLsn()) < 0))) {
 
             boolean receivedMessage = stream.readPending(message -> {
-                final Lsn lsn = stream.lastReceivedLsn();
+                if (message instanceof OgOutputReplicationMessage
+                        || message instanceof ReplicationMessage.NoopMessage) {
+                    createCount++;
+                    OgSourceProcessInfo.SOURCE_PROCESS_INFO.setCreateCount(createCount);
+                    if (message instanceof ReplicationMessage.NoopMessage) {
+                        skippedExcludeDataCount++;
+                        OgSourceProcessInfo.SOURCE_PROCESS_INFO.setSkippedExcludeCount(skippedExcludeDataCount);
+                    }
+                }
 
+                final Lsn lsn = stream.lastReceivedLsn();
                 if (message.isLastEventForLsn()) {
                     lastCompletelyProcessedLsn = lsn;
                 }
@@ -436,5 +456,11 @@ public class OpengaussStreamingChangeEventSource implements StreamingChangeEvent
     @FunctionalInterface
     public static interface PgConnectionSupplier {
         BaseConnection get() throws SQLException;
+    }
+
+    private long configXLogLocation() throws SQLException {
+        AtomicLong result = new AtomicLong(0);
+        result.compareAndSet(0, LogSequenceNumber.valueOf(connectorConfig.xlogLocation()).asLong());
+        return result.get();
     }
 }

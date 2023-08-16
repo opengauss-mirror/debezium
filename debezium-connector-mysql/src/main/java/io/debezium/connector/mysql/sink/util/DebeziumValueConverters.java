@@ -38,12 +38,15 @@ import mil.nga.sf.wkt.GeometryWriter;
  **/
 public class DebeziumValueConverters {
     private static final char ESCAPE_CHARACTER = 'E';
+    private static final String SINGLE_QUOTE = "'";
     private static final String HEX_PREFIX = "\\x";
     private static final String POLYGON_PREFIX = "POLYGON ";
     private static final String LINESTRING_PREFIX = "LINESTRING ";
     private static final String DATE_FORMAT_STRING = "yyyy-MM-dd";
-    private static final String TIME_FORMAT_STRING = "HH:mm:ss";
+    private static final String TIME_FORMAT_STRING = "HH:mm:ss.SSSSSSSSS";
     private static final String TIMESTAMP_FORMAT_STRING = "yyyy-MM-dd HH:mm:ss.SSSSSS";
+    private static final long NANOSECOND_OF_DAY = 86400000000000L;
+    private static final long EQUATION_OF_TIME = 48576000L;
 
     private static HashMap<String, ValueConverter> dataTypeConverterMap = new HashMap<String, ValueConverter>() {
         {
@@ -108,6 +111,9 @@ public class DebeziumValueConverters {
         }
         String valueStr = object.toString();
         String decimalStr = valueStr.substring(valueStr.indexOf(".") + 1);
+        if (scale == -1) {
+            return object.toString();
+        }
         if (decimalStr.length() > scale) {
             BigDecimal decimal = new BigDecimal(valueStr);
             BigDecimal result = decimal.setScale(scale, RoundingMode.HALF_UP);
@@ -122,7 +128,8 @@ public class DebeziumValueConverters {
     }
 
     public static String addingSingleQuotation(Object originValue) {
-        return "'" + originValue.toString() + "'";
+        return SINGLE_QUOTE + originValue.toString().replaceAll(SINGLE_QUOTE, SINGLE_QUOTE + SINGLE_QUOTE)
+                + SINGLE_QUOTE;
     }
 
     private static String convertBinary(String columnName, Struct value) {
@@ -234,10 +241,58 @@ public class DebeziumValueConverters {
 
     private static String convertTime(String columnName, Struct value) {
         // openGauss time without time zone -> mysql time
-        Instant instant = convertDbzDateTime(columnName, value);
+        Field field = value.schema().field(columnName);
+        String schemaName = field.schema().name();
+        Instant instant;
+        if ("io.debezium.time.MicroTime".equals(schemaName)) {
+            Object object = value.get(columnName);
+            if (object == null) {
+                return null;
+            }
+            long originMicro = Long.parseLong(object.toString()) * TimeUnit.MICROSECONDS.toNanos(1);
+            if (originMicro >= NANOSECOND_OF_DAY) {
+                return addingSingleQuotation(handleInvalidTime(originMicro));
+            } else if (originMicro < 0) {
+                originMicro = (-originMicro - EQUATION_OF_TIME) % 1000000000 == 0
+                        ? -originMicro - EQUATION_OF_TIME : -originMicro;
+                return addingSingleQuotation("-" + handleNegativeTime(originMicro));
+            } else {
+                LocalTime localTime = LocalTime.ofNanoOfDay(originMicro);
+                instant = localTime.atDate(LocalDate.now()).toInstant(ZoneOffset.UTC);
+            }
+        } else {
+            instant = convertDbzDateTime(columnName, value);
+        }
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern(TIME_FORMAT_STRING)
                 .withZone(ZoneOffset.UTC);
         return instant == null ? null : addingSingleQuotation(dateTimeFormatter.format(instant));
+    }
+
+    private static String handleNegativeTime(long originNano) {
+        if (originNano >= NANOSECOND_OF_DAY) {
+            return handleInvalidTime(originNano);
+        }
+        LocalTime localTime = LocalTime.ofNanoOfDay(originNano);
+        Instant instant = localTime.atDate(LocalDate.now()).toInstant(ZoneOffset.UTC);
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern(TIME_FORMAT_STRING)
+                .withZone(ZoneOffset.UTC);
+        return dateTimeFormatter.format(instant);
+    }
+
+    private static String handleInvalidTime(long originNano) {
+        long validNano = originNano - NANOSECOND_OF_DAY;
+        int days = 1;
+        while (validNano >= NANOSECOND_OF_DAY) {
+            validNano -= NANOSECOND_OF_DAY;
+            days++;
+        }
+        LocalTime localTime = LocalTime.ofNanoOfDay(validNano);
+        Instant instant = localTime.atDate(LocalDate.now()).toInstant(ZoneOffset.UTC);
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern(TIME_FORMAT_STRING)
+                .withZone(ZoneOffset.UTC);
+        String time = dateTimeFormatter.format(instant);
+        return 24 * days + Integer.parseInt(time.split(":")[0])
+                + time.substring(time.indexOf(":"));
     }
 
     private static String convertTimestamp(String columnName, Struct value) {
@@ -289,10 +344,6 @@ public class DebeziumValueConverters {
                     else {
                         instant = Instant.parse(timeString);
                     }
-                    break;
-                case "io.debezium.time.MicroTime":
-                    localTime = LocalTime.ofNanoOfDay(Long.parseLong(object.toString()) * TimeUnit.MICROSECONDS.toNanos(1));
-                    instant = localTime.atDate(LocalDate.now()).toInstant(ZoneOffset.UTC);
                     break;
                 case "io.debezium.time.ZonedTime":
                     /*
