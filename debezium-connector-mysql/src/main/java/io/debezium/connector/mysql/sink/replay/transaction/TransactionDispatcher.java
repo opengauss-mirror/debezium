@@ -363,9 +363,9 @@ public class TransactionDispatcher {
                 Thread.currentThread().setName("timer-work-status");
                 for (int i = 0; i < threadList.size(); i++) {
                     if (!threadList.get(i).isAlive()) {
-                        LOGGER.error("Total {} work thread, current work thread {} is dead, so remove it.",
+                        LOGGER.error("Total {} work thread, current work thread {} is dead, so doesn't use it any more.",
                                 threadList.size(), i);
-                        threadList.remove(i);
+                        threadList.get(i).setAlive(false);
                     }
                 }
             }
@@ -375,8 +375,11 @@ public class TransactionDispatcher {
 
     private WorkThread canParallelAndFindFreeThread(Transaction transaction, ArrayList<WorkThread> threadList) {
         WorkThread freeWorkThread = null;
+        Transaction runningTransaction = null;
         for (WorkThread workThread : threadList) {
-            Transaction runningTransaction = workThread.getTransaction();
+            if (workThread.canUse()) {
+                runningTransaction = workThread.getTransaction();
+            }
             if (runningTransaction != null) {
                 boolean canParallel = transaction.interleaved(runningTransaction);
                 if (!canParallel) {

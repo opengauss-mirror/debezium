@@ -210,8 +210,8 @@ public final class GtidSet {
         for (int i = 0; i < multiGtid.length; i++) {
             for (int j = 0; j < previousMultiGtid.length; j++) {
                 if (needModifiedMaxTransactionId(multiGtid[i], previousMultiGtid[j])) {
-                    LOGGER.info("Gtid before modification is {}", previousMultiGtid[i]);
-                    multiGtid[i] = modifiedMaxTransactionId(previousMultiGtid[i], modifiedValue);
+                    LOGGER.info("Gtid before modification is {}", previousMultiGtid[j]);
+                    multiGtid[i] = modifiedMaxTransactionId(previousMultiGtid[j], modifiedValue);
                     LOGGER.info("Gtid after modification is {}", multiGtid[i]);
                 }
             }
