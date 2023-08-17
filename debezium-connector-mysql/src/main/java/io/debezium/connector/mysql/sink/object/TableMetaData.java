@@ -5,6 +5,8 @@
  */
 package io.debezium.connector.mysql.sink.object;
 
+import io.debezium.connector.mysql.sink.util.SqlTools;
+
 import java.util.List;
 
 /**
@@ -82,5 +84,14 @@ public class TableMetaData {
      */
     public void setColumnList(List<ColumnMetaData> columnList) {
         this.columnList = columnList;
+    }
+
+    /**
+     * Get table full name
+     *
+     * @return String the table full name
+     */
+    public String getTableFullName() {
+        return SqlTools.addingQuote(schemaName) + "." + SqlTools.addingQuote(tableName);
     }
 }

@@ -5,6 +5,8 @@
  */
 package io.debezium.connector.mysql.sink.object;
 
+import io.debezium.connector.mysql.sink.util.SqlTools;
+
 /**
  * Description: ColumnMetaData class
  * @author douxin
@@ -90,5 +92,13 @@ public class ColumnMetaData {
      */
     public void setColumnType(String columnType) {
         this.columnType = columnType;
+    }
+
+    /**
+     * Get wrapped column name
+     *
+     */
+    public String getWrappedColumnName() {
+        return SqlTools.addingQuote(columnName);
     }
 }
