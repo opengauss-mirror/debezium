@@ -274,7 +274,9 @@ public class JdbcDbWriter {
             sinkRecordObject.setDmlOperation(dmlOperation);
             sinkRecordObject.setSourceField(sourceField);
             sinkRecordObject.setKafkaOffset(kafkaOffset);
-            filterByDb(sinkRecord, lsn, kafkaOffset);
+            if (filterByDb(sinkRecord, lsn, kafkaOffset)) {
+                continue;
+            }
             addedQueueMap.put(sinkRecord.kafkaOffset(), lsn);
             String schemaName = sourceField.getSchema();
             if (schemaMappingMap.get(schemaName) == null) {
@@ -304,15 +306,17 @@ public class JdbcDbWriter {
         }
     }
 
-    private void filterByDb(SinkRecord sinkRecord, Long lsn, Long kafkaOffset) {
+    private boolean filterByDb(SinkRecord sinkRecord, Long lsn, Long kafkaOffset) {
         if (isBpCondition && filterCount < BREAKPOINT_REPEAT_COUNT_LIMIT) {
             filterCount++;
             if (isSkipRecord(sinkRecord)) {
-                LOGGER.info("The sinkRecord is already replay, so skip this txn that lsn is {}", lsn);
+                LOGGER.info("The sinkRecord is already replay, "
+                        + "so skip this txn that lsn is {}", lsn);
                 breakPointRecord.getReplayedOffset().add(kafkaOffset);
-                return;
+                return true;
             }
         }
+        return false;
     }
 
     private boolean isSkipRecord(SinkRecord sinkRecord) {
@@ -338,11 +342,21 @@ public class JdbcDbWriter {
             oldTableMap.put(tableFullName, tableMetaData);
         }
         String sql = "";
+        List<String> sqlList;
         switch (operation) {
             case INSERT:
-            case UPDATE:
                 sql = sqlTools.getReadSql(tableMetaData, dmlOperation.getAfter(), Envelope.Operation.CREATE);
                 return sqlTools.isExistSql(sql);
+            case UPDATE:
+                sqlList = sqlTools.getReadSqlForUpdate(tableMetaData, dmlOperation.getBefore(),
+                        dmlOperation.getAfter());
+                if (sqlList.size() == 1) {
+                    return sqlTools.isExistSql(sqlList.get(0));
+                } else if (sqlList.size() == 2) {
+                    return sqlTools.isExistSql(sqlList.get(0)) && !sqlTools.isExistSql(sqlList.get(1));
+                } else {
+                    return false;
+                }
             case DELETE:
                 sql = sqlTools.getReadSql(tableMetaData, dmlOperation.getBefore(), Envelope.Operation.DELETE);
                 return !sqlTools.isExistSql(sql);

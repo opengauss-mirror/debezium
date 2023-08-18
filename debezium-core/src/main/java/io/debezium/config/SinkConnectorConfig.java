@@ -173,10 +173,7 @@ public class SinkConnectorConfig extends AbstractConfig {
         super(configDef, originals, false);
         this.topics = getString(TOPICS);
         this.schemaMappings = getString(SCHEMA_MAPPINGS);
-        if (isCommitProcess()) {
-            rectifyParameter();
-        }
-        rectifyFailSqlPara();
+        rectifyParameter();
     }
 
     protected void logAll(Map<?, ?> props, String name) {
@@ -414,6 +411,9 @@ public class SinkConnectorConfig extends AbstractConfig {
 
     private Boolean isSeverPathValid(String parameterName, String defaultValue) {
         String value = getString(parameterName);
+        if (value.contains("localhost")) {
+            value = value.replace("localhost", "127.0.0.1");
+        }
         String regex = "((25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)\\.)"
                 + "{3}(25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)"
                 + "(:([0-9]|[1-9]\\d|[1-9]\\d{2}|[1-9]\\d{3}|[1-5]\\d{4}|6[0-4]\\d{2}|655[0-2]\\d|6553[0-5])$)";
@@ -446,23 +446,25 @@ public class SinkConnectorConfig extends AbstractConfig {
     }
 
     private void rectifyParameter() {
-        if (isBooleanValid(APPEND_WRITE)) {
-            isAppendWrite = Boolean.parseBoolean(getString(APPEND_WRITE));
-        }
-        if (isFilePathValid(PROCESS_FILE_PATH, sinkProcessFilePath)) {
-            sinkProcessFilePath = getString(PROCESS_FILE_PATH);
-        }
-        if (isFilePathValid(CREATE_COUNT_INFO_PATH, createCountInfoPath)) {
-            createCountInfoPath = getString(CREATE_COUNT_INFO_PATH);
-        }
-        if (isNumberValid(COMMIT_TIME_INTERVAL, commitTimeInterval)) {
-            commitTimeInterval = Integer.parseInt(getString(COMMIT_TIME_INTERVAL));
-        }
-        if (isNumberValid(PROCESS_FILE_COUNT_LIMIT, processFileCountLimit)) {
-            processFileCountLimit = Integer.parseInt(getString(PROCESS_FILE_COUNT_LIMIT));
-        }
-        if (isNumberValid(PROCESS_FILE_TIME_LIMIT, processFileTimeLimit)) {
-            processFileTimeLimit = Integer.parseInt(getString(PROCESS_FILE_TIME_LIMIT));
+        if (isCommitProcess()) {
+            if (isBooleanValid(APPEND_WRITE)) {
+                isAppendWrite = Boolean.parseBoolean(getString(APPEND_WRITE));
+            }
+            if (isFilePathValid(PROCESS_FILE_PATH, sinkProcessFilePath)) {
+                sinkProcessFilePath = getString(PROCESS_FILE_PATH);
+            }
+            if (isFilePathValid(CREATE_COUNT_INFO_PATH, createCountInfoPath)) {
+                createCountInfoPath = getString(CREATE_COUNT_INFO_PATH);
+            }
+            if (isNumberValid(COMMIT_TIME_INTERVAL, commitTimeInterval)) {
+                commitTimeInterval = Integer.parseInt(getString(COMMIT_TIME_INTERVAL));
+            }
+            if (isNumberValid(PROCESS_FILE_COUNT_LIMIT, processFileCountLimit)) {
+                processFileCountLimit = Integer.parseInt(getString(PROCESS_FILE_COUNT_LIMIT));
+            }
+            if (isNumberValid(PROCESS_FILE_TIME_LIMIT, processFileTimeLimit)) {
+                processFileTimeLimit = Integer.parseInt(getString(PROCESS_FILE_TIME_LIMIT));
+            }
         }
         if (isSeverPathValid(BP_BOOTSTRAP_SERVERS, bootstrapServers)) {
             bootstrapServers = getString(BP_BOOTSTRAP_SERVERS);
@@ -479,9 +481,6 @@ public class SinkConnectorConfig extends AbstractConfig {
         if (isNumberValid(BP_QUEUE_CLEAR_INTERVAL, bpQueueTimeLimit)) {
             bpQueueTimeLimit = Integer.parseInt(getString(BP_QUEUE_CLEAR_INTERVAL));
         }
-    }
-
-    private void rectifyFailSqlPara() {
         if (isFilePathValid(FAIL_SQL_PATH, failSqlPath)) {
             failSqlPath = getString(FAIL_SQL_PATH);
         }

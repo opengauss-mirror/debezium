@@ -249,6 +249,15 @@ public class SqlTools {
     }
 
     private String getWhereCondition(TableMetaData tableMetaData, Struct before, Envelope.Operation option) {
+        ArrayList<String> whereConditionValueList = getWhereConditionList(tableMetaData, before, option);
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.join(" and ", whereConditionValueList));
+        sb.append(";");
+        return sb.toString();
+    }
+
+    private ArrayList<String> getWhereConditionList(TableMetaData tableMetaData, Struct before,
+                                                    Envelope.Operation option) {
         List<ColumnMetaData> primaryColumnMetaDataList = new ArrayList<>();
         for (ColumnMetaData column : tableMetaData.getColumnList()) {
             if (column.isPrimaryKeyColumn()) {
@@ -262,10 +271,7 @@ public class SqlTools {
         else {
             whereConditionValueList = getValueList(tableMetaData.getColumnList(), before, option);
         }
-        StringBuilder sb = new StringBuilder();
-        sb.append(String.join(" and ", whereConditionValueList));
-        sb.append(";");
-        return sb.toString();
+        return whereConditionValueList;
     }
 
     private ArrayList<String> getValueList(List<ColumnMetaData> columnMetaDataList, Struct after, Envelope.Operation operation) {
@@ -308,34 +314,38 @@ public class SqlTools {
      */
     public String getReadSql(TableMetaData tableMetaData, Struct struct, Envelope.Operation operation) {
         StringBuilder sb = new StringBuilder();
-        ArrayList<String> valueList = new ArrayList<>();
         sb.append("select * from ").append(tableMetaData.getTableFullName()).append(" where ");
         List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
-        String singleValue;
-        String columnName;
-        String columnType;
-        for (ColumnMetaData columnMetaData : columnMetaDataList) {
-            singleValue = DebeziumValueConverters.getValue(columnMetaData, struct);
-            columnName = columnMetaData.getWrappedColumnName();
-            columnType = columnMetaData.getColumnType();
-            switch (operation) {
-                case CREATE:
-                case UPDATE:
-                    valueList.add(columnName + " = " + singleValue);
-                    break;
-                case DELETE:
-                    if (singleValue == null) {
-                        valueList.add(columnName + " is null");
-                    } else if ("json".equals(columnType)) {
-                        valueList.add(columnName + "= CAST(" + singleValue + " AS json)");
-                    } else {
-                        valueList.add(columnName + " = " + singleValue);
-                    }
-                    break;
-            }
-        }
+        ArrayList<String> valueList = getValueList(columnMetaDataList, struct, operation);
         sb.append(String.join(" and ", valueList));
+        sb.append(";");
         return sb.toString();
+    }
+
+    /**
+     * Get read sql for update
+     *
+     * @param tableMetaData tableMetaData
+     * @param before before
+     * @param after after
+     * @return list sql list
+     */
+    public List<String> getReadSqlForUpdate(TableMetaData tableMetaData, Struct before, Struct after) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("select * from ").append(tableMetaData.getTableFullName()).append(" where ");
+        String extraSql = sb.toString();
+        ArrayList<String> updateSetValueList = getValueList(tableMetaData.getColumnList(), after,
+                Envelope.Operation.UPDATE);
+        ArrayList<String> whereConditionList = getWhereConditionList(tableMetaData, before, Envelope.Operation.DELETE);
+        List<String> sqlList = new ArrayList<>();
+        sb.append(String.join(" and ", updateSetValueList));
+        sb.append(";");
+        sqlList.add(sb.toString());
+        if (updateSetValueList.size() == whereConditionList.size()) {
+            extraSql = extraSql + String.join(" and ", whereConditionList) + ";";
+            sqlList.add(extraSql);
+        }
+        return sqlList;
     }
 
     /**

@@ -124,6 +124,9 @@ public class WorkThread extends Thread {
                 updateConnectionAndExecuteSql(sql, sinkRecordObject);
             }
             catch (SQLException exp) {
+                if (!connectionInfo.checkConnectionStatus(connection)) {
+                    return;
+                }
                 failCount++;
                 failSqlList.add(sql);
                 LOGGER.error("SQL exception occurred in work thread", exp);
@@ -255,6 +258,9 @@ public class WorkThread extends Thread {
             successCount++;
         }
         catch (SQLException exp) {
+            if (!connectionInfo.checkConnectionStatus(connection)) {
+                return;
+            }
             LOGGER.error("SQL exception occurred in work thread", exp);
         }
     }

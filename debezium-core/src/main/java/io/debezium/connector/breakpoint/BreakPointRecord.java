@@ -572,7 +572,6 @@ public class BreakPointRecord {
         }
         long lastProcessedOffset = UNLIMITED_VALUE;
         Long endOffset = getEndOffsetOfDbBreakPointTopic(null, bpRecordConsumer);
-        ;
         int recoveryAttempts = 0;
         boolean isTxnRecord = false;
         while (lastProcessedOffset < endOffset - 1 && !isGetBp) {
@@ -596,7 +595,8 @@ public class BreakPointRecord {
                     long bpBeginOffset = Long.parseLong(record.key().substring(0, index));
                     long bpEndOffset = Long.parseLong(record.key().substring(index + 1));
                     if (bpBeginOffset >= firstSinkRecord.kafkaOffset()) {
-                        if (!breakpointFilterList.isEmpty() && Long.parseLong(breakpointFilterList.getLast().split("-")[1]) == (bpBeginOffset - 1)) {
+                        if (!breakpointFilterList.isEmpty() && Long.parseLong(breakpointFilterList
+                                .getLast().split("-")[1]) == (bpBeginOffset - 1)) {
                             long preBeginOffset = Long.parseLong(breakpointFilterList.getLast().split("-")[0]);
                             breakpointFilterList.removeLast();
                             breakpointFilterList.add(preBeginOffset + "-" + bpEndOffset);

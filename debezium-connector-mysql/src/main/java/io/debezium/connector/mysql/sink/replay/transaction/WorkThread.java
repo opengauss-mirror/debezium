@@ -156,7 +156,7 @@ public class WorkThread extends Thread {
             successCount++;
         }
         else {
-            if (shouldStartTransaction) {
+            if (shouldStartTransaction && isConnection) {
                 statement.execute(ROLLBACK);
             }
             failCount++;
@@ -196,16 +196,9 @@ public class WorkThread extends Thread {
                 statement.execute(sql);
             }
             catch (SQLException exp) {
-                try {
-                    if (!connection.isValid(1)) {
-                        LOGGER.error("There is a connection problem with the openGauss,"
-                                + " check the database status or connection");
-                        isConnection = false;
-                        return false;
-                    }
-                }
-                catch (SQLException exception) {
-                    LOGGER.error("the cause of the exception is {}", exception.getMessage());
+                if (!connectionInfo.checkConnectionStatus(connection)) {
+                    isConnection = false;
+                    return false;
                 }
                 LOGGER.error("SQL exception occurred in transaction {}", txn.getSourceField());
                 LOGGER.error("The error SQL statement executed is: {}", sql);

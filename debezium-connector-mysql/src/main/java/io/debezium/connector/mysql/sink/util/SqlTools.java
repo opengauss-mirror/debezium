@@ -39,7 +39,6 @@ public class SqlTools {
     // and contains dolphin extension, use back quote to wrap object name
     private static String objectWrappedSymbol = "\"";
 
-
     private Connection connection;
     private boolean isConnection;
 
@@ -160,9 +159,9 @@ public class SqlTools {
         String sql_compatibility = "show sql_compatibility";
         String dolphin_extension = "select * from pg_extension where extname = 'dolphin';";
         try (Statement statement1 = connection.createStatement();
-             ResultSet rs1 = statement1.executeQuery(sql_compatibility);
-             Statement statement2 = connection.createStatement();
-             ResultSet rs2 = statement2.executeQuery(dolphin_extension)) {
+                ResultSet rs1 = statement1.executeQuery(sql_compatibility);
+                Statement statement2 = connection.createStatement();
+                ResultSet rs2 = statement2.executeQuery(dolphin_extension)) {
             while (rs1.next() && rs2.next()) {
                 if (B_COMPATIBILITY.equals(rs1.getString(1))) {
                     // when database compatibility is B and contains dolphin extension,
@@ -170,7 +169,8 @@ public class SqlTools {
                     objectWrappedSymbol = BACK_QUOTE;
                 }
             }
-        } catch (SQLException exp) {
+        }
+        catch (SQLException exp) {
             LOGGER.error("SQL exception occurred in get sql compatibility and dolphin extension", exp);
         }
     }
@@ -224,6 +224,15 @@ public class SqlTools {
     }
 
     private String getWhereCondition(TableMetaData tableMetaData, Struct before, Envelope.Operation option) {
+        ArrayList<String> whereConditionValueList = getWhereConditionList(tableMetaData, before, option);
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.join(" and ", whereConditionValueList));
+        sb.append(";");
+        return sb.toString();
+    }
+
+    private ArrayList<String> getWhereConditionList(TableMetaData tableMetaData,
+                                                    Struct before, Envelope.Operation option) {
         List<ColumnMetaData> primaryColumnMetaDataList = new ArrayList<>();
         for (ColumnMetaData column : tableMetaData.getColumnList()) {
             if (column.isPrimaryColumn()) {
@@ -237,10 +246,7 @@ public class SqlTools {
         else {
             whereConditionValueList = getValueList(tableMetaData.getColumnList(), before, option);
         }
-        StringBuilder sb = new StringBuilder();
-        sb.append(String.join(" and ", whereConditionValueList));
-        sb.append(";");
-        return sb.toString();
+        return whereConditionValueList;
     }
 
     private ArrayList<String> getValueList(List<ColumnMetaData> columnMetaDataList, Struct after,
@@ -319,14 +325,40 @@ public class SqlTools {
      */
     public String getReadSql(TableMetaData tableMetaData, Struct struct, Envelope.Operation operation) {
         StringBuilder sb = new StringBuilder();
-        ArrayList<String> valueList = new ArrayList<>();
         sb.append("select * from ").append(tableMetaData.getTableFullName()).append(" where ");
         List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
-        ArrayList<String> readSetValueList = getValueList(columnMetaDataList, struct, operation);
-        sb.append(String.join(" and ", readSetValueList));
+        ArrayList<String> valueList = getValueList(columnMetaDataList, struct, operation);
+        sb.append(String.join(" and ", valueList));
+        sb.append(";");
         return sb.toString();
     }
 
+    /**
+     * Get read sql for update
+     *
+     * @param tableMetaData tableMetaData
+     * @param before before
+     * @param after after
+     * @return list sql list
+     */
+    public List<String> getReadSqlForUpdate(TableMetaData tableMetaData, Struct before, Struct after) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("select * from ").append(tableMetaData.getTableFullName()).append(" where ");
+        String extraSql = sb.toString();
+        ArrayList<String> updateSetValueList = getValueList(tableMetaData.getColumnList(), after,
+                Envelope.Operation.UPDATE);
+        ArrayList<String> whereConditionList = getWhereConditionList(tableMetaData, before,
+                Envelope.Operation.DELETE);
+        List<String> sqlList = new ArrayList<>();
+        sb.append(String.join(" and ", updateSetValueList));
+        sb.append(";");
+        sqlList.add(sb.toString());
+        if (updateSetValueList.size() == whereConditionList.size()) {
+            extraSql = extraSql + String.join(" and ", whereConditionList) + ";";
+            sqlList.add(extraSql);
+        }
+        return sqlList;
+    }
 
     /**
      * Is or not exist data

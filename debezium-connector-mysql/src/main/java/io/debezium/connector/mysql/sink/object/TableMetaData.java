@@ -5,9 +5,9 @@
  */
 package io.debezium.connector.mysql.sink.object;
 
-import io.debezium.connector.mysql.sink.util.SqlTools;
-
 import java.util.List;
+
+import io.debezium.connector.mysql.sink.util.SqlTools;
 
 /**
  * Description: TableMetaData class
