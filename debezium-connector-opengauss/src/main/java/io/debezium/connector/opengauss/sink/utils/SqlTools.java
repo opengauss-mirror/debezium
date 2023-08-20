@@ -20,10 +20,8 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 /**
  * Description: SqlTools class
@@ -34,7 +32,6 @@ public class SqlTools {
     private static final Logger LOGGER = LoggerFactory.getLogger(SqlTools.class);
     private ConnectionInfo connectionInfo;
     private boolean isConnection;
-    private static Map<String, String> primeKeyTableMap = new HashMap<>();
     private List<String> binaryTypes = Arrays.asList("tinyblob", "mediumblob", "longblob", "binary", "varbinary");
 
     /**
@@ -56,7 +53,7 @@ public class SqlTools {
      */
     public  TableMetaData getTableMetaData(String schemaName, String tableName) {
         List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
-        String sql = String.format(Locale.ENGLISH, "select column_name, data_type from " +
+        String sql = String.format(Locale.ENGLISH, "select column_name, data_type, column_key from " +
                         "information_schema.columns where table_schema = '%s' and table_name = '%s'" +
                         " order by ordinal_position;",
                 schemaName, tableName);
@@ -66,7 +63,7 @@ public class SqlTools {
              ResultSet rs = statement.executeQuery(sql)) {
             while (rs.next()) {
                 columnMetaDataList.add(new ColumnMetaData(rs.getString("column_name"),
-                        rs.getString("data_type")));
+                        rs.getString("data_type"), "PRI".equals(rs.getString("column_key"))));
             }
             tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
         }
@@ -84,22 +81,6 @@ public class SqlTools {
         return tableMetaData;
     }
 
-    private String getPrimaryKeyValue(String schemaName, String tableName) {
-        String sql = String.format(Locale.ENGLISH, "SELECT cu.Column_Name FROM  " +
-                "INFORMATION_SCHEMA.`KEY_COLUMN_USAGE` cu  WHERE CONSTRAINT_NAME = 'PRIMARY' AND" +
-                " cu.Table_Name = '%s' AND CONSTRAINT_SCHEMA='%s';", tableName, schemaName);
-        try(Connection connection = connectionInfo.createMysqlConnection();
-            PreparedStatement preparedStatement = connection.prepareStatement(sql);
-            ResultSet resultSet=preparedStatement.executeQuery(); ){
-            while (resultSet.next()){
-                return resultSet.getString("Column_Name");
-            }
-        } catch (SQLException e){
-            LOGGER.error("SQL exception occurred in sql tools", e);
-        }
-        return null;
-    }
-
     /**
      * Gets rely table list
      *
@@ -108,14 +89,14 @@ public class SqlTools {
      * @return List<String> the table name list rely on the old table
      */
     public  List<String> getRelyTableList(String oldTableName, String schemaName){
-        String sql = String.format(Locale.ENGLISH, "select TABLE_NAME from INFORMATION_SCHEMA.KEY_COLUMN_USAGE" +
+        String sql = String.format(Locale.ENGLISH, "select TABLE_NAME, TABLE_SCHEMA from INFORMATION_SCHEMA.KEY_COLUMN_USAGE" +
                 "  where REFERENCED_TABLE_NAME='%s' and TABLE_SCHEMA='%s'", oldTableName, schemaName);
         try(Connection connection = connectionInfo.createMysqlConnection();
             PreparedStatement preparedStatement = connection.prepareStatement(sql);
             ResultSet resultSet=preparedStatement.executeQuery(); ){
             List<String> tableList = new ArrayList<>();
             while (resultSet.next()){
-                tableList.add(schemaName + "." + resultSet.getString("TABLE_NAME"));
+                tableList.add(resultSet.getString("TABLE_SCHEMA") + "." + resultSet.getString("TABLE_NAME"));
             }
             return tableList;
         } catch (SQLException e){
@@ -127,7 +108,7 @@ public class SqlTools {
     /**
      * Adding back quote
      *
-     * @param String the name
+     * @param name String the name
      * @return String the name wrapped by back quote
      */
     public static String addingBackQuote(String name) {
@@ -144,7 +125,7 @@ public class SqlTools {
     public String getInsertSql(TableMetaData tableMetaData, Struct after){
         StringBuilder sb = new StringBuilder();
         sb.append("insert into ").append(tableMetaData.getTableFullName()).append(" values(");
-        ArrayList<String> valueList = getValueList(tableMetaData, after, Envelope.Operation.CREATE);
+        ArrayList<String> valueList = getValueList(tableMetaData.getColumnList(), after, Envelope.Operation.CREATE);
         sb.append(String.join(", ", valueList));
         sb.append(");");
         return sb.toString();
@@ -159,13 +140,12 @@ public class SqlTools {
      * @return String the update sql
      */
     public String getUpdateSql(TableMetaData tableMetaData, Struct before, Struct after) {
-        List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
         StringBuilder sb = new StringBuilder();
         sb.append("update ").append(tableMetaData.getTableFullName()).append(" set ");
-        ArrayList<String> updateSetValueList = getValueList(tableMetaData, after, Envelope.Operation.UPDATE);
+        ArrayList<String> updateSetValueList = getValueList(tableMetaData.getColumnList(), after, Envelope.Operation.UPDATE);
         sb.append(String.join(", ", updateSetValueList));
         sb.append(" where ");
-        return sb + getWhereCondition(tableMetaData, before, columnMetaDataList);
+        return sb + getWhereCondition(tableMetaData, before, Envelope.Operation.DELETE);
     }
 
     /**
@@ -176,10 +156,9 @@ public class SqlTools {
      * @return String the delete sql
      */
     public String getDeleteSql(TableMetaData tableMetaData, Struct before) {
-        List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
         StringBuilder sb = new StringBuilder();
         sb.append("delete from ").append(tableMetaData.getTableFullName()).append(" where ");
-        return sb + getWhereCondition(tableMetaData, before, columnMetaDataList);
+        return sb + getWhereCondition(tableMetaData, before, Envelope.Operation.DELETE);
     }
 
     /**
@@ -269,37 +248,28 @@ public class SqlTools {
         return query;
     }
 
-    private String getWhereCondition(TableMetaData tableMetaData, Struct before, List<ColumnMetaData> columnMetaDataList) {
+    private String getWhereCondition(TableMetaData tableMetaData, Struct before, Envelope.Operation option) {
+        List<ColumnMetaData> primaryColumnMetaDataList = new ArrayList<>();
+        for (ColumnMetaData column : tableMetaData.getColumnList()) {
+            if (column.isPrimaryKeyColumn()) {
+                primaryColumnMetaDataList.add(column);
+            }
+        }
+        ArrayList<String> whereConditionValueList;
+        if (primaryColumnMetaDataList.size() > 0) {
+            whereConditionValueList = getValueList(primaryColumnMetaDataList, before, option);
+        }
+        else {
+            whereConditionValueList = getValueList(tableMetaData.getColumnList(), before, option);
+        }
         StringBuilder sb = new StringBuilder();
-        String primaryKeyColumnName;
-        String tableFullName = tableMetaData.getSchemaName() + "." + tableMetaData.getTableName();
-        if (primeKeyTableMap.containsKey(tableFullName)){
-            primaryKeyColumnName = primeKeyTableMap.get(tableFullName);
-        } else {
-            primaryKeyColumnName = getPrimaryKeyValue(tableMetaData.getSchemaName(), tableMetaData.getTableName());
-            if (primaryKeyColumnName != null){
-                primeKeyTableMap.put(tableFullName, primaryKeyColumnName);
-            }
-        }
-        if (primaryKeyColumnName != null){
-            for (ColumnMetaData columnMetaData : columnMetaDataList){
-                if (primaryKeyColumnName.equals(columnMetaData.getColumnName())){
-                    String value = DebeziumValueConverters.getValue(columnMetaData, before);
-                    sb.append(primaryKeyColumnName).append(" = ").append(value);
-                    break;
-                }
-            }
-        } else {
-            ArrayList<String> whereConditionValueList = getValueList(tableMetaData, before, Envelope.Operation.DELETE);
-            sb.append(String.join(" and ", whereConditionValueList));
-        }
+        sb.append(String.join(" and ", whereConditionValueList));
         sb.append(";");
         return sb.toString();
     }
 
-    private ArrayList<String> getValueList(TableMetaData tableMetaData, Struct after, Envelope.Operation operation) {
+    private ArrayList<String> getValueList(List<ColumnMetaData> columnMetaDataList, Struct after, Envelope.Operation operation) {
         ArrayList<String> valueList = new ArrayList<>();
-        List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
         String singleValue;
         String columnName;
         String columnType;

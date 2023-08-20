@@ -16,6 +16,7 @@ import io.debezium.connector.opengauss.sink.utils.SqlTools;
 public class ColumnMetaData {
     private String columnName;
     private String columnType;
+    private boolean isPrimaryKeyColumn = false;
 
     /**
      * Constructor
@@ -26,6 +27,19 @@ public class ColumnMetaData {
     public ColumnMetaData(String columnName, String columnType) {
         this.columnName = columnName;
         this.columnType = columnType;
+    }
+
+    /**
+     * Constructor
+     *
+     * @param columnName String the column name
+     * @param columnType String the column type
+     * @param isPrimaryKeyColumn boolean the isPrimaryKeyColumn
+     */
+    public ColumnMetaData(String columnName, String columnType, boolean isPrimaryKeyColumn) {
+        this.columnName = columnName;
+        this.columnType = columnType;
+        this.isPrimaryKeyColumn = isPrimaryKeyColumn;
     }
 
     /**
@@ -62,6 +76,15 @@ public class ColumnMetaData {
      */
     public void setColumnType(String columnType) {
         this.columnType = columnType;
+    }
+
+    /**
+     * Is primary key column
+     *
+     * @return boolean the isPrimaryKeyColumn
+     */
+    public boolean isPrimaryKeyColumn() {
+        return isPrimaryKeyColumn;
     }
 
     /**

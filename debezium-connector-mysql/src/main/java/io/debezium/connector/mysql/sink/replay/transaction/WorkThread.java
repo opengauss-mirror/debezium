@@ -49,6 +49,7 @@ public class WorkThread extends Thread {
     private List<Long> txnReplayedOffsets = new ArrayList<>();
     private boolean isTransaction;
     private boolean isConnection = true;
+    private boolean isAlive = true;
 
     /**
      * Constructor
@@ -169,6 +170,24 @@ public class WorkThread extends Thread {
         if (isConnection) {
             buildAndSaveBpInfo();
         }
+    }
+
+    /**
+     * Can the thread be available
+     *
+     * @return boolean the canUse
+     */
+    public boolean canUse() {
+        return isAlive;
+    }
+
+    /**
+     * Sets alive
+     *
+     * @param alive boolean the alive
+     */
+    public void setAlive(boolean alive) {
+        isAlive = alive;
     }
 
     private boolean executeTxnSql(Statement statement, Connection connection) {

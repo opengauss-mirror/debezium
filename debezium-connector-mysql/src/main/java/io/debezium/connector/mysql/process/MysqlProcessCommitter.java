@@ -29,11 +29,6 @@ import io.debezium.connector.process.BaseProcessCommitter;
 public class MysqlProcessCommitter extends BaseProcessCommitter {
     private static final Logger LOGGER = LoggerFactory.getLogger(MysqlProcessCommitter.class);
     private static final String SHOW_MASTER_STATUS = "SHOW MASTER STATUS";
-    private static final String SHOW_SLAVE_STATUS = "SHOW SLAVE STATUS";
-    private static final String SHOW_UUID = "show global variables like 'server_uuid'";
-    private static final String SHOW_READ_ONLY = "show variables like 'read_only'";
-    private static final String VALUE = "Value";
-    private static final String MASTER_UUID = "Master_UUID";
     private static final String FORWARD_SOURCE_PROCESS_PREFIX = "forward-source-process-";
     private static final String FORWARD_SINK_PROCESS_PREFIX = "forward-sink-process-";
     private static final String CREATE_COUNT_INFO_NAME = "start-event-index.txt";
@@ -44,8 +39,8 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
     private MysqlSourceProcessInfo sourceProcessInfo;
     private MysqlSinkProcessInfo sinkProcessInfo;
     private MySqlConnection mysqlConnection;
-    private long startEventIndex;
-    private String uuid;
+    private long createCount;
+    private String[] gtidSet;
 
     /**
      * Constructor
@@ -63,8 +58,25 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
         deleteRedundantFiles(connectorConfig.filePath(),
                 connectorConfig.processFileCountLimit(), connectorConfig.processFileTimeLimit());
         this.mysqlConnection = connection;
-        this.startEventIndex = initStartEventIndex(originGtidSet);
+        initOriginGtidSet(originGtidSet.split(","));
         executeOutPutThread(connectorConfig.createCountInfoPath() + File.separator);
+    }
+
+    private void initOriginGtidSet(String[] originGtidSets) {
+        String[] currentGtidSets = getCurrentGtid();
+        gtidSet = new String[currentGtidSets.length];
+        for (int i = 0; i < gtidSet.length; i++) {
+            for (int j = 0; j < originGtidSets.length; j++) {
+               if (getUuid(originGtidSets[j]).equals(getUuid(currentGtidSets[i]))) {
+                   gtidSet[i] = originGtidSets[j];
+                   break;
+               }
+            }
+        }
+    }
+
+    private String getUuid(String gtid) {
+        return gtid.split(":")[0];
     }
 
     /**
@@ -101,10 +113,31 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
         long before = waitTimeInterval(true);
         sourceProcessInfo = MysqlSourceProcessInfo.SOURCE_PROCESS_INFO;
         sourceProcessInfo.setSpeed(before, commitTimeInterval);
-        sourceProcessInfo.setCreateCount(getCurrentEventIndex() - startEventIndex);
+        refreshCreateCount();
+        sourceProcessInfo.setCreateCount(createCount);
         sourceProcessInfo.setRest(0);
         sourceProcessInfo.setTimestamp();
         return sourceProcessInfo;
+    }
+
+    private void refreshCreateCount() {
+        String[] currentGtidSets = getCurrentGtid();
+        for (int i = 0; i < gtidSet.length; i++) {
+            if (!gtidSet[i].equals(currentGtidSets[i])) {
+                createCount += getSliceCreateCount(gtidSet[i], currentGtidSets[i]);
+                gtidSet = currentGtidSets;
+                break;
+            }
+        }
+    }
+
+    private long getSliceCreateCount(String before, String after) {
+        return getEventIndex(after) - getEventIndex(before);
+    }
+
+    private long getEventIndex(String gtid) {
+        String tid = gtid.split(":")[gtid.split(":").length - 1];
+        return Long.parseLong(tid.split("-")[tid.split("-").length - 1]);
     }
 
     /**
@@ -131,66 +164,18 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
         return sinkProcessInfo;
     }
 
-    private long initStartEventIndex(String originGtidSet) {
-        initUuid();
-        String validGtid = getValidGtid(originGtidSet.split(","));
-        String tid = validGtid.split(":")[validGtid.split(":").length - 1];
-        return Long.parseLong(tid.split("-")[tid.split("-").length - 1]);
-    }
-
-    private void initUuid() {
-        AtomicReference<String> readOnlySet = new AtomicReference<>("");
-        AtomicReference<String> uuidSet = new AtomicReference<>("");
+    private String[] getCurrentGtid() {
+        AtomicReference<String> gtidSet = new AtomicReference<>("");
         try {
-            mysqlConnection.query(SHOW_READ_ONLY, rs -> {
+            mysqlConnection.query(SHOW_MASTER_STATUS, rs -> {
                 if (rs.next()) {
-                    readOnlySet.set(rs.getString(VALUE));
+                    gtidSet.set(rs.getString(GTID));
                 }
             });
-            if ("OFF".equalsIgnoreCase(readOnlySet.get())) {
-                mysqlConnection.query(SHOW_UUID, rs -> {
-                    if (rs.next()) {
-                        uuidSet.set(rs.getString(VALUE));
-                    }
-                });
-            }
-            else {
-                mysqlConnection.query(SHOW_SLAVE_STATUS, rs -> {
-                    if (rs.next()) {
-                        uuidSet.set(rs.getString(MASTER_UUID));
-                    }
-                });
-            }
+        } catch (SQLException e) {
+            LOGGER.error("SQL exception occurred when query the current event index.");
         }
-        catch (SQLException e) {
-            LOGGER.warn("SQL exception occurred.", e);
-        }
-        this.uuid = uuidSet.get();
-    }
-
-    private String getCurrentGtid() throws SQLException {
-        AtomicReference<String> gtidSet = new AtomicReference<>("");
-        mysqlConnection.query(SHOW_MASTER_STATUS, rs -> {
-            if (rs.next()) {
-                gtidSet.set(rs.getString(GTID));
-            }
-        });
-        return getValidGtid(gtidSet.get().replaceAll("\\s*", "").split(","));
-    }
-
-    private long getCurrentEventIndex() {
-        String gtid;
-        try {
-            gtid = getCurrentGtid();
-        }
-        catch (SQLException e) {
-            return -1L;
-        }
-        if (!"".equals(gtid)) {
-            String tid = gtid.split(":")[gtid.split(":").length - 1];
-            return Long.parseLong(tid.split("-")[tid.split("-").length - 1]);
-        }
-        return -1L;
+        return gtidSet.get().replaceAll("\\s*", "").split(",");
     }
 
     private long waitTimeInterval(boolean isSource) {
@@ -212,16 +197,6 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
         return before;
     }
 
-    private String getValidGtid(String[] gtids) {
-        for (int i = 0; i < gtids.length; i++) {
-            if (gtids[i].split(":")[0].equals(uuid)) {
-                gtids[0] = gtids[i];
-                break;
-            }
-        }
-        return gtids[0];
-    }
-
     private void executeOutPutThread(String dirPath) {
         threadPool.execute(() -> {
             if (!initFile(dirPath).exists()) {
@@ -236,8 +211,7 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
                 catch (InterruptedException exp) {
                     LOGGER.error("Interrupted exception occurred while thread sleeping", exp);
                 }
-                outputCreateCountInfo(dirPath + CREATE_COUNT_INFO_NAME, getCurrentEventIndex()
-                        - startEventIndex);
+                outputCreateCountInfo(dirPath + CREATE_COUNT_INFO_NAME, createCount);
             }
         });
     }
