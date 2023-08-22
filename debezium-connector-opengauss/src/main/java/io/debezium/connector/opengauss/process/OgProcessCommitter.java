@@ -51,7 +51,7 @@ public class OgProcessCommitter extends BaseProcessCommitter {
      * @param connectorConfig OpengaussConnectorConfig the connectorConfig
      */
     public OgProcessCommitter(OpengaussConnectorConfig connectorConfig) {
-        super(connectorConfig, REVERSE_SINK_PROCESS_PREFIX);
+        super(connectorConfig, REVERSE_SOURCE_PROCESS_PREFIX);
         this.fileFullPath = initFileFullPath(file + File.separator + REVERSE_SOURCE_PROCESS_PREFIX);
         this.currentFile = new File(fileFullPath);
         this.isAppendWrite = connectorConfig.appendWrite();
@@ -67,7 +67,7 @@ public class OgProcessCommitter extends BaseProcessCommitter {
      */
     public OgProcessCommitter(OpengaussSinkConnectorConfig connectorConfig) {
         super(connectorConfig, REVERSE_SINK_PROCESS_PREFIX);
-        this.fileFullPath = initFileFullPath(file + File.separator + REVERSE_SOURCE_PROCESS_PREFIX);
+        this.fileFullPath = initFileFullPath(file + File.separator + REVERSE_SINK_PROCESS_PREFIX);
         this.currentFile = new File(fileFullPath);
         this.isAppendWrite = connectorConfig.isAppend();
         this.createCountInfoPath = connectorConfig.getCreateCountInfoPath();
