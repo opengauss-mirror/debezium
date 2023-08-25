@@ -178,4 +178,27 @@ public class ConnectionInfo {
         }
         return connection;
     }
+
+    /**
+     * Check connection whether valid
+     *
+     * @param connection the connection
+     * @return boolean is or not valid
+     */
+    public boolean checkConnectionStatus(Connection connection) {
+        try {
+            if (connection.isValid(1)) {
+                return true;
+            }
+            else {
+                LOGGER.error("There is a connection problem with the mysql,"
+                        + " check the database status or connection");
+                return false;
+            }
+        }
+        catch (SQLException exception) {
+            LOGGER.error("the cause of the exception is {}", exception.getMessage());
+        }
+        return false;
+    }
 }

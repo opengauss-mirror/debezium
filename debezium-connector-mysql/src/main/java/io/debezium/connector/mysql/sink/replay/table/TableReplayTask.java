@@ -80,7 +80,7 @@ public class TableReplayTask extends ReplayTask {
 
     private Map<String, Integer> runnableMap = new HashMap<>();
     private Map<String, String> schemaMappingMap = new HashMap<>();
-    private Map<Long, Long> addedQueueMap = new ConcurrentHashMap<>();
+    private Map<Long, String> addedQueueMap = new ConcurrentHashMap<>();
     private MySqlSinkConnectorConfig config;
     private volatile AtomicBoolean isSinkQueueBlock = new AtomicBoolean(false);
     private volatile AtomicBoolean isWorkQueueBlock = new AtomicBoolean(false);
@@ -236,15 +236,17 @@ public class TableReplayTask extends ReplayTask {
 
     private void closeConnection() {
         for (WorkThread workThread : threadList) {
-            try {
-                workThread.getConnection().close();
-            }
-            catch (SQLException exp) {
-                LOGGER.error("Unexpected error while closing the connection, the exception message is {}",
-                        exp.getMessage());
-            }
-            finally {
-                workThread.setConnection(null);
+            if (workThread.getConnection() != null) {
+                try {
+                    workThread.getConnection().close();
+                }
+                catch (SQLException exp) {
+                    LOGGER.error("Unexpected error while closing the connection, the exception message is {}",
+                            exp.getMessage());
+                }
+                finally {
+                    workThread.setConnection(null);
+                }
             }
         }
     }
@@ -306,7 +308,10 @@ public class TableReplayTask extends ReplayTask {
             String schemaName = sourceField.getDatabase();
             String tableName = sourceField.getTable();
             String gtid = sourceField.getGtid();
-            filterByDb(sinkRecord, gtid, kafkaOffset);
+            if (filterByDb(sinkRecord, gtid, kafkaOffset)) {
+                continue;
+            }
+            addedQueueMap.put(sinkRecord.kafkaOffset(), gtid);
             String tableFullName = schemaMappingMap.get(schemaName) + "." + tableName;
             while (isWorkQueueBlock()) {
                 try {
@@ -320,16 +325,17 @@ public class TableReplayTask extends ReplayTask {
         }
     }
 
-    private void filterByDb(SinkRecord sinkRecord, String gtid, long kafkaOffset) {
+    private boolean filterByDb(SinkRecord sinkRecord, String gtid, long kafkaOffset) {
         if (isBpCondition && filterCount < BREAKPOINT_REPEAT_COUNT_LIMIT) {
             filterCount++;
             if (isSkipRecord(sinkRecord)) {
                 LOGGER.info("The sinkRecord is already replay,"
                         + " so skip this txn that gtid is {}", gtid);
                 breakPointRecord.getReplayedOffset().add(kafkaOffset);
-                return;
+                return true;
             }
         }
+        return false;
     }
 
     private boolean isSkipRecord(SinkRecord sinkRecord) {
@@ -357,11 +363,23 @@ public class TableReplayTask extends ReplayTask {
             oldTableMap.put(tableFullName, tableMetaData);
         }
         String sql = "";
+        List<String> sqlList;
         switch (operation) {
             case INSERT:
-            case UPDATE:
                 sql = sqlTools.getReadSql(tableMetaData, dmlOperation.getAfter(), Envelope.Operation.CREATE);
                 return sqlTools.isExistSql(sql);
+            case UPDATE:
+                sqlList = sqlTools.getReadSqlForUpdate(tableMetaData, dmlOperation.getBefore(),
+                        dmlOperation.getAfter());
+                if (sqlList.size() == 1) {
+                    return sqlTools.isExistSql(sqlList.get(0));
+                }
+                else if (sqlList.size() == 2) {
+                    return sqlTools.isExistSql(sqlList.get(0)) && !sqlTools.isExistSql(sqlList.get(1));
+                }
+                else {
+                    return false;
+                }
             case DELETE:
                 sql = sqlTools.getReadSql(tableMetaData, dmlOperation.getBefore(), Envelope.Operation.DELETE);
                 return !sqlTools.isExistSql(sql);
@@ -401,9 +419,9 @@ public class TableReplayTask extends ReplayTask {
             return endOffset;
         }
         replayedOffsets.offer(endOffset);
-        Iterator<Map.Entry<Long, Long>> iterator = addedQueueMap.entrySet().iterator();
+        Iterator<Map.Entry<Long, String>> iterator = addedQueueMap.entrySet().iterator();
         while (iterator.hasNext()) {
-            Map.Entry<Long, Long> entry = iterator.next();
+            Map.Entry<Long, String> entry = iterator.next();
             if (entry.getKey() < endOffset) {
                 iterator.remove();
             }

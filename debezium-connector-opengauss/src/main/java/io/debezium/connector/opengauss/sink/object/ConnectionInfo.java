@@ -5,6 +5,9 @@
  */
 package io.debezium.connector.opengauss.sink.object;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -15,6 +18,8 @@ import java.sql.SQLException;
  * @date 2022/11/04
  */
 public class ConnectionInfo {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ConnectionInfo.class);
+
     /**
      * The mysql JDBC driver class
      */
@@ -74,5 +79,26 @@ public class ConnectionInfo {
             exp.printStackTrace();
         }
         return connection;
+    }
+
+    /**
+     * Check connection whether valid
+     *
+     * @param connection the connection
+     * @return boolean is or not valid
+     */
+    public boolean checkConnectionStatus(Connection connection) {
+        try {
+            if (connection.isValid(1)) {
+                return true;
+            } else {
+                LOGGER.error("There is a connection problem with the mysql,"
+                        + " check the database status or connection");
+                return false;
+            }
+        } catch (SQLException exception) {
+            LOGGER.error("the cause of the exception is {}", exception.getMessage());
+        }
+        return false;
     }
 }

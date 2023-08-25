@@ -120,7 +120,7 @@ public class WorkThread extends Thread {
             LOGGER.error("SQL exception occurred in work thread", exp);
         }
         String sql = null;
-        while (true) {
+        while (!isStop) {
             try {
                 sinkRecordObject = sinkRecordQueue.take();
                 sql = constructSql(sinkRecordObject);
@@ -276,11 +276,17 @@ public class WorkThread extends Thread {
             processRecordMap.put(tableName, count + list.size());
             replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
             savedBreakPointInfo(sinkRecordObject, true);
+            clearCsvFile(path);
         } catch (CommunicationsException exp) {
             LOGGER.error("statement closed unexpectedly.");
             retryLoad(sql, inputStream, sinkRecordObject);
-            processRecordMap.put(tableName, count + list.size());
+            if (isConnection) {
+                processRecordMap.put(tableName, count + list.size());
+            }
         } catch (SQLException e) {
+            if (!connectionInfo.checkConnectionStatus(connection)) {
+                return;
+            }
             failCount++;
             failSqlList.add("-- " + sqlPattern.format(LocalDateTime.now()) + ": "
                     + path + System.lineSeparator()
@@ -289,7 +295,6 @@ public class WorkThread extends Thread {
             LOGGER.error("The error SQL statement executed is: {}", sql);
             LOGGER.error("the cause of the exception is {}", e.getMessage());
         } finally {
-            clearCsvFile(path);
             try {
                 inputStream.close();
             } catch (IOException e) {
@@ -313,6 +318,9 @@ public class WorkThread extends Thread {
             replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
             savedBreakPointInfo(sinkRecordObject, false);
         } catch (SQLException e) {
+            if (!connectionInfo.checkConnectionStatus(connection)) {
+                return;
+            }
             LOGGER.error("SQL exception occurred in work thread.", e);
         }
     }
@@ -368,6 +376,9 @@ public class WorkThread extends Thread {
             savedBreakPointInfo(sinkRecordObject, false);
             successCount++;
         } catch (SQLException exp) {
+            if (!connectionInfo.checkConnectionStatus(connection)) {
+                return;
+            }
             LOGGER.error("SQL exception occurred in work thread", exp);
         }
     }

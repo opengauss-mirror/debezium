@@ -229,44 +229,17 @@ public class TransactionDispatcher {
     }
 
     private boolean isSkipTxn(Transaction txn) {
-        String firstSql = txn.getSqlList().get(0);
-        StringBuilder sb = new StringBuilder();
-        String builtSql;
+        int sqlListSize = txn.getSqlList().size();
+        String lastSql = txn.getSqlList().get(sqlListSize - 1);
         if (txn.getIsDml()) {
-            if (firstSql.contains("insert into")) {
-                sb.append("select * from ");
-                String[] insertSql = firstSql.split(" ");
-                String schemaName = insertSql[2].split("\\.")[0].replace("\"", "");
-                String tableName = insertSql[2].split("\\.")[1].replace("\"", "");
-                sb.append(schemaName).append(".").append(tableName);
-                sb.append(" where ");
-                TableMetaData tableMetaData = sqlTools.getTableMetaData(schemaName, tableName);
-                String valueString = firstSql.substring(firstSql.indexOf("("));
-                String[] columnValueArray = valueString.replace("(", "")
-                        .replace(")", "").split(", ");
-                ArrayList<String> valueList = new ArrayList<>();
-                for (int i = 0; i < columnValueArray.length; i++) {
-                    valueList.add(tableMetaData.getColumnList().get(i).getColumnName() + "=" + columnValueArray[i]);
-                }
-                sb.append(String.join(" and ", valueList));
-                builtSql = sb.toString();
-                return sqlTools.isExistSql(builtSql);
+            if (lastSql.startsWith("insert into")) {
+                return checkInsertSql(txn, lastSql);
             }
-            else if (firstSql.contains("update")) {
-                int setIndex = firstSql.indexOf("set");
-                String schemaAndTable = firstSql.substring(7, setIndex);
-                sb.append("select * from ").append(schemaAndTable).append(" where ");
-                int whereIndex = firstSql.indexOf("where");
-                String condition = firstSql.substring(setIndex + 4, whereIndex)
-                        .replace(",", " and")
-                        + "and" + firstSql.substring(whereIndex + 5);
-                sb.append(condition);
-                builtSql = sb.toString();
-                return sqlTools.isExistSql(builtSql);
+            else if (lastSql.startsWith("update")) {
+                return checkUpdateSql(txn, lastSql);
             }
-            else if (firstSql.contains("delete from")) {
-                builtSql = firstSql.replace("delete from", "select * from");
-                return !sqlTools.isExistSql(builtSql);
+            else if (lastSql.startsWith("delete from")) {
+                return checkDeleteSql(lastSql);
             }
             else {
                 return false;
@@ -275,9 +248,63 @@ public class TransactionDispatcher {
         return false;
     }
 
+    private boolean checkInsertSql(Transaction txn, String lastSql) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("select * from ");
+        String schemaName = txn.getSourceField().getDatabase();
+        String tableName = txn.getSourceField().getTable();
+        sb.append(SqlTools.addingQuote(schemaName)).append(".").append(SqlTools.addingQuote(tableName));
+        sb.append(" where ");
+        TableMetaData tableMetaData = sqlTools.getTableMetaData(schemaName, tableName);
+        String valueString = lastSql.substring(lastSql.indexOf("("));
+        String[] columnValueArray = valueString.replace("(", "")
+                .replace(")", "").split(", ");
+        ArrayList<String> valueList = new ArrayList<>();
+        for (int i = 0; i < columnValueArray.length; i++) {
+            valueList.add(tableMetaData.getColumnList().get(i).getColumnName() + "=" + columnValueArray[i]);
+        }
+        sb.append(String.join(" and ", valueList));
+        sb.append(";");
+        return sqlTools.isExistSql(sb.toString());
+    }
+
+    private boolean checkUpdateSql(Transaction txn, String lastSql) {
+        StringBuilder sb = new StringBuilder();
+        int setIndex = lastSql.indexOf("set");
+        sb.append("select * from ");
+        String schemaName = txn.getSourceField().getDatabase();
+        String tableName = txn.getSourceField().getTable();
+        sb.append(SqlTools.addingQuote(schemaName)).append(".").append(SqlTools.addingQuote(tableName));
+        sb.append(" where ");
+        int whereIndex = lastSql.indexOf("where");
+        String setCondition = lastSql.substring(setIndex + 4, whereIndex - 1);
+        String whereCondition = lastSql.substring(whereIndex + 6);
+        String extraSql = sb.toString();
+        sb.append(setCondition.replace(", ", "and"));
+        sb.append(";");
+        if (checkHavePk(setCondition, whereCondition)) {
+            return sqlTools.isExistSql(sb.toString());
+        }
+        else {
+            extraSql = extraSql + whereCondition;
+            return sqlTools.isExistSql(sb.toString()) && !sqlTools.isExistSql(extraSql);
+        }
+    }
+
+    private boolean checkDeleteSql(String lastSql) {
+        String builtSql = lastSql.replace("delete from", "select * from");
+        return !sqlTools.isExistSql(builtSql);
+    }
+
+    private boolean checkHavePk(String setCondition, String whereCondition) {
+        String[] whereConditionArray = whereCondition.split(" and ");
+        String[] setConditionArray = setCondition.split(", ");
+        return whereConditionArray.length != setConditionArray.length;
+    }
+
     private void addReplayedOffset(Transaction txn, PriorityBlockingQueue<Long> txnReplayedOffsets) {
         for (long i = txn.getTxnBeginOffset(); i <= txn.getTxnEndOffset(); i++) {
-            txnReplayedOffsets.add(i);
+            txnReplayOffsets.add(i);
         }
         txnReplayedOffsets.addAll(txnReplayOffsets);
         txnReplayOffsets.clear();

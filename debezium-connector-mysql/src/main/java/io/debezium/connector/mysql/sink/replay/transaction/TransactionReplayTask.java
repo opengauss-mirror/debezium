@@ -267,7 +267,7 @@ public class TransactionReplayTask extends ReplayTask {
     @Override
     public void batchWrite(Collection<SinkRecord> records) {
         // if addedQueueMap is empty, explain occurred first booting or breakpoint,
-        // and if exist breakpoint info ,mean breakpoint condition
+        // and if exist breakpoint info, mean breakpoint condition
         if (addedQueueMap.isEmpty() && breakPointRecord.isExists(records)) {
             LOGGER.warn("There is a breakpoint condition");
             transactionDispatcher.setIsBpCondition(true);
@@ -661,7 +661,7 @@ public class TransactionReplayTask extends ReplayTask {
                 if (fileIndex < snapshotFileIndex
                         || (fileIndex == snapshotFileIndex && binlogPosition <= snapshotBinlogPosition)) {
                     String skipInfo = String.format("Table %s snapshot is %s, current position is %s, which is less than "
-                                    + "table snapshot, so skip the record.", fullName, snapshotPoint,
+                            + "table snapshot, so skip the record.", fullName, snapshotPoint,
                             binlogFile + ":" + binlogPosition);
                     LOGGER.warn(skipInfo);
                     return true;
