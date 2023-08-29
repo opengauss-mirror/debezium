@@ -706,7 +706,8 @@ public class TransactionReplayTask extends ReplayTask {
             public void run() {
                 Thread.currentThread().setName("timer-queue-size");
                 int size = sinkQueue.size();
-                if (size > openFlowControlQueueSize) {
+                int storeKafkaSize = breakPointRecord.getStoreKafkaQueueSize();
+                if (size > openFlowControlQueueSize || storeKafkaSize > openFlowControlQueueSize) {
                     if (!isBlock.get()) {
                         LOGGER.warn("[start flow control] current isBlock is {}, queue size is {}, which is "
                                 + "more than {} * {}, so open flow control",
@@ -714,7 +715,7 @@ public class TransactionReplayTask extends ReplayTask {
                     }
                     isBlock.set(true);
                 }
-                if (size < closeFlowControlQueueSize) {
+                if (size < closeFlowControlQueueSize && storeKafkaSize < closeFlowControlQueueSize) {
                     if (isBlock.get()) {
                         LOGGER.warn("[close flow control] current isBlock is {}, queue size is {}, which is "
                                 + "less than {} * {}, so close flow control",

@@ -493,7 +493,8 @@ public class TableReplayTask extends ReplayTask {
         int openFlowControlQueueSize = (int) (openFlowControlThreshold * maxQueueSize);
         int closeFlowControlQueueSize = (int) (closeFlowControlThreshold * maxQueueSize);
         int size = sinkQueue.size();
-        if (size > openFlowControlQueueSize) {
+        int storeKafkaSize = breakPointRecord.getStoreKafkaQueueSize();
+        if (size > openFlowControlQueueSize || storeKafkaSize > openFlowControlQueueSize) {
             if (!isSinkQueueBlock.get()) {
                 LOGGER.warn("[start flow control sink queue] current isSinkQueueBlock is {}, queue size is {}, which is "
                         + "more than {} * {}, so open flow control",
@@ -501,7 +502,7 @@ public class TableReplayTask extends ReplayTask {
                 isSinkQueueBlock.set(true);
             }
         }
-        if (size < closeFlowControlQueueSize) {
+        if (size < closeFlowControlQueueSize && storeKafkaSize < closeFlowControlQueueSize) {
             if (isSinkQueueBlock.get()) {
                 LOGGER.warn("[close flow control sink queue] current isSinkQueueBlock is {}, queue size is {}, which is "
                         + "less than {} * {}, so close flow control",
