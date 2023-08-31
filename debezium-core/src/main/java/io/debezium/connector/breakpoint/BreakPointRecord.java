@@ -29,6 +29,7 @@ import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
 
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.Config;
@@ -222,8 +223,7 @@ public class BreakPointRecord {
                 .withDefault(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers)
                 .withDefault(ProducerConfig.ACKS_CONFIG, 1)
                 .withDefault(ProducerConfig.RETRIES_CONFIG, 1) // may result in duplicate messages, but that's okay
-                .withDefault(ProducerConfig.BATCH_SIZE_CONFIG, 1024 * 32) // 32KB
-                .withDefault(ProducerConfig.LINGER_MS_CONFIG, 100)
+                .withDefault(ProducerConfig.BATCH_SIZE_CONFIG, 1024 * 128) // 128KB
                 .withDefault(ProducerConfig.BUFFER_MEMORY_CONFIG, 1024 * 1024 * 64) // 64MB
                 .withDefault(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class)
                 .withDefault(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class)
@@ -499,14 +499,15 @@ public class BreakPointRecord {
 
     private void storeToKafkaThread() {
         threadPool.execute(() -> {
+            List<BreakPointInfo> toStoreList = new ArrayList<>();
             while (true) {
-                List<BreakPointInfo> toStoreList = new ArrayList<>();
                 try {
                     Queues.drain(storeToKafkaQueue, toStoreList, 3000, 100, TimeUnit.MILLISECONDS);
                     for (BreakPointInfo breakPointInfo : toStoreList) {
                         storeRecordToKafka(breakPointInfo.getKey(), breakPointInfo.getValue());
-                        this.producer.flush();
                     }
+                    this.producer.flush();
+                    toStoreList.clear();
                 }
                 catch (InterruptedException e) {
                     LOGGER.error("occurred exception is {}", e.getMessage());
@@ -714,6 +715,15 @@ public class BreakPointRecord {
     }
 
     /**
+     * Get store kafka queue size
+     *
+     * @return int store kafka queue size
+     */
+    public int getStoreKafkaQueueSize() {
+        return storeToKafkaQueue.size();
+    }
+
+    /**
      * Find the can be deleted offset by committedOffset
      *
      * @param committedOffset replayed committed offset
@@ -766,6 +776,8 @@ public class BreakPointRecord {
             public void run() {
                 if (!toDeleteOffsets.isEmpty()) {
                     Long maxCommittedOffset = Collections.max(toDeleteOffsets);
+                    toDeleteOffsets = toDeleteOffsets.stream().filter(offset -> offset > maxCommittedOffset)
+                            .collect(Collectors.toList());
                     Long realBreakpointOffset = preDeleteOffset(maxCommittedOffset);
                     deleteBreakpoint(realBreakpointOffset);
                     LOGGER.info("In the period,delete the kafka data, kafka offset is {}", realBreakpointOffset + 1);
@@ -784,6 +796,8 @@ public class BreakPointRecord {
                 if (totalMessageCount >= bpQueueSizeLimit) {
                     LOGGER.warn("the kafka offsets size is {}, it exceeded the limit", totalMessageCount);
                     Long maxCommittedOffset = Collections.max(toDeleteOffsets);
+                    toDeleteOffsets = toDeleteOffsets.stream().filter(offset -> offset > maxCommittedOffset)
+                            .collect(Collectors.toList());
                     Long realBreakpointOffset = preDeleteOffset(maxCommittedOffset);
                     deleteBreakpoint(realBreakpointOffset);
                     totalMessageCount = 0L;

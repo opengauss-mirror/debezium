@@ -67,10 +67,10 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
         gtidSet = new String[currentGtidSets.length];
         for (int i = 0; i < gtidSet.length; i++) {
             for (int j = 0; j < originGtidSets.length; j++) {
-               if (getUuid(originGtidSets[j]).equals(getUuid(currentGtidSets[i]))) {
-                   gtidSet[i] = originGtidSets[j];
-                   break;
-               }
+                if (getUuid(originGtidSets[j]).equals(getUuid(currentGtidSets[i]))) {
+                    gtidSet[i] = originGtidSets[j];
+                    break;
+                }
             }
         }
     }
@@ -165,17 +165,21 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
     }
 
     private String[] getCurrentGtid() {
-        AtomicReference<String> gtidSet = new AtomicReference<>("");
+        AtomicReference<String> currentGtidSet = new AtomicReference<>("");
         try {
             mysqlConnection.query(SHOW_MASTER_STATUS, rs -> {
                 if (rs.next()) {
-                    gtidSet.set(rs.getString(GTID));
+                    currentGtidSet.set(rs.getString(GTID));
                 }
             });
-        } catch (SQLException e) {
+        }
+        catch (SQLException e) {
             LOGGER.error("SQL exception occurred when query the current event index.");
         }
-        return gtidSet.get().replaceAll("\\s*", "").split(",");
+        if ("".equals(currentGtidSet.get())) {
+            return this.gtidSet;
+        }
+        return currentGtidSet.get().replaceAll("\\s*", "").split(",");
     }
 
     private long waitTimeInterval(boolean isSource) {
