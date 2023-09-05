@@ -19,6 +19,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -82,6 +83,7 @@ public class TransactionReplayTask extends ReplayTask {
     private static final Logger LOGGER = LoggerFactory.getLogger(TransactionReplayTask.class);
     private static final int TASK_GRACEFUL_SHUTDOWN_TIME = 5;
     private static final long INVALID_VALUE = -1L;
+    private static final int QUEUE_LIMIT = 100000;
 
     private int maxQueueSize;
     private double openFlowControlThreshold;
@@ -100,6 +102,7 @@ public class TransactionReplayTask extends ReplayTask {
     private long skippedCount;
     private long skippedExcludeEventCount;
     private ArrayList<String> sqlList = new ArrayList<>();
+    private LinkedList<Long> sqlOffsets = new LinkedList<>();
     private List<Long> toDeleteOffsets;
     private Transaction transaction = new Transaction();
     private String xlogLocation;
@@ -322,6 +325,8 @@ public class TransactionReplayTask extends ReplayTask {
                 value = null;
             }
             if (value == null) {
+                // sink record of delete will bring a null record,the record offset add to sqlKafkaOffsets
+                addReplayedOffset(sinkRecord.kafkaOffset());
                 continue;
             }
             try {
@@ -340,9 +345,15 @@ public class TransactionReplayTask extends ReplayTask {
                     addedQueueMap.put(sinkRecord.kafkaOffset(),
                             value.getString(TransactionRecordField.ID));
                     if (value.getInt64(TransactionRecordField.EVENT_COUNT) == 0) {
+                        addReplayedOffset(sinkQueueFirstOffset);
+                        addReplayedOffset(sinkRecord.kafkaOffset());
                         statExtractCount();
                         skippedExcludeEventCount++;
                         MysqlSinkProcessInfo.SINK_PROCESS_INFO.setSkippedExcludeEventCount(skippedExcludeEventCount);
+                    }
+                    if (skipNum == value.getInt64(TransactionRecordField.EVENT_COUNT)) {
+                        addReplayedOffset(sinkQueueFirstOffset);
+                        addReplayedOffset(sinkRecord.kafkaOffset());
                     }
                     transaction.setTxnEndOffset(sinkRecord.kafkaOffset());
                     try {
@@ -386,6 +397,7 @@ public class TransactionReplayTask extends ReplayTask {
                     statExtractCount();
                     MysqlSinkProcessInfo.SINK_PROCESS_INFO.setSkippedCount(skippedCount);
                     LOGGER.warn("Skip one record: {}", sourceField);
+                    addReplayedOffset(sinkRecord.kafkaOffset());
                     continue;
                 }
                 sinkRecordObject = new SinkRecordObject();
@@ -405,6 +417,10 @@ public class TransactionReplayTask extends ReplayTask {
                 }
             }
         }
+    }
+
+    private void addReplayedOffset(Long offset) {
+        breakPointRecord.getReplayedOffset().add(offset);
     }
 
     /**
@@ -453,6 +469,11 @@ public class TransactionReplayTask extends ReplayTask {
             if (entry.getKey() < endOffset) {
                 iterator.remove();
             }
+        }
+        if (addedQueueMap.size() > QUEUE_LIMIT || replayedOffsets.size() > QUEUE_LIMIT) {
+            addedQueueMap.clear();
+            replayedOffsets.clear();
+            return INVALID_VALUE;
         }
         toDeleteOffsets.add(endOffset);
         return endOffset + 1;
@@ -599,6 +620,7 @@ public class TransactionReplayTask extends ReplayTask {
                 break;
         }
         sqlList.add(sql);
+        sqlOffsets.add(sinkRecordObject.getKafkaOffset());
         String currentGtid = sourceField.getGtid();
         if (currentGtid == null) {
             currentGtid = dmlOperation.getTransactionId();
@@ -606,8 +628,10 @@ public class TransactionReplayTask extends ReplayTask {
         if (sqlList.size() == dmlEventCountMap.getOrDefault(currentGtid, (long) -1)) {
             dmlEventCountMap.remove(currentGtid);
             transaction.setSqlList(sqlList);
+            transaction.setSqlOffsets(sqlOffsets);
             splitTransactionQueue();
             sqlList.clear();
+            sqlOffsets.clear();
         }
     }
 

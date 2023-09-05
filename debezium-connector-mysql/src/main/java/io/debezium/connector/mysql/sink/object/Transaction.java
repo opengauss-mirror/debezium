@@ -6,6 +6,7 @@
 package io.debezium.connector.mysql.sink.object;
 
 import java.util.ArrayList;
+import java.util.LinkedList;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +23,7 @@ public class Transaction implements Cloneable {
     private ArrayList<String> sqlList = new ArrayList<>();
     private boolean isDml = true;
     private Long txnBeginOffset;
+    private LinkedList<Long> sqlOffsets;
     private Long txnEndOffset;
     private String expMessage;
 
@@ -83,6 +85,24 @@ public class Transaction implements Cloneable {
      */
     public void setTxnBeginOffset(Long txnBeginOffset) {
         this.txnBeginOffset = txnBeginOffset;
+    }
+
+    /**
+     * Gets sql offset list
+     *
+     * @return LinkedList<Long> the sql offset list
+     */
+    public LinkedList<Long> getSqlOffsets() {
+        return sqlOffsets;
+    }
+
+    /**
+     * Sets sql offset list
+     *
+     * @param sqlOffsets the sql offset list
+     */
+    public void setSqlOffsets(LinkedList<Long> sqlOffsets) {
+        this.sqlOffsets = sqlOffsets;
     }
 
     /**
@@ -167,6 +187,7 @@ public class Transaction implements Cloneable {
             transaction = (Transaction) super.clone();
             transaction.setSourceField(this.sourceField.clone());
             transaction.setSqlList(new ArrayList<>(this.sqlList));
+            transaction.setSqlOffsets(new LinkedList<>(this.sqlOffsets));
         }
         catch (CloneNotSupportedException exp) {
             LOGGER.error("Clone transaction failed.", exp);

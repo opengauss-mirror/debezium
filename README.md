@@ -291,7 +291,7 @@ connector.class=io.debezium.connector.mysql.sink.MysqlSinkConnector
 | close.flow.control.threshold | double | 流量控制参数，double类型，默认值为0.7，当存储kafka记录的队列长度<最大长度max.queue.size*该门限值时，将关闭流量控制，继续从kafka抽取数据 |
 | record.breakpoint.kafka.topic | String     | 自定义断点记录topic，在回放过程记录执行结果到Kafka中，可根据实际情况修改，默认值为bp_topic                                |
 | record.breakpoint.kafka.bootstrap.servers | String     | 自定义断点记录的Kafka启动服务器地址，如无特殊需要，配置为source端的Kafka地址，可根据实际情况修改，默认值为localhost:9092        |
-| record.breakpoint.kafka.recovery.attempts | int     | 自定义读取断点记录重试次数，默认为3                                                 |
+| record.breakpoint.kafka.attempts | int     | 自定义读取断点记录重试次数，默认为3                                                 |
 | record.breakpoint.kafka.size.limit | int     | 断点记录Kafka的条数限制，超过该限制会触发删除Kafka的断点清除策略，删除无用的断点记录数据，单位：事务万条数，默认值3000       |
 | record.breakpoint.kafka.clear.interval | int     | 断点记录Kafka的时间限制，超过该限制会触发删除Kafka的断点清除策略，删除无用的断点记录数据，单位：小时，默认值1         |
 
@@ -774,7 +774,7 @@ connector.class=io.debezium.connector.opengauss.sink.OpengaussSinkConnector
 | close.flow.control.threshold | double | 流量控制参数，double类型，默认值为0.7，当存储kafka记录的队列和所有按表并发线程中预处理数据的队列长度<最大长度max.queue.size*该门限值时，将关闭流量控制，继续从kafka抽取数据                                                                                                                                                                                                                                            |
 | record.breakpoint.kafka.topic | String     | 自定义断点记录topic，在回放过程记录执行结果到Kafka中，可根据实际情况修改，默认值为bp_topic                                |
 | record.breakpoint.kafka.bootstrap.servers | String     | 自定义断点记录的Kafka启动服务器地址，如无特殊需要，配置为source端的Kafka地址，可根据实际情况修改，默认值为localhost:9092        |
-| record.breakpoint.kafka.recovery.attempts | int     | 自定义读取断点记录重试次数，默认为3                                             |
+| record.breakpoint.kafka.attempts | int     | 自定义读取断点记录重试次数，默认为3                                             |
 | record.breakpoint.kafka.size.limit | int     | 断点记录Kafka的条数限制，超过该限制会触发删除Kafka的断点清除策略，删除无用的断点记录数据，单位：事务万条数，默认值：3000      |
 | record.breakpoint.kafka.clear.interval | int     | 断点记录Kafka的时间限制，超过该限制会触发删除Kafka的断点清除策略，删除无用的断点记录数据，单位：小时，默认值1       |
 
