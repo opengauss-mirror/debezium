@@ -46,7 +46,6 @@ public class WorkThread extends Thread {
     private List<String> failSqlList = new ArrayList<>();
     private BreakPointRecord breakPointRecord;
     private PriorityBlockingQueue<Long> replayedOffsets;
-    private List<Long> txnReplayedOffsets = new ArrayList<>();
     private boolean isTransaction;
     private boolean isConnection = true;
     private boolean isAlive = true;
@@ -215,11 +214,9 @@ public class WorkThread extends Thread {
 
     private void buildAndSaveBpInfo() {
         if (txn != null) {
-            for (long i = txn.getTxnBeginOffset(); i <= txn.getTxnEndOffset(); i++) {
-                txnReplayedOffsets.add(i);
-            }
-            replayedOffsets.addAll(txnReplayedOffsets);
-            txnReplayedOffsets.clear();
+            replayedOffsets.add(txn.getTxnBeginOffset());
+            replayedOffsets.addAll(txn.getSqlOffsets());
+            replayedOffsets.add(txn.getTxnEndOffset());
             savedBreakPointInfo(txn);
         }
     }
