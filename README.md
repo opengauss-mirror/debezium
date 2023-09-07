@@ -71,7 +71,7 @@ debezium-connector-openngauss/target/debezium-connector-opengauss-1.8.1.Final-pl
 ### 构建命令
 
 ```
-mvn clean package -P quick,skip-integration-tests,oracle,jdk11,assembly,xstream,xstream-dependency,skip-tests -Dgpg.skip -Dmaven.test.skip=true
+mvn clean package -P quick,skip-integration-tests,oracle,jdk11,assembly,xstream,xstream-dependency,skip-tests -Dgpg.skip -Dmaven.test.skip=true -Denforcer.skip=true
 ```
 
 ## Debezium mysql connector

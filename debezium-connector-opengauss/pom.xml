@@ -148,7 +148,7 @@
                             <goal>run</goal>
                         </goals>
                         <configuration>
-                            <protocVersion>${version.com.google.protobuf}</protocVersion> <!-- 2.4.1, 2.5.0, 2.6.1, 3.0.0 -->
+                            <protocArtifact>com.google.protobuf:protoc:3.19.2</protocArtifact> <!-- 2.4.1, 2.5.0, 2.6.1, 3.0.0 -->
                             <outputDirectory>${protobuf.output.directory}</outputDirectory>
                             <inputDirectories>
                                 <include>src/main/proto</include>

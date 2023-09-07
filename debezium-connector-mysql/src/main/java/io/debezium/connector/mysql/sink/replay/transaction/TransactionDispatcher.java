@@ -389,7 +389,7 @@ public class TransactionDispatcher {
             public void run() {
                 Thread.currentThread().setName("timer-work-status");
                 for (int i = 0; i < threadList.size(); i++) {
-                    if (!threadList.get(i).isAlive()) {
+                    if (!threadList.get(i).isAlive() && threadList.get(i).canUse()) {
                         LOGGER.error("Total {} work thread, current work thread {} is dead, so doesn't use it any more.",
                                 threadList.size(), i);
                         threadList.get(i).setAlive(false);
