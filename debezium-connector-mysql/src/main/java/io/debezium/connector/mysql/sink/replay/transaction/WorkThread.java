@@ -47,6 +47,7 @@ public class WorkThread extends Thread {
     private BreakPointRecord breakPointRecord;
     private PriorityBlockingQueue<Long> replayedOffsets;
     private boolean isTransaction;
+    private boolean isBpSwitch;
     private boolean isConnection = true;
     private boolean isAlive = true;
 
@@ -65,6 +66,7 @@ public class WorkThread extends Thread {
         this.feedBackQueue = feedBackQueue;
         this.breakPointRecord = breakPointRecord;
         this.replayedOffsets = breakPointRecord.getReplayedOffset();
+        this.isBpSwitch = breakPointRecord.getIsBpSwitch();
         this.isTransaction = true;
     }
 
@@ -166,7 +168,7 @@ public class WorkThread extends Thread {
             tmpSqlList.add(System.lineSeparator());
             failSqlList.addAll(tmpSqlList);
         }
-        if (isConnection) {
+        if (isConnection && isBpSwitch) {
             buildAndSaveBpInfo();
         }
     }

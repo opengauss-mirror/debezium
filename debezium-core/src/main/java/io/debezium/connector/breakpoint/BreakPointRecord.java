@@ -192,6 +192,7 @@ public class BreakPointRecord {
     private Long totalMessageCount = 0L;
     private PriorityBlockingQueue<Long> replayedOffsets;
     private boolean isGetBp;
+    private boolean isBpSwitch;
     private Long breakpointEndOffset = UNLIMITED_VALUE;
 
     /**
@@ -233,6 +234,24 @@ public class BreakPointRecord {
             LOGGER.info("BreakPointRecord Consumer config: {}", consumerConfig.withMaskedPasswords());
             LOGGER.info("BreakPointRecord Producer config: {}", producerConfig.withMaskedPasswords());
         }
+    }
+
+    /**
+     * Sets the breakpoint switch
+     *
+     * @param isBpSwitch the record breakpoint switch
+     */
+    public void setIsBpSwitch(boolean isBpSwitch) {
+        this.isBpSwitch = isBpSwitch;
+    }
+
+    /**
+     * Gets the breakpoint switch
+     *
+     * @return boolean record breakpoint switch
+     */
+    public boolean getIsBpSwitch() {
+        return isBpSwitch;
     }
 
     /**

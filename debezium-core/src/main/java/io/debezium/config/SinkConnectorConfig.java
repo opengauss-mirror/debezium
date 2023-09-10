@@ -80,6 +80,11 @@ public class SinkConnectorConfig extends AbstractConfig {
     public static final String FILE_SIZE_LIMIT = "file.size.limit";
 
     /**
+     * breakpoint switch
+     */
+    public static final String BP_SWITCH = "record.breakpoint.kafka.switch";
+
+    /**
      * breakpoint topic
      */
     public static final String BP_TOPIC = "record.breakpoint.kafka.topic";
@@ -127,6 +132,7 @@ public class SinkConnectorConfig extends AbstractConfig {
             .define(FILE_SIZE_LIMIT, ConfigDef.Type.STRING, "10", ConfigDef.Importance.HIGH, "file size limit")
             .define(BP_BOOTSTRAP_SERVERS, ConfigDef.Type.STRING, "localhost:9092",
                     ConfigDef.Importance.HIGH, "breakpoint kafka server")
+            .define(BP_SWITCH, ConfigDef.Type.STRING, "false", ConfigDef.Importance.HIGH, "breakpoint switch")
             .define(BP_TOPIC, ConfigDef.Type.STRING, "bp_topic", ConfigDef.Importance.HIGH, "breakpoint topic")
             .define(BP_ATTEMPTS, ConfigDef.Type.STRING, "3", ConfigDef.Importance.HIGH, "breakpoint attempts")
             .define(BP_QUEUE_MAX_SIZE, ConfigDef.Type.STRING, "3000",
@@ -157,6 +163,7 @@ public class SinkConnectorConfig extends AbstractConfig {
     /**
      * breakpoint config
      */
+    private boolean isBpSwitch = false;
     private String bpTopic = "bp_topic";
     private String bootstrapServers = "localhost:9092";
     private int bpMaxRetries = 3;
@@ -195,6 +202,15 @@ public class SinkConnectorConfig extends AbstractConfig {
             sb.append(Utils.NL);
         }
         LOGGER.info(sb.toString());
+    }
+
+    /**
+     * Gets Breakpoint Switch
+     *
+     * @return the value of bpSwitch
+     */
+    public Boolean getBpSwitch() {
+        return isBpSwitch;
     }
 
     /**
@@ -486,6 +502,9 @@ public class SinkConnectorConfig extends AbstractConfig {
         }
         if (isNumberValid(FILE_SIZE_LIMIT, fileSizeLimit)) {
             fileSizeLimit = Integer.parseInt(getString(FILE_SIZE_LIMIT));
+        }
+        if (isBooleanValid(BP_SWITCH)) {
+            isBpSwitch = Boolean.parseBoolean(getString(BP_SWITCH));
         }
     }
 }
