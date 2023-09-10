@@ -83,7 +83,7 @@ public class OpengaussSinkConnectorTask extends SinkTask {
         } else {
             preCommitOffsets = currentOffsets;
         }
-        LOGGER.info("currentOffsets is {},preCommitOffsets is {}", currentOffsets, preCommitOffsets);
+        LOGGER.warn("currentOffsets is {},preCommitOffsets is {}", currentOffsets, preCommitOffsets);
         this.flush(preCommitOffsets);
         return preCommitOffsets;
     }

@@ -88,6 +88,7 @@ public class WorkThread extends Thread {
     private boolean isClearFile;
     private boolean isTransaction;
     private boolean isConnection = true;
+    private boolean isBpSwitch;
     private boolean isStop = false;
 
     /**
@@ -107,6 +108,7 @@ public class WorkThread extends Thread {
         this.sqlTools = sqlTools;
         this.breakPointRecord = breakPointRecord;
         this.replayedOffsets = breakPointRecord.getReplayedOffset();
+        this.isBpSwitch = breakPointRecord.getIsBpSwitch();
         this.isTransaction = false;
     }
 
@@ -141,7 +143,9 @@ public class WorkThread extends Thread {
                 successCount++;
                 threadSinkRecordObject = sinkRecordObject;
                 replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
-                savedBreakPointInfo(sinkRecordObject, false);
+                if (isBpSwitch) {
+                    savedBreakPointInfo(sinkRecordObject, false);
+                }
             } catch (CommunicationsException exp) {
                 updateConnectionAndExecuteSql(sql, sinkRecordObject);
             } catch (SQLException exp) {
@@ -373,7 +377,9 @@ public class WorkThread extends Thread {
             connection = connectionInfo.createMysqlConnection();
             statement = connection.createStatement();
             statement.executeUpdate(sql);
-            savedBreakPointInfo(sinkRecordObject, false);
+            if (isBpSwitch) {
+                savedBreakPointInfo(sinkRecordObject, false);
+            }
             successCount++;
         } catch (SQLException exp) {
             if (!connectionInfo.checkConnectionStatus(connection)) {

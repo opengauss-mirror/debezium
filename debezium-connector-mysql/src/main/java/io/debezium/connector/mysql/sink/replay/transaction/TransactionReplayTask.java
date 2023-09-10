@@ -83,7 +83,6 @@ public class TransactionReplayTask extends ReplayTask {
     private static final Logger LOGGER = LoggerFactory.getLogger(TransactionReplayTask.class);
     private static final int TASK_GRACEFUL_SHUTDOWN_TIME = 5;
     private static final long INVALID_VALUE = -1L;
-    private static final int QUEUE_LIMIT = 100000;
 
     private int maxQueueSize;
     private double openFlowControlThreshold;
@@ -207,6 +206,7 @@ public class TransactionReplayTask extends ReplayTask {
         toDeleteOffsets = breakPointRecord.getToDeleteOffsets();
         breakPointRecord.setBpQueueTimeLimit(config.getBpQueueTimeLimit());
         breakPointRecord.setBpQueueSizeLimit(config.getBpQueueSizeLimit());
+        breakPointRecord.setIsBpSwitch(config.getBpSwitch());
         breakPointRecord.start();
         if (!breakPointRecord.isTopicExist()) {
             breakPointRecord.initializeStorage();
@@ -469,11 +469,6 @@ public class TransactionReplayTask extends ReplayTask {
             if (entry.getKey() < endOffset) {
                 iterator.remove();
             }
-        }
-        if (addedQueueMap.size() > QUEUE_LIMIT || replayedOffsets.size() > QUEUE_LIMIT) {
-            addedQueueMap.clear();
-            replayedOffsets.clear();
-            return INVALID_VALUE;
         }
         toDeleteOffsets.add(endOffset);
         return endOffset + 1;
