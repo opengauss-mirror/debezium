@@ -10,4 +10,4 @@ mvn clean package -Dmaven.test.skip=true
 mvn -U install:install-file -DgroupId=com.zendesk -DartifactId=mysql-binlog-connector-java -Dversion=0.25.4-modified -Dpackaging=jar -Dfile=./target/mysql-binlog-connector-java-0.25.4-modified.jar
 cd ../../
 rm -rf temp
-mvn clean package -P quick,skip-integration-tests,oracle,jdk11,assembly,xstream,xstream-dependency,skip-tests -Dgpg.skip -Dmaven.test.skip=true
+mvn clean package -P quick,skip-integration-tests,oracle,jdk11,assembly,xstream,xstream-dependency,skip-tests -Dgpg.skip -Dmaven.test.skip=true -Denforcer.skip=true

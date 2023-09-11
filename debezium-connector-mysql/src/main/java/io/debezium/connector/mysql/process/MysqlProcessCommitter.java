@@ -125,10 +125,9 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
         for (int i = 0; i < gtidSet.length; i++) {
             if (!gtidSet[i].equals(currentGtidSets[i])) {
                 createCount += getSliceCreateCount(gtidSet[i], currentGtidSets[i]);
-                gtidSet = currentGtidSets;
-                break;
             }
         }
+        gtidSet = currentGtidSets;
     }
 
     private long getSliceCreateCount(String before, String after) {
