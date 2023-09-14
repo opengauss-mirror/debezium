@@ -168,7 +168,7 @@ public class WorkThread extends Thread {
             tmpSqlList.add(System.lineSeparator());
             failSqlList.addAll(tmpSqlList);
         }
-        if (isConnection && isBpSwitch) {
+        if (isConnection) {
             buildAndSaveBpInfo();
         }
     }
@@ -216,9 +216,13 @@ public class WorkThread extends Thread {
 
     private void buildAndSaveBpInfo() {
         if (txn != null) {
-            replayedOffsets.add(txn.getTxnBeginOffset());
-            replayedOffsets.addAll(txn.getSqlOffsets());
-            replayedOffsets.add(txn.getTxnEndOffset());
+            if (txn.getIsDml()) {
+                replayedOffsets.add(txn.getTxnBeginOffset());
+                replayedOffsets.addAll(txn.getSqlOffsets());
+                replayedOffsets.add(txn.getTxnEndOffset());
+            } else {
+                replayedOffsets.add(txn.getTxnBeginOffset());
+            }
             savedBreakPointInfo(txn);
         }
     }
@@ -247,14 +251,16 @@ public class WorkThread extends Thread {
      * @param txn the replay transaction
      */
     private void savedBreakPointInfo(Transaction txn) {
-        BreakPointObject txnBpObject = new BreakPointObject();
-        txnBpObject.setBeginOffset(txn.getTxnBeginOffset());
-        txnBpObject.setEndOffset(txn.getTxnEndOffset());
-        txnBpObject.setTimeStamp(LocalDateTime.now().toString());
-        if (!txn.getSourceField().getGtid().isEmpty()) {
-            txnBpObject.setGtid(txn.getSourceField().getGtid());
+        if (isBpSwitch) {
+            BreakPointObject txnBpObject = new BreakPointObject();
+            txnBpObject.setBeginOffset(txn.getTxnBeginOffset());
+            txnBpObject.setEndOffset(txn.getTxnEndOffset());
+            txnBpObject.setTimeStamp(LocalDateTime.now().toString());
+            if (!txn.getSourceField().getGtid().isEmpty()) {
+                txnBpObject.setGtid(txn.getSourceField().getGtid());
+            }
+            breakPointRecord.storeRecord(txnBpObject, isTransaction);
         }
-        breakPointRecord.storeRecord(txnBpObject, isTransaction);
     }
 
     /**
