@@ -47,7 +47,6 @@ public class WorkThread extends Thread {
     private BreakPointRecord breakPointRecord;
     private PriorityBlockingQueue<Long> replayedOffsets;
     private boolean isTransaction;
-    private boolean isBpSwitch;
     private boolean isConnection = true;
     private boolean isAlive = true;
 
@@ -66,7 +65,6 @@ public class WorkThread extends Thread {
         this.feedBackQueue = feedBackQueue;
         this.breakPointRecord = breakPointRecord;
         this.replayedOffsets = breakPointRecord.getReplayedOffset();
-        this.isBpSwitch = breakPointRecord.getIsBpSwitch();
         this.isTransaction = true;
     }
 
@@ -251,16 +249,14 @@ public class WorkThread extends Thread {
      * @param txn the replay transaction
      */
     private void savedBreakPointInfo(Transaction txn) {
-        if (isBpSwitch) {
-            BreakPointObject txnBpObject = new BreakPointObject();
-            txnBpObject.setBeginOffset(txn.getTxnBeginOffset());
-            txnBpObject.setEndOffset(txn.getTxnEndOffset());
-            txnBpObject.setTimeStamp(LocalDateTime.now().toString());
-            if (!txn.getSourceField().getGtid().isEmpty()) {
-                txnBpObject.setGtid(txn.getSourceField().getGtid());
-            }
-            breakPointRecord.storeRecord(txnBpObject, isTransaction);
+        BreakPointObject txnBpObject = new BreakPointObject();
+        txnBpObject.setBeginOffset(txn.getTxnBeginOffset());
+        txnBpObject.setEndOffset(txn.getTxnEndOffset());
+        txnBpObject.setTimeStamp(LocalDateTime.now().toString());
+        if (!txn.getSourceField().getGtid().isEmpty()) {
+            txnBpObject.setGtid(txn.getSourceField().getGtid());
         }
+        breakPointRecord.storeRecord(txnBpObject, isTransaction);
     }
 
     /**
