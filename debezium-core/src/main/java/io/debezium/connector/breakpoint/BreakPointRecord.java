@@ -23,7 +23,6 @@ import java.util.TimerTask;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -45,7 +44,6 @@ import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.TopicPartition;
@@ -192,7 +190,6 @@ public class BreakPointRecord {
     private Long totalMessageCount = 0L;
     private PriorityBlockingQueue<Long> replayedOffsets;
     private boolean isGetBp;
-    private boolean isBpSwitch;
     private Long breakpointEndOffset = UNLIMITED_VALUE;
 
     /**
@@ -234,24 +231,6 @@ public class BreakPointRecord {
             LOGGER.info("BreakPointRecord Consumer config: {}", consumerConfig.withMaskedPasswords());
             LOGGER.info("BreakPointRecord Producer config: {}", producerConfig.withMaskedPasswords());
         }
-    }
-
-    /**
-     * Sets the breakpoint switch
-     *
-     * @param isBpSwitch the record breakpoint switch
-     */
-    public void setIsBpSwitch(boolean isBpSwitch) {
-        this.isBpSwitch = isBpSwitch;
-    }
-
-    /**
-     * Gets the breakpoint switch
-     *
-     * @return boolean record breakpoint switch
-     */
-    public boolean getIsBpSwitch() {
-        return isBpSwitch;
     }
 
     /**
@@ -518,6 +497,7 @@ public class BreakPointRecord {
 
     private void storeToKafkaThread() {
         threadPool.execute(() -> {
+            Thread.currentThread().setName("send2kafka-thread");
             List<BreakPointInfo> toStoreList = new ArrayList<>();
             while (true) {
                 try {
@@ -544,24 +524,8 @@ public class BreakPointRecord {
     public void storeRecordToKafka(String key, String value) {
         ProducerRecord<String, String> produced = new ProducerRecord<>(bpRecordTopicName, PARTITION,
                 key, value);
-        Future<RecordMetadata> future = this.producer.send(produced);
-        // Flush and then wait ...
-        RecordMetadata metadata = null; // block forever since we have to be sure this gets recorded
-        try {
-            metadata = future.get();
-            if (metadata != null) {
-                LOGGER.debug("Stored record in topic '{}' partition {} at offset {} ",
-                        metadata.topic(), metadata.partition(), metadata.offset());
-            }
-            totalMessageCount++;
-        }
-        catch (InterruptedException e) {
-            LOGGER.trace("Interrupted before record was written into kafka file");
-            Thread.currentThread().interrupt();
-        }
-        catch (ExecutionException e) {
-            LOGGER.error("");
-        }
+        this.producer.send(produced);
+        totalMessageCount++;
     }
 
     /**
@@ -810,6 +774,7 @@ public class BreakPointRecord {
 
     private void deleteBpBySizeTask() {
         threadPool.execute(() -> {
+            Thread.currentThread().setName("delete-breakpoint-thread");
             while (true) {
                 // Additional thread monitor the queue size and delete them if the limit is exceeded
                 if (totalMessageCount >= bpQueueSizeLimit) {

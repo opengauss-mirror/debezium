@@ -195,7 +195,6 @@ public class JdbcDbWriter {
         toDeleteOffsets = breakPointRecord.getToDeleteOffsets();
         breakPointRecord.setBpQueueTimeLimit(config.getBpQueueTimeLimit());
         breakPointRecord.setBpQueueSizeLimit(config.getBpQueueSizeLimit());
-        breakPointRecord.setIsBpSwitch(config.getBpSwitch());
         breakPointRecord.start();
         if (!breakPointRecord.isTopicExist()) {
             breakPointRecord.initializeStorage();
