@@ -380,12 +380,12 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
   unzip confluent-community-5.5.1-2.12.zip
   ```
 
-- [debezium-connector-mysql](https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-mysql2openGauss-5.0.0.tar.gz)
+- [debezium-connector-mysql](https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-mysql2openGauss-5.1.0.tar.gz)
 
   ```
-  wget -c https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-mysql2openGauss-5.0.0.tar.gz
+  wget -c https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-mysql2openGauss-5.1.0.tar.gz
   
-  tar -zxvf replicate-mysql2openGauss-5.0.0.tar.gz
+  tar -zxvf replicate-mysql2openGauss-5.1.0.tar.gz
   ```
 
 #### 修改配置文件
@@ -890,12 +890,12 @@ wal_level=logical
   unzip confluent-community-5.5.1-2.12.zip
   ```
 
-- [debezium-connector-opengauss](https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-openGauss2mysql-5.0.0.tar.gz)
+- [debezium-connector-opengauss](https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-openGauss2mysql-5.1.0.tar.gz)
 
   ```
-  wget -c https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-openGauss2mysql-5.0.0.tar.gz
+  wget -c https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-openGauss2mysql-5.1.0.tar.gz
   
-  tar -zxvf replicate-openGauss2mysql-5.0.0.tar.gz
+  tar -zxvf replicate-openGauss2mysql-5.1.0.tar.gz
   ```
 
 #### 修改配置文件
