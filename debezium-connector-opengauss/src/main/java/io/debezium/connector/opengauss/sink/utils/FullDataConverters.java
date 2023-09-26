@@ -430,8 +430,13 @@ public class FullDataConverters {
     }
 
     private static String addingSingleQuotation(Object originValue) {
-        return SINGLE_QUOTE + originValue.toString()
-                .replaceAll(SINGLE_QUOTE, SINGLE_QUOTE + SINGLE_QUOTE)
-                .replaceAll(BACKSLASH, BACKSLASH + BACKSLASH) + SINGLE_QUOTE;
+        String ret = originValue.toString();
+        if (ret.contains(SINGLE_QUOTE)) {
+            ret = ret.replaceAll(SINGLE_QUOTE, SINGLE_QUOTE + SINGLE_QUOTE);
+        }
+        if (ret.contains(BACKSLASH)) {
+            ret = ret.replaceAll(BACKSLASH, BACKSLASH + BACKSLASH);
+        }
+        return SINGLE_QUOTE + ret + SINGLE_QUOTE;
     }
 }

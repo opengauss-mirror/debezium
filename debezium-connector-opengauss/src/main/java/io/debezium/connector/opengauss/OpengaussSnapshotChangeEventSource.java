@@ -781,6 +781,8 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
         if (csvDirSize == null) {
             return;
         }
+        LOGGER.warn("csvDir capacity check. Write directly when conditions are met, Otherwise, "
+                + "wait to write when satisfied");
         for (;;) {
             long csvDir = getCsvDir();
             if (csvDir < csvDirSize.longValue()) {

@@ -163,31 +163,21 @@ public class SqlTools {
 
     /**
      * Full data type conversion
+     * Full data type conversion
      *
-     * @param tableMetaData TableMetaData the table meta data
+     * @param columnList ColumnMetaData the table meta data
      * @param data old data
-     * @param columnString string
+     * @param after Struct
      * @return new data
      */
-    public List<String> conversionFullData(TableMetaData tableMetaData, List<String> data, String columnString,
-                                           Struct after) {
-        List<ColumnMetaData> columnList = tableMetaData.getColumnList();
-        List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
-        String[] columns = columnString.split(",");
-        for (String column : columns) {
-            for (ColumnMetaData columnMetaData : columnList) {
-                if (columnMetaData.getColumnName().equals(column)) {
-                    columnMetaDataList.add(columnMetaData);
-                }
-            }
-        }
+    public List<String> conversionFullData(List<ColumnMetaData> columnList, List<String> data, Struct after) {
         List<String> result = new ArrayList<>();
         for (String datum : data) {
             StringBuilder sb = new StringBuilder();
             String[] colDatas = datum.split(" \\| ");
             for (int i = 0; i < colDatas.length; i++) {
                 String colData = colDatas[i];
-                ColumnMetaData columnMetaData = columnMetaDataList.get(i);
+                ColumnMetaData columnMetaData = columnList.get(i);
                 String value = FullDataConverters.getValue(columnMetaData, colData, after);
                 sb.append(value);
                 if (i != colDatas.length - 1) {
