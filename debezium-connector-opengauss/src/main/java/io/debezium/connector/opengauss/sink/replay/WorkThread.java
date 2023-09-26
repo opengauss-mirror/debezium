@@ -9,6 +9,7 @@ import com.mysql.cj.jdbc.ClientPreparedStatement;
 import com.mysql.cj.jdbc.exceptions.CommunicationsException;
 import io.debezium.connector.breakpoint.BreakPointObject;
 import io.debezium.connector.breakpoint.BreakPointRecord;
+import io.debezium.connector.opengauss.sink.object.ColumnMetaData;
 import io.debezium.connector.opengauss.sink.object.SourceField;
 import io.debezium.connector.opengauss.sink.object.SinkRecordObject;
 import io.debezium.connector.opengauss.sink.object.ConnectionInfo;
@@ -89,6 +90,7 @@ public class WorkThread extends Thread {
     private boolean isTransaction;
     private boolean isConnection = true;
     private boolean isStop = false;
+    private final Map<String, List<ColumnMetaData>> fullTableColumnMap = new HashMap<>();
 
     /**
      * Constructor
@@ -249,7 +251,7 @@ public class WorkThread extends Thread {
                 LOGGER.error("workthread exception", e);
             }
         }
-        List<String> lineList = null;
+        List<String> lineList = new ArrayList<>();
         String path = dmlOperation.getPath();
         try {
             lineList = Files.lines(Paths.get(path))
@@ -259,8 +261,27 @@ public class WorkThread extends Thread {
             LOGGER.error("load csv file failure IO exception", e);
         }
         Struct after = dmlOperation.getAfter();
-        List<String> list = sqlTools.conversionFullData(tableMetaData, lineList, columnString, after);
+        List<ColumnMetaData> columnList = getColumnList(tableFullName, tableMetaData, columnString);
+        List<String> list = sqlTools.conversionFullData(columnList, lineList, after);
         loadData(path, list, loadSql, tableFullName, sinkRecordObject);
+    }
+
+    private List<ColumnMetaData> getColumnList(String tableFullName, TableMetaData tableMetaData, String columnString) {
+        if (fullTableColumnMap.containsKey(tableFullName)) {
+            return fullTableColumnMap.get(tableFullName);
+        }
+        List<ColumnMetaData> columnList = tableMetaData.getColumnList();
+        List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
+        String[] columns = columnString.split(",");
+        for (String column : columns) {
+            for (ColumnMetaData columnMetaData : columnList) {
+                if (columnMetaData.getColumnName().equals(column)) {
+                    columnMetaDataList.add(columnMetaData);
+                }
+            }
+        }
+        fullTableColumnMap.put(tableFullName, columnMetaDataList);
+        return columnMetaDataList;
     }
 
     private void loadData(String path, List<String> list, String sql, String tableName,
