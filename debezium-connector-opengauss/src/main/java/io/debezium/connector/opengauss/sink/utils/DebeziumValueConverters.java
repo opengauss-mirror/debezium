@@ -22,6 +22,7 @@ import java.time.temporal.TemporalAccessor;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
@@ -43,7 +44,11 @@ public final class DebeziumValueConverters {
     private static HashMap<String, ValueConverter> dataTypeConverterMap = new HashMap<String, ValueConverter>() {
         {
             put("integer", (columnName, value) -> convertNumberType(columnName, value));
-            put("tinyint", (columnName, value) -> convertNumberType(columnName, value));
+            put("int", (columnName, value) -> convertIntType(columnName, value));
+            put("tinyint", (columnName, value) -> convertIntType(columnName, value));
+            put("smallint", (columnName, value) -> convertIntType(columnName, value));
+            put("mediumint", (columnName, value) -> convertIntType(columnName, value));
+            put("bigint", (columnName, value) -> convertIntType(columnName, value));
             put("double", (columnName, value) -> convertNumberType(columnName, value));
             put("float", (columnName, value) -> convertNumberType(columnName, value));
             put("tinyblob", (columnName, value) -> convertBlob(columnName, value));
@@ -92,6 +97,16 @@ public final class DebeziumValueConverters {
             return object.toString();
         }
         return null;
+    }
+
+    private static String convertIntType(String columnName, Struct valueStruct) {
+        Field field = valueStruct.schema().field(columnName);
+        String schemaName = field.schema().type().name();
+        if ("bytes".equals(schemaName.toLowerCase(Locale.ROOT))) {
+            byte[] bytes = valueStruct.getBytes(columnName);
+            return new String(bytes);
+        }
+        return convertNumberType(columnName, valueStruct);
     }
 
     private static String convertBlob(String columnName, Struct valueStruct) {
