@@ -11,6 +11,8 @@ import io.debezium.data.geometry.Point;
 import io.debezium.util.HexConverter;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
+
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -104,7 +106,7 @@ public final class DebeziumValueConverters {
         String schemaName = field.schema().type().name();
         if ("bytes".equals(schemaName.toLowerCase(Locale.ROOT))) {
             byte[] bytes = valueStruct.getBytes(columnName);
-            return new String(bytes);
+            return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
         }
         return convertNumberType(columnName, valueStruct);
     }
