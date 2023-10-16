@@ -12,12 +12,25 @@ package io.debezium.connector.process;
  * @since 2023-03-31
  */
 public class BaseSourceProcessInfo {
+    /**
+     * SourceProcessInfo the sourceProcessInfo
+     */
+    public static final BaseSourceProcessInfo TABLE_SOURCE_PROCESS_INFO = new BaseSourceProcessInfo();
+
+    /**
+     * SourceProcessInfo the transaction source process information
+     */
+    public static final BaseSourceProcessInfo TRANSACTION_SOURCE_PROCESS_INFO = new BaseSourceProcessInfo();
+
     private long timestamp;
     private long createCount;
+    private long skippedExcludeCount;
     private long convertCount;
     private long pollCount;
     private long rest;
     private long speed;
+
+    private BaseSourceProcessInfo() {}
 
     /**
      * get timestamp
@@ -98,13 +111,8 @@ public class BaseSourceProcessInfo {
         return rest;
     }
 
-    /**
-     * set rest
-     *
-     * @param skippedCount Long the rest
-     */
-    public void setRest(long skippedCount) {
-        this.rest = createCount - pollCount - skippedCount;
+    public void setRest() {
+        this.rest = createCount - pollCount - skippedExcludeCount;
     }
 
     /**
@@ -124,5 +132,78 @@ public class BaseSourceProcessInfo {
      */
     public void setSpeed(long before, int timeInterval) {
         this.speed = (pollCount - before) / timeInterval;
+    }
+
+    /**
+     * get skipped exclude count
+     *
+     * @return Long the skipped exclude count
+     */
+    public long getSkippedExcludeCount() {
+        return skippedExcludeCount;
+    }
+
+    /**
+     * Create count increase automatically based autoIncreaseSize
+     *
+     * @param autoIncreaseSize int the autoIncreaseSize
+     */
+    public void autoIncreaseCreateCount(int autoIncreaseSize) {
+        createCount += autoIncreaseSize;
+    }
+
+    /**
+     * Skipped exclude count increase automatically based autoIncreaseSize
+     *
+     * @param autoIncreaseSize int the autoIncreaseSize
+     */
+    public void autoIncreaseSkippedExcludeCount(int autoIncreaseSize) {
+        skippedExcludeCount += autoIncreaseSize;
+    }
+
+    /**
+     * Convert count increase automatically based autoIncreaseSize
+     *
+     * @param autoIncreaseSize int the autoIncreaseSize
+     */
+    public void autoIncreaseConvertCount(int autoIncreaseSize) {
+        convertCount += autoIncreaseSize;
+    }
+
+    /**
+     * Poll count increase automatically based autoIncreaseSize
+     *
+     * @param autoIncreaseSize int the autoIncreaseSize
+     */
+    public void autoIncreasePollCount(int autoIncreaseSize) {
+        pollCount += autoIncreaseSize;
+    }
+
+    /**
+     * Stat convert count, poll count and skipped count
+     *
+     * @param processInfo BaseProcessInfo the processInfo, either transaction process information
+     *                   or table data process information
+     * @param executeCount Transaction or data count which has been converted and will be sent to kafka
+     * @param ignoreCount Transaction or data count which will be skipped, this means the binlog update
+     *                   comes from those tables which in blacklist or not int whitelist
+     */
+    public static void statProcessCount(BaseSourceProcessInfo processInfo, int executeCount, int ignoreCount) {
+        processInfo.autoIncreaseConvertCount(executeCount);
+        processInfo.autoIncreasePollCount(executeCount);
+        processInfo.autoIncreaseSkippedExcludeCount(ignoreCount);
+    }
+
+    @Override
+    public String toString() {
+        return "{"
+                + "\"timestamp\":" + timestamp
+                + ",\"createCount\":" + createCount
+                + ",\"skippedExcludeCount\":" + skippedExcludeCount
+                + ",\"convertCount\":" + convertCount
+                + ",\"pollCount\":" + pollCount
+                + ",\"speed\":" + speed
+                + ",\"rest\":" + rest
+                + '}';
     }
 }

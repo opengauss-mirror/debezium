@@ -49,27 +49,12 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
     /**
      * Parallel replay mode
      */
-    public static final String PARALLEL_BASED_TRANSACTION = "parallel.based.transaction";
+    public static final String PARALLEL_BASED_TRANSACTION = "provide.transaction.metadata";
 
     /**
      * Xlog location
      */
     public static final String XLOG_LOCATION = "xlog.location";
-
-    /**
-     * Max Queue size
-     */
-    public static final String MAX_QUEUE_SIZE = "max.queue.size";
-
-    /**
-     * Open flow control threshold
-     */
-    public static final String OPEN_FLOW_CONTROL_THRESHOLD = "open.flow.control.threshold";
-
-    /**
-     * Close flow control threshold
-     */
-    public static final String CLOSE_FLOW_CONTROL_THRESHOLD = "close.flow.control.threshold";
 
     /**
      * CONFIG_DEF
@@ -86,16 +71,8 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
                     ConfigDef.Importance.HIGH, "openGauss url")
             .define(PARALLEL_REPLAY_THREAD_NUM, ConfigDef.Type.INT, 30,
                     ConfigDef.Importance.HIGH, "parallel replay thread num")
-            .define(PARALLEL_BASED_TRANSACTION, ConfigDef.Type.BOOLEAN, true,
-                    ConfigDef.Importance.HIGH, "parallel based transaction")
             .define(XLOG_LOCATION, ConfigDef.Type.STRING, getCurrentPluginPath(),
-                    ConfigDef.Importance.HIGH, "xlog location")
-            .define(MAX_QUEUE_SIZE, ConfigDef.Type.INT, 1000000,
-                    ConfigDef.Importance.HIGH, "max queue size")
-            .define(OPEN_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.8,
-                    ConfigDef.Importance.HIGH, "open flow control threshold")
-            .define(CLOSE_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.7,
-                    ConfigDef.Importance.HIGH, "close flow control threshold");
+                    ConfigDef.Importance.HIGH, "xlog location");
 
     /**
      * openGauss driver
@@ -128,21 +105,6 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
     public final String xlogLocation;
 
     /**
-     * Max queue size
-     */
-    public final int maxQueueSize;
-
-    /**
-     * Open flow control threshold
-     */
-    public final double openFlowControlThreshold;
-
-    /**
-     * Close flow control threshold
-     */
-    public final double closeFlowControlThreshold;
-
-    /**
      * Is parallel based transaction
      */
     public final boolean isParallelBasedTransaction;
@@ -160,12 +122,9 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
         this.openGaussUrl = getString(OPENGAUSS_URL);
 
         this.parallelReplayThreadNum = getInt(PARALLEL_REPLAY_THREAD_NUM);
-        this.isParallelBasedTransaction = getBoolean(PARALLEL_BASED_TRANSACTION);
         this.xlogLocation = getString(XLOG_LOCATION);
+        this.isParallelBasedTransaction = Boolean.parseBoolean(configMap.get(PARALLEL_BASED_TRANSACTION));
 
-        this.maxQueueSize = getInt(MAX_QUEUE_SIZE);
-        this.openFlowControlThreshold = getDouble(OPEN_FLOW_CONTROL_THRESHOLD);
-        this.closeFlowControlThreshold = getDouble(CLOSE_FLOW_CONTROL_THRESHOLD);
         Map<String, Object> allConfig = CONFIG_DEF.defaultValues();
         allConfig.forEach((k, v) -> {
             if (!props.containsKey(k)) {
@@ -176,5 +135,11 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
             allConfig.put(String.valueOf(k), v);
         });
         logAll(allConfig, OPENGAUSS_PASSWORD);
+    }
+
+    @Override
+    protected void initDefaultConfigMap() {
+        super.initDefaultConfigMap();
+        configMap.put(PARALLEL_BASED_TRANSACTION, "true");
     }
 }

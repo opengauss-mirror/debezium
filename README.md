@@ -85,7 +85,8 @@ mvn clean package -P quick,skip-integration-tests,oracle,jdk11,assembly,xstream,
 - 配置gtid_mode=on，source端支持解析last_committed和sequence_number字段，并存入kafka；
 - 基于Debezium connector（Kafka Connect）框架，增加sink端能力，可用于从kafka抽取数据并在openGauss端按照事务粒度并行回放;
 - 增加迁移进度上报功能，可用于读取数据迁移时延；
-- 增加增量迁移断点续传功能，用户中断后基于断点重启后继续迁移。
+- 增加增量迁移断点续传功能，用户中断后基于断点重启后继续迁移；
+- sink端增加按表并行回放的能力，并支持自定义参数控制按事务回放还是按表回放。
 
 ### 新增配置参数说明
 
@@ -163,6 +164,8 @@ topics=mysql_server_topic
 | process.file.time.limit | int     | 进度文件保存时间，超过该时间后工具会删除对应的进度文件，默认为168，单位：小时                            |
 | append.write | boolean | 进度文件写入方式，true表示追加写入，false表示覆盖写入，默认值为false                           |
 | file.size.limit | int     | 文件大小限制，超过该限制值工具会另启新文件写入，默认为10，单位：兆                                  |
+| min.start.memory             | String  | 自定义配置debezium最小启动内存，通过脚本生效，默认为256M                                 |
+| max.start.memory             | String  | 自定义配置debezium最大启动内存，通过脚本生效，默认为2G                                   |
 
 快照点参数配置说明：
 
@@ -299,14 +302,15 @@ connector.class=io.debezium.connector.mysql.sink.MysqlSinkConnector
 
 ### source端
 
-| 参数                           | 参数说明                                                                                                                                                                                                                                                                                                                                               |
-|------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| timestamp                       | source端当前上报信息的时间戳                                                                                                                                                                                                                                                                                                                              |
-| createCount             | 生产事务数（写入binlog的事务数）                                                                                                                                                                                                                                                                                                                                       |
-| convertCount           | 完成解析的事务数
-| pollCount                       | 存入kafka的事务数                                                                                                                                                                                                                                                                                                                              |
-| rest             | source端剩余事务数（已生产但未存入kafka的事务数）                                                                                                                                                                                                                                                                                                                                       |
-| speed           | source端处理速度（每秒处理的事务数）
+| 参数                           | 参数说明                           |
+|------------------------------|--------------------------------|
+| timestamp                       | source端当前上报信息的时间戳              |
+| createCount             | 生产事务数（写入binlog的事务数）            |
+| skippedExcludeCount             | source端跳过的黑名单之内或白名单之外的变更数      |
+| convertCount           | 完成解析的事务数                       
+| pollCount                       | 存入kafka的事务数                    |
+| rest             | source端剩余事务数（已生产但未存入kafka的事务数） |
+| speed           | source端处理速度（每秒处理的事务数）          
 
 ### sink端
 
@@ -683,18 +687,20 @@ curl -X PUT -H "Content-Type: application/vnd.schemaregistry.v1+json" \
 connector.class=io.debezium.connector.opengauss.OpengaussConnector
 ```
 
-| 参数                           | 类型     | 参数说明                                                                |
-|------------------------------|--------|---------------------------------------------------------------------|
-| xlog.location                | String | 自定义配置xlog的位置                                                        |
-| wal.sender.timeout           | int    | 自定义数据库等待迁移工具接收日志的最大等待时间，对于openGauss 3.0.x版本，此值默认为12000,单位：毫秒        |
-| commit.process.while.running | boolean | 是否开启迁移进度上报功能，默认为false，表示不开启该功能                                      |
-| source.process.file.path     | String  | 迁移进度文件输出路径，默认在迁移插件同一目录下，在迁移进度上报功能开启后起作用                             |
-| commit.time.interval         | int     | 迁移进度上报的时间间隔，默认值为1，单位：秒，在迁移进度上报功能开启后起作用                              |
+| 参数                           | 类型      | 参数说明                                                               |
+|------------------------------|---------|--------------------------------------------------------------------|
+| xlog.location                | String  | 自定义配置xlog的位置                                                       |
+| wal.sender.timeout           | int     | 自定义数据库等待迁移工具接收日志的最大等待时间，对于openGauss 3.0.x版本，此值默认为12000,单位：毫秒       |
+| commit.process.while.running | boolean | 是否开启迁移进度上报功能，默认为false，表示不开启该功能                                     |
+| source.process.file.path     | String  | 迁移进度文件输出路径，默认在迁移插件同一目录下，在迁移进度上报功能开启后起作用                            |
+| commit.time.interval         | int     | 迁移进度上报的时间间隔，默认值为1，单位：秒，在迁移进度上报功能开启后起作用                             |
 | create.count.info.path       | String  | 源端xlog日志写入的dml操作总数，默认在迁移插件同一目录下，必须与sink端的该路径保持一致，用于和sink端交互获取总体同步时延 |
-| process.file.count.limit| int     | 同一目录下文件数目限制，超过该数目工具会按时间从早到晚删除多余进度文件，默认为10                           |
-| process.file.time.limit | int     | 进度文件保存时间，超过该时间后工具会删除对应的进度文件，默认为168，单位：小时                            |
-| append.write | boolean | 进度文件写入方式，true表示追加写入，false表示覆盖写入，默认值为false                           |
-| file.size.limit | int     | 文件大小限制，超过该限制值工具会另启新文件写入，默认为10，单位：兆                                  |
+| process.file.count.limit     | int     | 同一目录下文件数目限制，超过该数目工具会按时间从早到晚删除多余进度文件，默认为10                          |
+| process.file.time.limit      | int     | 进度文件保存时间，超过该时间后工具会删除对应的进度文件，默认为168，单位：小时                           |
+| append.write                 | boolean | 进度文件写入方式，true表示追加写入，false表示覆盖写入，默认值为false                          |
+| file.size.limit              | int     | 文件大小限制，超过该限制值工具会另启新文件写入，默认为10，单位：兆                                 |
+| min.start.memory             | String  | 自定义配置debezium最小启动内存，通过脚本生效，默认为256M                                 |
+| max.start.memory             | String  | 自定义配置debezium最大启动内存，通过脚本生效，默认为2G                                   |
 
 ##### 全量数据迁移新增参数
 

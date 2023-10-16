@@ -69,4 +69,34 @@ public class MysqlSinkProcessInfo extends BaseSinkProcessInfo {
     public void setOverallPipe(long createCount) {
         this.overallPipe = createCount - getReplayedCount() - skippedCount - skippedExcludeEventCount;
     }
+
+    /**
+     * Skipped exclude event count increase automatically
+     */
+    public void autoIncreaseSkippedExcludeEventCount() {
+        skippedExcludeEventCount++;
+    }
+
+    /**
+     * Skipped event count increase automatically
+     */
+    public void autoIncreaseSkippedCount() {
+        skippedCount++;
+    }
+
+    @Override
+    public String toString() {
+        return "{"
+                + "\"timestamp\":" + timestamp
+                + ",\"extractCount\":" + extractCount
+                + ",\"skippedExcludeEventCount\":" + skippedExcludeEventCount
+                + ",\"skippedCount\":" + skippedCount
+                + ",\"replayedCount\":" + replayedCount
+                + ",\"successCount\":" + successCount
+                + ",\"failCount\":" + failCount
+                + ",\"speed\":" + speed
+                + ",\"rest\":" + rest
+                + ",\"overallPipe\":" + overallPipe
+                + '}';
+    }
 }

@@ -18,6 +18,7 @@ import io.debezium.config.Configuration;
 import io.debezium.config.Field;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.connector.common.BaseSourceTask;
+import io.debezium.connector.kafka.KafkaClient;
 import io.debezium.connector.mysql.MySqlConnection.MySqlConnectionConfiguration;
 import io.debezium.connector.mysql.MySqlConnectorConfig.BigIntUnsignedHandlingMode;
 import io.debezium.connector.mysql.MySqlConnectorConfig.SnapshotMode;
@@ -67,9 +68,13 @@ public class MySqlConnectorTask extends BaseSourceTask<MySqlPartition, MySqlOffs
                 config.edit()
                         .with(AbstractDatabaseHistory.INTERNAL_PREFER_DDL, true)
                         .build());
+        connectorConfig.rectifyParameter();
         final TopicSelector<TableId> topicSelector = MySqlTopicSelector.defaultSelector(connectorConfig);
         final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
         final MySqlValueConverters valueConverters = getValueConverters(connectorConfig);
+
+        KafkaClient configClient = new KafkaClient(connectorConfig);
+        configClient.sendConfigToKafka();
 
         // DBZ-3238: automatically set "useCursorFetch" to true when a snapshot fetch size other than the default of -1 is given
         // By default do not load whole result sets into memory

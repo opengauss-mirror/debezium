@@ -663,6 +663,55 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
             .withDefault("10")
             .withDescription("file size limit");
 
+    /**
+     * kafka bootstrap server
+     */
+    public static final Field KAFKA_BOOTSTRAP_SERVER = Field.create("kafka.bootstrap.server")
+            .withDisplayName("kafka bootstrap server")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDefault("localhost:9092")
+            .withDescription("kafka bootstrap server");
+
+    /**
+     * queue size limit
+     */
+    public static final Field QUEUE_SIZE_LIMIT = Field.create("queue.size.limit")
+            .withDisplayName("queue size limit")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDefault("1000000")
+            .withDescription("queue size limit");
+
+    /**
+     * open flow control threshold
+     */
+    public static final Field OPEN_FLOW_CONTROL_THRESHOLD = Field.create("open.flow.control.threshold")
+            .withDisplayName("open flow control threshold")
+            .withType(Type.DOUBLE)
+            .withImportance(Importance.MEDIUM)
+            .withDefault(0.8)
+            .withDescription("open flow control threshold");
+
+    /**
+     * close flow control threshold
+     */
+    public static final Field CLOSE_FLOW_CONTROL_THRESHOLD = Field.create("close.flow.control.threshold")
+            .withDisplayName("close flow control threshold")
+            .withType(Type.DOUBLE)
+            .withImportance(Importance.MEDIUM)
+            .withDefault(0.7)
+            .withDescription("close flow control threshold");
+
+    /**
+     * Topic name
+     */
+    public static final Field TOPIC_NAME = Field.create("transforms.route.replacement")
+            .withDisplayName("transforms route replacement")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("transforms route replacement");
+
     protected static final ConfigDefinition CONFIG_DEFINITION = CommonConnectorConfig.CONFIG_DEFINITION.edit()
             .type(
                     SERVER_NAME,
@@ -673,7 +722,12 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
                     PROCESS_FILE_COUNT_LIMIT,
                     PROCESS_FILE_TIME_LIMIT,
                     APPEND_WRITE,
-                    FILE_SIZE_LIMIT)
+                    FILE_SIZE_LIMIT,
+                    KAFKA_BOOTSTRAP_SERVER,
+                    QUEUE_SIZE_LIMIT,
+                    OPEN_FLOW_CONTROL_THRESHOLD,
+                    CLOSE_FLOW_CONTROL_THRESHOLD,
+                    TOPIC_NAME)
             .connector(
                     DECIMAL_HANDLING_MODE,
                     TIME_PRECISION_MODE,
@@ -899,35 +953,98 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
     }
 
     /**
+     * kafka bootstrap server
+     *
+     * @return String the kafka bootstrap server
+     */
+    public String kafkaBootstrapServer() {
+        return getConfig().getString(KAFKA_BOOTSTRAP_SERVER);
+    }
+
+    /**
+     * Queue size limit
+     *
+     * @return Integer the queue size limit
+     */
+    public Integer queueSizeLimit() {
+        return getConfig().getInteger(QUEUE_SIZE_LIMIT);
+    }
+
+    /**
+     * Open flow control threshold
+     *
+     * @return Double the open flow control threshold
+     */
+    public Double openFlowControlThreshold() {
+        return getConfig().getDouble(OPEN_FLOW_CONTROL_THRESHOLD);
+    }
+
+    /**
+     * Close flow control threshold
+     *
+     * @return Double the close flow control threshold
+     */
+    public Double closeFlowControlThreshold() {
+        return getConfig().getDouble(CLOSE_FLOW_CONTROL_THRESHOLD);
+    }
+
+    /**
+     * Gets topic name
+     *
+     * @return String the topic name
+     */
+    public String topic() {
+        return getConfig().getString(TOPIC_NAME);
+    }
+
+    /**
      * rectify parameter
      */
     public void rectifyParameter() {
-        if (isBooleanValid("append.write", getConfig().getString(APPEND_WRITE))) {
-            isAppend = getConfig().getBoolean(APPEND_WRITE);
+        if (isCommitProcess()) {
+            if (isBooleanValid("append.write", getConfig().getString(APPEND_WRITE))) {
+                isAppend = getConfig().getBoolean(APPEND_WRITE);
+            }
+            if (isFilePathValid("source.process.file.path", getConfig().getString(PROCESS_FILE_PATH),
+                    processFilePath)) {
+                processFilePath = getConfig().getString(PROCESS_FILE_PATH);
+            }
+            if (isFilePathValid("create.count.info.path", getConfig().getString(CREATE_COUNT_INFO_PATH),
+                    countInfoPath)) {
+                countInfoPath = getConfig().getString(CREATE_COUNT_INFO_PATH);
+            }
+            if (isNumberValid("commit.time.interval", getConfig().getString(COMMIT_TIME_INTERVAL),
+                    timeInterval)) {
+                timeInterval = getConfig().getInteger(COMMIT_TIME_INTERVAL);
+            }
+            if (isNumberValid("process.file.time.limit", getConfig().getString(PROCESS_FILE_TIME_LIMIT),
+                    timeLimit)) {
+                timeLimit = getConfig().getInteger(PROCESS_FILE_TIME_LIMIT);
+            }
+            if (isNumberValid("process.file.count.limit", getConfig().getString(PROCESS_FILE_COUNT_LIMIT),
+                    countLimit)) {
+                countLimit = getConfig().getInteger(PROCESS_FILE_COUNT_LIMIT);
+            }
+            if (isNumberValid("file.size.limit", getConfig().getString(FILE_SIZE_LIMIT), sizeLimit)) {
+                sizeLimit = getConfig().getInteger(FILE_SIZE_LIMIT);
+            }
         }
-        if (isFilePathValid("source.process.file.path", getConfig().getString(PROCESS_FILE_PATH),
-                processFilePath)) {
-            processFilePath = getConfig().getString(PROCESS_FILE_PATH);
+    }
+
+    private boolean isDoubleValid(String parameterName, String value, double defaultValue) {
+        try {
+            if (Double.parseDouble(value) > 1) {
+                LOGGER.warn("The parameter " + parameterName + " is invalid, it must be smaller than or equal to 1,"
+                        + " will adopt it's default value: " + defaultValue);
+                return false;
+            }
         }
-        if (isFilePathValid("create.count.info.path", getConfig().getString(CREATE_COUNT_INFO_PATH),
-                countInfoPath)) {
-            countInfoPath = getConfig().getString(CREATE_COUNT_INFO_PATH);
+        catch (NumberFormatException e) {
+            LOGGER.warn("The parameter " + parameterName + " is invalid, it must be integer,"
+                    + " will adopt it's default value: " + defaultValue);
+            return false;
         }
-        if (isNumberValid("commit.time.interval", getConfig().getString(COMMIT_TIME_INTERVAL),
-                timeInterval)) {
-            timeInterval = getConfig().getInteger(COMMIT_TIME_INTERVAL);
-        }
-        if (isNumberValid("process.file.time.limit", getConfig().getString(PROCESS_FILE_TIME_LIMIT),
-                timeLimit)) {
-            timeLimit = getConfig().getInteger(PROCESS_FILE_TIME_LIMIT);
-        }
-        if (isNumberValid("process.file.count.limit", getConfig().getString(PROCESS_FILE_COUNT_LIMIT),
-                countLimit)) {
-            countLimit = getConfig().getInteger(PROCESS_FILE_COUNT_LIMIT);
-        }
-        if (isNumberValid("file.size.limit", getConfig().getString(FILE_SIZE_LIMIT), sizeLimit)) {
-            sizeLimit = getConfig().getInteger(FILE_SIZE_LIMIT);
-        }
+        return true;
     }
 
     private boolean isFilePathValid(String parameterName, String value, String defaultValue) {
@@ -1126,5 +1243,16 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
             }
         }
         return 0;
+    }
+
+    /**
+     * Gets connector config list
+     *
+     * @return String the connector config list
+     */
+    public String getConnectorConfigList() {
+        return "provide.transaction.metadata=" + shouldProvideTransactionMetadata()
+                + System.lineSeparator()
+                + "create.count.info.path=" + createCountInfoPath();
     }
 }

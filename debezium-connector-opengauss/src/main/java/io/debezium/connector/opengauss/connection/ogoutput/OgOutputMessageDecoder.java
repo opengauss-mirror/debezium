@@ -65,7 +65,7 @@ public class OgOutputMessageDecoder extends AbstractMessageDecoder {
     private static final byte SPACE = 32;
 
     private final MessageDecoderContext decoderContext;
-    private final OpengaussConnection connection;
+    private OpengaussConnection connection;
 
     private Instant commitTimestamp;
 
@@ -117,6 +117,11 @@ public class OgOutputMessageDecoder extends AbstractMessageDecoder {
     public OgOutputMessageDecoder(MessageDecoderContext decoderContext) {
         this.decoderContext = decoderContext;
         this.connection = new OpengaussConnection(decoderContext.getConfig(), decoderContext.getSchema().getTypeRegistry());
+    }
+
+    private void refreshConnection() {
+        connection.close();
+        connection = new OpengaussConnection(decoderContext.getConfig(), decoderContext.getSchema().getTypeRegistry());
     }
 
     @Override
@@ -282,6 +287,9 @@ public class OgOutputMessageDecoder extends AbstractMessageDecoder {
         Map<String, Boolean> columnOptionality;
         List<String> primaryKeyColumns;
 
+        if (!connection.connection().isValid(1)) {
+            refreshConnection();
+        }
         final DatabaseMetaData databaseMetadata = connection.connection().getMetaData();
         final TableId tableId = new TableId(null, schemaName, tableName);
 

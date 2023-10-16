@@ -850,6 +850,17 @@ public final class Field {
     /**
      * Create and return a new Field instance that is a copy of this field but with the given default value.
      *
+     * @param defaultValue defaultValue the new default value for the new field
+     * @return he new field; never null
+     */
+    public Field withDefault(double defaultValue) {
+        return new Field(name(), displayName(), type(), width, description(), importance(), dependents,
+                () -> defaultValue, validator, recommender, isRequired, group, allowedValues);
+    }
+
+    /**
+     * Create and return a new Field instance that is a copy of this field but with the given default value.
+     *
      * @param defaultValueGenerator the supplier for the new default value for the new field, called whenever a default value
      *            is needed
      * @return the new field; never null

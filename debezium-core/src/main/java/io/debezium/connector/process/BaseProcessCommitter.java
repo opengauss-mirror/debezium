@@ -19,8 +19,6 @@ import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.alibaba.fastjson.JSON;
-
 import io.debezium.config.SinkConnectorConfig;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
 
@@ -277,8 +275,7 @@ public abstract class BaseProcessCommitter {
      */
     public void commitSourceProcessInfo() {
         while (true) {
-            String json = JSON.toJSONString(statSourceProcessInfo());
-            commit(json, isAppendWrite);
+            commit(statSourceProcessInfo(), isAppendWrite);
         }
     }
 
@@ -287,8 +284,7 @@ public abstract class BaseProcessCommitter {
      */
     public void commitSinkProcessInfo() {
         while (true) {
-            String json = JSON.toJSONString(statSinkProcessInfo());
-            commit(json, isAppendWrite);
+            commit(statSinkProcessInfo(), isAppendWrite);
         }
     }
 
@@ -297,12 +293,12 @@ public abstract class BaseProcessCommitter {
      *
      * @return BaseSourceProcessInfo the source process information
      */
-    protected abstract BaseSourceProcessInfo statSourceProcessInfo();
+    protected abstract String statSourceProcessInfo();
 
     /**
      * statSinkProcessInfo
      *
      * @return BaseSinkProcessInfo the sink process information
      */
-    protected abstract BaseSinkProcessInfo statSinkProcessInfo();
+    protected abstract String statSinkProcessInfo();
 }

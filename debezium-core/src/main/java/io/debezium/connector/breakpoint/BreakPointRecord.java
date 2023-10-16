@@ -6,7 +6,6 @@
 package io.debezium.connector.breakpoint;
 
 import java.time.Duration;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -15,53 +14,37 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
+import io.debezium.config.SinkConnectorConfig;
+import io.debezium.connector.kafka.KafkaClient;
 import org.apache.kafka.clients.admin.AdminClient;
-import org.apache.kafka.clients.admin.Config;
 import org.apache.kafka.clients.admin.DeleteRecordsResult;
 import org.apache.kafka.clients.admin.DeletedRecords;
-import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.admin.RecordsToDelete;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.clients.consumer.OffsetResetStrategy;
-import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.KafkaFuture;
-import org.apache.kafka.common.Node;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.ConfigDef;
-import org.apache.kafka.common.config.ConfigResource;
-import org.apache.kafka.common.errors.UnsupportedVersionException;
-import org.apache.kafka.common.serialization.StringDeserializer;
-import org.apache.kafka.common.serialization.StringSerializer;
-import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Queues;
 
-import io.debezium.config.Configuration;
 import io.debezium.config.Field;
-import io.debezium.util.Collect;
 
 /**
  * Description: BreakPointRecord
@@ -88,32 +71,6 @@ public class BreakPointRecord {
             .withImportance(ConfigDef.Importance.LOW)
             .withDescription("The name used for the breakpoint record, perhaps differently by each implementation.")
             .withValidation(Field::isOptional);
-
-    /**
-     * The breakpoint topic
-     */
-    public static final Field TOPIC = Field.create(CONFIGURATION_FIELD_PREFIX_STRING + "kafka.topic")
-            .withDisplayName("Database breakpoint topic name")
-            .withType(ConfigDef.Type.STRING)
-            .withGroup(Field.createGroupEntry(Field.Group.CONNECTION, 32))
-            .withWidth(ConfigDef.Width.LONG)
-            .withImportance(ConfigDef.Importance.HIGH)
-            .withDescription("The name of the topic for the database breakpoint record");
-
-    /**
-     * The breakpoint kafka bootstrap server
-     */
-    public static final Field BOOTSTRAP_SERVERS = Field.create(CONFIGURATION_FIELD_PREFIX_STRING
-            + "kafka.bootstrap.servers")
-            .withDisplayName("Kafka broker addresses")
-            .withType(ConfigDef.Type.STRING)
-            .withGroup(Field.createGroupEntry(Field.Group.CONNECTION, 31))
-            .withWidth(ConfigDef.Width.LONG)
-            .withImportance(ConfigDef.Importance.HIGH)
-            .withDescription("A list of host/port pairs that the connector will use for establishing the initial "
-                    + "connection to the Kafka cluster for retrieving database schema history previously stored "
-                    + "by the connector. This should point to the same Kafka cluster used by the Kafka Connect "
-                    + "process.");
 
     /**
      * The breakpoint kafka recovery poll interval
@@ -145,44 +102,16 @@ public class BreakPointRecord {
                     + "x (recovery.poll.interval.ms).")
             .withDefault(100)
             .withValidation(Field::isInteger);
-
-    private static final Integer PARTITION = 0;
     private static final Long UNLIMITED_VALUE = -1L;
-    private static final short PARTITION_COUNT = (short) 1;
-    private static final String CLEANUP_POLICY_NAME = "cleanup.policy";
-    private static final String CLEANUP_POLICY_VALUE = "delete";
-    private static final String RETENTION_MS_NAME = "retention.ms";
-    private static final long RETENTION_MS_MAX = Long.MAX_VALUE;
-    private static final long RETENTION_MS_MIN = Duration.of(5 * 365, ChronoUnit.DAYS).toMillis(); // 5 years
-    private static final String RETENTION_BYTES_NAME = "retention.bytes";
 
-    /**
-     * The name of broker property defining default replication factor for topics without the explicit setting.
-     *
-     * @see kafka.server.KafkaConfig.DefaultReplicationFactorProp
-     */
-    private static final String DEFAULT_TOPIC_REPLICATION_FACTOR_PROP_NAME = "default.replication.factor";
-
-    /**
-     * The default replication factor for the breakpoint topic which is used in case
-     * the value couldn't be retrieved from the broker.
-     */
-    private static final short DEFAULT_TOPIC_REPLICATION_FACTOR = 1;
-    private static final Duration KAFKA_QUERY_TIMEOUT = Duration.ofSeconds(3);
-    private static final String CONSUMER_PREFIX = CONFIGURATION_FIELD_PREFIX_STRING + "consumer.";
-    private static final String PRODUCER_PREFIX = CONFIGURATION_FIELD_PREFIX_STRING + "producer.";
-
-    private Configuration consumerConfig;
-    private Configuration producerConfig;
-    private volatile KafkaProducer<String, String> producer;
-    private KafkaConsumer<String, String> bpRecordConsumer;
+    private SinkConnectorConfig config;
+    private KafkaClient client;
     private LinkedList<String> breakpointFilterList = new LinkedList<>();
     private Map<Long, Boolean> breakpointFilterMap = new HashMap<>();
     private BlockingQueue<BreakPointInfo> storeToKafkaQueue = new LinkedBlockingQueue<>();
     private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(2, 2, 100,
             TimeUnit.SECONDS, new LinkedBlockingQueue<>(2));
     private List<Long> toDeleteOffsets = new ArrayList<>();
-    private String bpRecordTopicName;
     private Duration pollInterval;
     private int maxRecoveryAttempts;
     private int bpQueueTimeLimit;
@@ -195,42 +124,14 @@ public class BreakPointRecord {
     /**
      * configure the breakpoint properties
      *
-     * @param config Configuration config
+     * @param connectorConfig  SinkConnectorConfig the connector config
      */
-    public BreakPointRecord(Configuration config) {
-        this.bpRecordTopicName = config.getString(TOPIC);
+    public BreakPointRecord(SinkConnectorConfig connectorConfig) {
+        this.config = connectorConfig;
         this.replayedOffsets = new PriorityBlockingQueue<>();
-        this.pollInterval = Duration.ofMillis(config.getInteger(RECOVERY_POLL_INTERVAL_MS));
-        this.maxRecoveryAttempts = config.getInteger(RECOVERY_POLL_ATTEMPTS);
-        String bootstrapServers = config.getString(BOOTSTRAP_SERVERS);
-        String bpRecordName = config.getString(CONFIGURATION_FIELD_PREFIX_STRING + "name",
-                UUID.randomUUID().toString());
-        this.consumerConfig = config.subset(CONSUMER_PREFIX, true).edit()
-                .withDefault(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers)
-                .withDefault(ConsumerConfig.GROUP_ID_CONFIG, bpRecordName)
-                .withDefault(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, 1) // get even smallest message
-                .withDefault(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false)
-                .withDefault(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 10000) // readjusted since 0.10.1.0
-                .withDefault(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 30000)
-                .withDefault(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,
-                        OffsetResetStrategy.EARLIEST.toString().toLowerCase(Locale.ROOT))
-                .withDefault(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class)
-                .withDefault(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class)
-                .build();
-        this.producerConfig = config.subset(PRODUCER_PREFIX, true).edit()
-                .withDefault(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers)
-                .withDefault(ProducerConfig.ACKS_CONFIG, 1)
-                .withDefault(ProducerConfig.RETRIES_CONFIG, 1) // may result in duplicate messages, but that's okay
-                .withDefault(ProducerConfig.BATCH_SIZE_CONFIG, 1024 * 128) // 128KB
-                .withDefault(ProducerConfig.BUFFER_MEMORY_CONFIG, 1024 * 1024 * 64) // 64MB
-                .withDefault(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class)
-                .withDefault(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class)
-                .withDefault(ProducerConfig.MAX_BLOCK_MS_CONFIG, 10_000) // wait at most this if we can't reach Kafka
-                .build();
-        if (LOGGER.isInfoEnabled()) {
-            LOGGER.info("BreakPointRecord Consumer config: {}", consumerConfig.withMaskedPasswords());
-            LOGGER.info("BreakPointRecord Producer config: {}", producerConfig.withMaskedPasswords());
-        }
+        this.pollInterval = Duration.ofMillis(500);
+        this.maxRecoveryAttempts = connectorConfig.getBpMaxRetries();
+        this.client = new KafkaClient(connectorConfig, CONFIGURATION_FIELD_PREFIX_STRING);
     }
 
     /**
@@ -252,126 +153,15 @@ public class BreakPointRecord {
     }
 
     /**
-     * Sets the bpQueueTimeLimit.
-     *
-     * @param bpQueueTimeLimit the store breakpoint cleanup time limit
-     */
-    public void setBpQueueTimeLimit(int bpQueueTimeLimit) {
-        this.bpQueueTimeLimit = bpQueueTimeLimit;
-    }
-
-    /**
-     * Sets the bpQueueSizeLimit.
-     *
-     * @param bpQueueSizeLimit the store breakpoint cleanup size limit
-     */
-    public void setBpQueueSizeLimit(int bpQueueSizeLimit) {
-        this.bpQueueSizeLimit = bpQueueSizeLimit;
-    }
-
-    /**
      * Start the record breakpoint info.
      */
     public synchronized void start() {
+        this.bpQueueTimeLimit = config.getBpQueueTimeLimit();
+        this.bpQueueSizeLimit = config.getBpQueueSizeLimit();
         storeToKafkaThread();
         deleteBpByTimeTask();
         deleteBpBySizeTask();
-        if (this.producer == null) {
-            this.producer = new KafkaProducer<>(this.producerConfig.asProperties());
-        }
-    }
-
-    /**
-     * build consumer config property name
-     *
-     * @param kafkaConsumerPropertyName the consumer property name
-     * @return consumer prefix and kafka consumer property
-     */
-    public static String consumerConfigPropertyName(String kafkaConsumerPropertyName) {
-        return CONSUMER_PREFIX + kafkaConsumerPropertyName;
-    }
-
-    /**
-     * initialize breakpoint storage in kafka
-     */
-    public void initializeStorage() {
-        try (AdminClient admin = AdminClient.create(this.producerConfig.asProperties())) {
-            // Find default replication factor
-            final short replicationFactor = getDefaultTopicReplicationFactor(admin);
-            // Create topic
-            final NewTopic topic = new NewTopic(bpRecordTopicName, PARTITION_COUNT, replicationFactor);
-            topic.configs(Collect.hashMapOf(CLEANUP_POLICY_NAME, CLEANUP_POLICY_VALUE,
-                    RETENTION_MS_NAME, Long.toString(RETENTION_MS_MAX), RETENTION_BYTES_NAME,
-                    Long.toString(UNLIMITED_VALUE)));
-            admin.createTopics(Collections.singleton(topic));
-
-            LOGGER.info("Breakpoint record topic '{}' created", topic);
-        }
-        catch (InterruptedException | TimeoutException | ExecutionException e) {
-            throw new ConnectException("Creation of breakpoint record topic failed, "
-                    + "please create the topic manually", e);
-        }
-    }
-
-    /**
-     * Get default topic replication factor
-     *
-     * @param admin kafka admin
-     * @return default topic replication factor
-     * @throws InterruptedException throw InterruptedException
-     * @throws TimeoutException throw TimeoutException
-     * @throws ExecutionException throw ExecutionException
-     */
-    private short getDefaultTopicReplicationFactor(AdminClient admin) throws InterruptedException, TimeoutException, ExecutionException {
-        try {
-            Config brokerConfig = getKafkaBrokerConfig(admin);
-            String defaultReplicationFactorValue = brokerConfig.get(DEFAULT_TOPIC_REPLICATION_FACTOR_PROP_NAME).value();
-
-            // Ensure that the default replication factor property was returned by the Admin Client
-            if (defaultReplicationFactorValue != null) {
-                return Short.parseShort(defaultReplicationFactorValue);
-            }
-        }
-        catch (ExecutionException ex) {
-            // ignore UnsupportedVersionException, e.g. due to older broker version
-            if (!(ex.getCause() instanceof UnsupportedVersionException)) {
-                throw ex;
-            }
-        }
-
-        // Otherwise warn that no property was obtained and default it to 1 - users can increase this later if desired
-        LOGGER.warn(
-                "Unable to obtain the default replication factor from the brokers at {}. Setting value to {} instead.",
-                producerConfig.getString(BOOTSTRAP_SERVERS),
-                DEFAULT_TOPIC_REPLICATION_FACTOR);
-
-        return DEFAULT_TOPIC_REPLICATION_FACTOR;
-    }
-
-    /**
-     * Get kafka broker config
-     *
-     * @param admin kafka admin
-     * @return Config kafka broker config
-     * @throws ExecutionException throw ExecutionException
-     * @throws InterruptedException throw InterruptedException
-     * @throws TimeoutException throw TimeoutException
-     */
-    private Config getKafkaBrokerConfig(AdminClient admin) throws ExecutionException, InterruptedException, TimeoutException {
-        final Collection<Node> nodes = admin.describeCluster().nodes()
-                .get(KAFKA_QUERY_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-        if (nodes.isEmpty()) {
-            throw new ConnectException("No brokers available to obtain default settings");
-        }
-        String nodeId = nodes.iterator().next().idString();
-        Set<ConfigResource> resources = Collections.singleton(new ConfigResource(ConfigResource.Type.BROKER, nodeId));
-        final Map<ConfigResource, Config> configs = admin.describeConfigs(resources).all().get(
-                KAFKA_QUERY_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-
-        if (configs.isEmpty()) {
-            throw new ConnectException("No configs have been received");
-        }
-        return configs.values().iterator().next();
+        client.initializeStorage(UNLIMITED_VALUE);
     }
 
     /**
@@ -381,9 +171,8 @@ public class BreakPointRecord {
      * @return boolean breakpoint situation
      */
     public boolean isExists(Collection<SinkRecord> records) {
-        if (isTopicExist() && breakpointEndOffset.equals(UNLIMITED_VALUE)) {
-            KafkaConsumer<String, String> breakpointConsumer = new KafkaConsumer<>(consumerConfig.asProperties());
-            breakpointConsumer.subscribe(Collect.arrayListOf(bpRecordTopicName));
+        if (client.isTopicExist() && breakpointEndOffset.equals(UNLIMITED_VALUE)) {
+            KafkaConsumer<String, String> breakpointConsumer = client.getConsumer();
             long lastProcessedOffset = UNLIMITED_VALUE;
             Long endOffset = null;
             int recoveryAttempts = 0;
@@ -505,7 +294,7 @@ public class BreakPointRecord {
                     for (BreakPointInfo breakPointInfo : toStoreList) {
                         storeRecordToKafka(breakPointInfo.getKey(), breakPointInfo.getValue());
                     }
-                    this.producer.flush();
+                    client.getProducer().flush();
                     toStoreList.clear();
                 }
                 catch (InterruptedException e) {
@@ -522,21 +311,8 @@ public class BreakPointRecord {
      * @param value the breakpoint info
      */
     public void storeRecordToKafka(String key, String value) {
-        ProducerRecord<String, String> produced = new ProducerRecord<>(bpRecordTopicName, PARTITION,
-                key, value);
-        this.producer.send(produced);
+        client.sendMessage(key, value);
         totalMessageCount++;
-    }
-
-    /**
-     * Determine whether a topic exists
-     *
-     * @return boolean topic exists
-     */
-    public boolean isTopicExist() {
-        try (KafkaConsumer<String, String> checkTopicConsumer = new KafkaConsumer<>(consumerConfig.asProperties())) {
-            return checkTopicConsumer.listTopics().containsKey(bpRecordTopicName);
-        }
     }
 
     /**
@@ -550,9 +326,9 @@ public class BreakPointRecord {
         if (breakpointFilterList.isEmpty() && breakpointFilterMap.isEmpty()) {
             isGetBp = false;
         }
-        if (this.bpRecordConsumer == null && !isGetBp) {
-            this.bpRecordConsumer = new KafkaConsumer<>(consumerConfig.asProperties());
-            this.bpRecordConsumer.subscribe(Collect.arrayListOf(bpRecordTopicName));
+        KafkaConsumer<String, String> bpRecordConsumer = null;
+        if (!isGetBp) {
+            bpRecordConsumer = client.getConsumer();
         }
         long lastProcessedOffset = UNLIMITED_VALUE;
         Long endOffset = getEndOffsetOfDbBreakPointTopic(null, bpRecordConsumer);
@@ -656,7 +432,7 @@ public class BreakPointRecord {
     private Long getEndOffsetOfDbBreakPointTopic(Long previousEndOffset,
                                                  KafkaConsumer<String, String> bpRecordConsumer) {
         Map<TopicPartition, Long> offsets = bpRecordConsumer.endOffsets(
-                Collections.singleton(new TopicPartition(bpRecordTopicName, PARTITION)));
+                Collections.singleton(client.getTopicPartition()));
         Long endOffset = offsets.entrySet().iterator().next().getValue();
 
         // The end offset should never change during recovery; doing this check here just as - a rather weak - attempt
@@ -676,9 +452,9 @@ public class BreakPointRecord {
      */
     public void deleteBreakpoint(Long endOffset) {
         LOGGER.info("to delete endOffset is {}", endOffset);
-        AdminClient kafkaAdminClient = AdminClient.create(this.producerConfig.asProperties());
+        AdminClient kafkaAdminClient = client.createTopicClient();
         long lowWatermark = Long.MAX_VALUE;
-        TopicPartition topicPartition = new TopicPartition(bpRecordTopicName, PARTITION);
+        TopicPartition topicPartition = client.getTopicPartition();
         RecordsToDelete recordsToDelete = RecordsToDelete.beforeOffset(endOffset);
         LOGGER.info("recordsToDelete before offset is {}", recordsToDelete.beforeOffset());
         Map<TopicPartition, RecordsToDelete> recordsToDeleteMap = new HashMap<>();
@@ -713,8 +489,7 @@ public class BreakPointRecord {
      * @return Long the real breakpoint offset
      */
     public Long preDeleteOffset(Long committedOffset) {
-        KafkaConsumer<String, String> getDeleteOffsetConsumer = new KafkaConsumer<>(consumerConfig.asProperties());
-        getDeleteOffsetConsumer.subscribe(Collect.arrayListOf(bpRecordTopicName));
+        KafkaConsumer<String, String> getDeleteOffsetConsumer = client.getConsumer();
         boolean isTransaction = false;
         Long preDeleteOffset = null;
         long lastProcessedOffset = UNLIMITED_VALUE;

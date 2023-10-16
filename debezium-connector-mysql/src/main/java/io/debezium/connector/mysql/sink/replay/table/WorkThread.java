@@ -9,10 +9,13 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -20,8 +23,6 @@ import java.util.concurrent.PriorityBlockingQueue;
 import org.apache.kafka.connect.errors.DataException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.mysql.cj.jdbc.exceptions.CommunicationsException;
 
 import io.debezium.connector.breakpoint.BreakPointObject;
 import io.debezium.connector.breakpoint.BreakPointRecord;
@@ -44,6 +45,7 @@ public class WorkThread extends Thread {
     private static final String UPDATE = "u";
     private static final String DELETE = "d";
 
+    private final DateTimeFormatter sqlPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH:mm:ss.SSS");
     private SqlTools sqlTools;
     private int successCount;
     private int failCount;
@@ -60,6 +62,7 @@ public class WorkThread extends Thread {
     private boolean isTransaction;
     private boolean isConnection = true;
     private boolean isStop = false;
+    private Set<String> tableSet = new HashSet<>();
 
     /**
      * Constructor
@@ -100,7 +103,7 @@ public class WorkThread extends Thread {
         catch (SQLException exp) {
             LOGGER.error("SQL exception occurred in work thread", exp);
         }
-        String sql = null;
+        Object sql = null;
         while (!isStop) {
             try {
                 sinkRecordObject = sinkRecordQueue.take();
@@ -112,7 +115,14 @@ public class WorkThread extends Thread {
                     replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
                     continue;
                 }
-                statement.executeUpdate(sql);
+                if (sql instanceof String) {
+                    statement.execute(sql.toString());
+                }
+                else {
+                    sql = ddlListToString((List<String>) sql);
+                    statement.execute(sql.toString());
+                    updateTableMapping(sinkRecordObject.getChangedTableList());
+                }
                 successCount++;
                 replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
                 savedBreakPointInfo(sinkRecordObject);
@@ -120,16 +130,8 @@ public class WorkThread extends Thread {
                     threadSinkRecordObject = sinkRecordObject;
                 }
             }
-            catch (CommunicationsException exp) {
-                updateConnectionAndExecuteSql(sql, sinkRecordObject);
-            }
             catch (SQLException exp) {
-                if (!connectionInfo.checkConnectionStatus(connection)) {
-                    return;
-                }
-                failCount++;
-                failSqlList.add(sql);
-                LOGGER.error("SQL exception occurred in work thread", exp);
+                updateConnectionAndExecuteSql(sql.toString(), sinkRecordObject);
             }
             catch (InterruptedException exp) {
                 LOGGER.warn("Interrupted exception occurred", exp);
@@ -146,13 +148,73 @@ public class WorkThread extends Thread {
         }
     }
 
+    private String ddlListToString(List<String> ddlList) {
+        StringBuilder sb = new StringBuilder();
+        for (String ddl : ddlList) {
+            sb.append(ddl);
+            sb.append(System.lineSeparator());
+        }
+        sb.setLength(sb.length() - 1);
+        return sb.toString();
+    }
+
+    private void updateTableMapping(List<String> changedTableList) {
+        if (changedTableList.size() == 0) {
+            return;
+        }
+        for (String tableFullName : changedTableList) {
+            oldTableMap.remove(tableFullName);
+        }
+    }
+
     /**
      * Adds data
      *
      * @param sinkRecordObject SinkRecordObject the sinkRecordObject
+     * @param tableFullName String the table full name
      */
-    public void addData(SinkRecordObject sinkRecordObject) {
-        sinkRecordQueue.add(sinkRecordObject);
+    public void addData(SinkRecordObject sinkRecordObject, String tableFullName) {
+        if (sinkRecordObject != null) {
+            sinkRecordQueue.add(sinkRecordObject);
+        }
+        tableSet.add(tableFullName);
+    }
+
+    /**
+     * Adds sink queue
+     *
+     * @param sinkQueue BlockingQueue<SinkRecordObject> the sinkQueue
+     * @param workTables Set<String> the work tables set
+     */
+    public void addWorkData(BlockingQueue<SinkRecordObject> sinkQueue, Set<String> workTables) {
+        tableSet.addAll(workTables);
+        sinkRecordQueue.addAll(sinkQueue);
+    }
+
+    /**
+     * Remove work data
+     */
+    public void removeWorkData() {
+        tableSet.clear();
+        sinkRecordQueue.clear();
+    }
+
+    /**
+     * Gets sink record queue
+     *
+     * @return BlockingQueue<SinkRecordObject> the sinkRecordQueue
+     */
+    public BlockingQueue<SinkRecordObject> getSinkRecordQueue() {
+        return sinkRecordQueue;
+    }
+
+    /**
+     * Gets table set
+     *
+     * @return Set<String> the table set
+     */
+    public Set<String> getTableSet() {
+        return tableSet;
     }
 
     /**
@@ -161,14 +223,14 @@ public class WorkThread extends Thread {
      * @param sinkRecordObject SinkRecordObject the sinkRecordObject
      * @return String the sql
      */
-    public String constructSql(SinkRecordObject sinkRecordObject) {
+    public Object constructSql(SinkRecordObject sinkRecordObject) {
         SourceField sourceField = sinkRecordObject.getSourceField();
         DmlOperation dmlOperation;
         if (sinkRecordObject.getDataOperation() instanceof DmlOperation) {
             dmlOperation = (DmlOperation) sinkRecordObject.getDataOperation();
         }
         else {
-            return "";
+            return sinkRecordObject.getDdlSqlList();
         }
         String schemaName = schemaMappingMap.get(sourceField.getDatabase());
         String tableFullName = schemaName + "." + sourceField.getTable();
@@ -249,19 +311,28 @@ public class WorkThread extends Thread {
 
     private void updateConnectionAndExecuteSql(String sql, SinkRecordObject sinkRecordObject) {
         try {
-            statement.close();
-            connection.close();
-            connection = connectionInfo.createOpenGaussConnection();
-            statement = connection.createStatement();
-            statement.executeUpdate(sql);
-            savedBreakPointInfo(sinkRecordObject);
-            successCount++;
-        }
-        catch (SQLException exp) {
             if (!connectionInfo.checkConnectionStatus(connection)) {
                 return;
             }
-            LOGGER.error("SQL exception occurred in work thread", exp);
+            statement.executeUpdate(sql);
+            savedBreakPointInfo(sinkRecordObject);
+            successCount++;
+            return;
+        }
+        catch (SQLException exp) {
+            failCount++;
+            failSqlList.add("-- "
+                    + sqlPattern.format(LocalDateTime.now())
+                    + ": "
+                    + sinkRecordObject.getSourceField()
+                    + System.lineSeparator()
+                    + "-- "
+                    + exp.getMessage()
+                    + System.lineSeparator()
+                    + sql + System.lineSeparator());
+            LOGGER.error("SQL exception occurred in struct date {}", sinkRecordObject.getSourceField());
+            LOGGER.error("The error SQL statement executed is: {}", sql);
+            LOGGER.error("the cause of the exception is {}", exp.getMessage());
         }
     }
 

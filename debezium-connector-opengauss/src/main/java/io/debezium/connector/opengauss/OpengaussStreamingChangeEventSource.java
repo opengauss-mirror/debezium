@@ -12,7 +12,7 @@ import java.util.OptionalLong;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-import io.debezium.connector.opengauss.process.OgSourceProcessInfo;
+import io.debezium.connector.process.BaseSourceProcessInfo;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.postgresql.core.BaseConnection;
 import org.postgresql.replication.LogSequenceNumber;
@@ -218,11 +218,9 @@ public class OpengaussStreamingChangeEventSource implements StreamingChangeEvent
             boolean receivedMessage = stream.readPending(message -> {
                 if (message instanceof OgOutputReplicationMessage
                         || message instanceof ReplicationMessage.NoopMessage) {
-                    createCount++;
-                    OgSourceProcessInfo.SOURCE_PROCESS_INFO.setCreateCount(createCount);
+                    BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreaseCreateCount(1);
                     if (message instanceof ReplicationMessage.NoopMessage) {
-                        skippedExcludeDataCount++;
-                        OgSourceProcessInfo.SOURCE_PROCESS_INFO.setSkippedExcludeCount(skippedExcludeDataCount);
+                        BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreaseSkippedExcludeCount(1);
                     }
                 }
 
