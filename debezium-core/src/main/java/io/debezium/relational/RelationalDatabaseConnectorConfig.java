@@ -678,9 +678,9 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      */
     public static final Field QUEUE_SIZE_LIMIT = Field.create("queue.size.limit")
             .withDisplayName("queue size limit")
-            .withType(Type.STRING)
+            .withType(Type.INT)
             .withImportance(Importance.MEDIUM)
-            .withDefault("1000000")
+            .withDefault(1000000)
             .withDescription("queue size limit");
 
     /**

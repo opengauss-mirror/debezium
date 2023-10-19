@@ -114,7 +114,7 @@ public class SinkConnectorConfig extends AbstractConfig {
     /**
      * Max Queue size
      */
-    public static final String MAX_QUEUE_SIZE = "max.queue.size";
+    public static final String QUEUE_SIZE_LIMIT = "queue.size.limit";
 
     /**
      * Open flow control threshold
@@ -153,7 +153,7 @@ public class SinkConnectorConfig extends AbstractConfig {
                     ConfigDef.Importance.HIGH, "Exceeding this limit deletes the breakpoint record")
             .define(BP_QUEUE_CLEAR_INTERVAL, ConfigDef.Type.STRING, "1",
                     ConfigDef.Importance.HIGH, "Exceeding this time limit deletes the breakpoint record")
-            .define(MAX_QUEUE_SIZE, ConfigDef.Type.INT, 1000000, ConfigDef.Importance.HIGH, "max queue size")
+            .define(QUEUE_SIZE_LIMIT, ConfigDef.Type.INT, 1000000, ConfigDef.Importance.HIGH, "queue size limit")
             .define(OPEN_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.8, ConfigDef.Importance.HIGH,
                     "open flow control threshold")
             .define(CLOSE_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.7, ConfigDef.Importance.HIGH,
@@ -219,7 +219,7 @@ public class SinkConnectorConfig extends AbstractConfig {
         this.topics = getString(TOPICS);
         this.schemaMappings = getString(SCHEMA_MAPPINGS);
         this.bootstrapServers = getBootstrapServers();
-        this.maxQueueSize = getInt(MAX_QUEUE_SIZE);
+        this.maxQueueSize = getInt(QUEUE_SIZE_LIMIT);
         this.openFlowControlThreshold = getDouble(OPEN_FLOW_CONTROL_THRESHOLD);
         this.closeFlowControlThreshold = getDouble(CLOSE_FLOW_CONTROL_THRESHOLD);
         initCouplingConfig();
