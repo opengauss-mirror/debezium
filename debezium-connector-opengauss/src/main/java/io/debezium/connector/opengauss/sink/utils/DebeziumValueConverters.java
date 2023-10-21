@@ -158,18 +158,30 @@ public final class DebeziumValueConverters {
         if (object == null){
             return null;
         }
-        if ("io.debezium.time.MicroTime".equals(schemaName)) {
-            long originMicro = Long.parseLong(object.toString()) * TimeUnit.MICROSECONDS.toNanos(1);
-            if (originMicro >= NANOSECOND_OF_DAY) {
-                return addingSingleQuotation(handleInvalidTime(originMicro));
+        if ("io.debezium.time.MicroTime".equals(schemaName) || "io.debezium.time.Time".equals(schemaName)) {
+            long originNano = getNanoOfTime(schemaName, object);
+
+            if (originNano >= NANOSECOND_OF_DAY) {
+                return addingSingleQuotation(handleInvalidTime(originNano));
             }
-            if (originMicro < 0) {
-                return addingSingleQuotation("-" + handleNegativeTime(-originMicro));
+            if (originNano < 0) {
+                return addingSingleQuotation("-" + handleNegativeTime(-originNano));
             }
         }
         Instant instant = convertDbzDateTime(object, schemaName);
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneOffset.UTC);
         return addingSingleQuotation(dateTimeFormatter.format(instant));
+    }
+
+    private static long getNanoOfTime(String schemaName, Object object) {
+        switch (schemaName) {
+            case "io.debezium.time.MicroTime":
+                return Long.parseLong(object.toString()) * TimeUnit.MICROSECONDS.toNanos(1);
+            case "io.debezium.time.Time":
+                return Long.parseLong(object.toString()) * 1000000;
+            default:
+                return 0;
+        }
     }
 
     private static String convertYear(String columnName, Struct valueStruct) {
