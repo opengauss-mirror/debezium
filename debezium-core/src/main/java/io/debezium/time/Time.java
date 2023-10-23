@@ -37,7 +37,7 @@ public class Time {
      * @return the schema builder
      */
     public static SchemaBuilder builder() {
-        return SchemaBuilder.int32()
+        return SchemaBuilder.int64()
                 .name(SCHEMA_NAME)
                 .version(1);
     }
@@ -62,15 +62,14 @@ public class Time {
      * @return the milliseconds past midnight
      * @throws IllegalArgumentException if the value is not an instance of the acceptable types or it is out of the supported range
      */
-    public static int toMilliOfDay(Object value, boolean acceptLargeValues) {
+    public static long toMilliOfDay(Object value, boolean acceptLargeValues) {
         if (value instanceof Duration) {
             Duration duration = (Duration) value;
             if (!acceptLargeValues && (duration.isNegative() || duration.compareTo(ONE_DAY) > 0)) {
                 throw new IllegalArgumentException("Time values must be between 00:00:00 and 24:00:00 (inclusive): " + duration);
             }
 
-            // int conversion is ok for the range of TIME
-            return (int) ((Duration) value).toMillis();
+            return ((Duration) value).toMillis();
         }
 
         // TODO only needed for SQL Server/Oracle, where we don't produce Duration right away;

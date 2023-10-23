@@ -42,7 +42,7 @@ import io.debezium.text.TokenStream.Tokens;
 @ThreadSafe
 public final class Strings {
 
-    private static final Pattern TIME_PATTERN = Pattern.compile("([0-9]*):([0-9]*):([0-9]*)(\\.([0-9]*))?");
+    private static final Pattern TIME_PATTERN = Pattern.compile("(\\-?[0-9]*):([0-9]*):([0-9]*)(\\.([0-9]*))?");
 
     /**
      * Generate the set of values that are included in the list.
