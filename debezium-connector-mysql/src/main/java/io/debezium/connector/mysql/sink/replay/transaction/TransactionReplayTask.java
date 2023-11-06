@@ -482,19 +482,21 @@ public class TransactionReplayTask extends ReplayTask {
     }
 
     @Override
-    protected void updateTransaction(SourceField sourceField) {
-        transaction.setSourceField(sourceField);
+    protected void updateTransaction(SinkRecordObject sinkRecordObject) {
+        transaction.setSourceField(sinkRecordObject.getSourceField());
         transaction.setSqlList(sqlList);
         transaction.setIsDml(false);
+        transaction.setTxnBeginOffset(sinkRecordObject.getKafkaOffset());
+        transaction.setTxnEndOffset(sinkRecordObject.getKafkaOffset());
         splitTransactionQueue();
         sqlList.clear();
     }
 
     @Override
-    protected void updateChangedTables(String ddl, String newSchemaName, String tableName) {
+    protected void updateChangedTables(String ddl, String newSchemaName, String tableName, SourceField sourceField) {
         if (SqlTools.isCreateOrAlterTableStatement(ddl)) {
             changedTableNameList.add(newSchemaName + "." + tableName);
-            transaction.getSourceField().setDatabase(newSchemaName);
+            sourceField.setDatabase(newSchemaName);
         }
     }
 }

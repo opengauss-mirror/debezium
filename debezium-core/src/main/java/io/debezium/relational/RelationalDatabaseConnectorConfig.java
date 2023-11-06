@@ -958,7 +958,26 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      * @return String the kafka bootstrap server
      */
     public String kafkaBootstrapServer() {
-        return getConfig().getString(KAFKA_BOOTSTRAP_SERVER);
+        if (isSeverPathValid(KAFKA_BOOTSTRAP_SERVER.toString())) {
+            return getConfig().getString(KAFKA_BOOTSTRAP_SERVER);
+        }
+        LOGGER.warn("The parameter " + KAFKA_BOOTSTRAP_SERVER.name() + " is invalid, it must be server path,"
+                + " will adopt it's default value: " + KAFKA_BOOTSTRAP_SERVER.defaultValueAsString());
+        return KAFKA_BOOTSTRAP_SERVER.defaultValueAsString();
+    }
+
+    private Boolean isSeverPathValid(String parameterName) {
+        String value = getConfig().getString(parameterName);
+        if (value.contains("localhost")) {
+            value = value.replace("localhost", "127.0.0.1");
+        }
+        String regex = "((25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)\\.)"
+                + "{3}(25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)"
+                + "(:([0-9]|[1-9]\\d|[1-9]\\d{2}|[1-9]\\d{3}|[1-5]\\d{4}|6[0-4]\\d{2}|655[0-2]\\d|6553[0-5])$)";
+        if ("".equals(value) || !value.matches(regex)) {
+            return false;
+        }
+        return true;
     }
 
     /**

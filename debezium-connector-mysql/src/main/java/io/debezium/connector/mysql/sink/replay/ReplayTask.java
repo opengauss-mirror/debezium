@@ -138,9 +138,9 @@ public class ReplayTask {
     /**
      * update sourceField
      *
-     * @param sourceField SourceField the sourceField
+     * @param sinkRecordObject SinkRecordObject the sinkRecordObject
      */
-    protected void updateTransaction(SourceField sourceField) {
+    protected void updateTransaction(SinkRecordObject sinkRecordObject) {
     }
 
     /**
@@ -174,8 +174,9 @@ public class ReplayTask {
      * @param ddl String the ddl
      * @param newSchemaName String the new schema name
      * @param tableName String the table name
+     * @param sourceField SourceField the sourceField
      */
-    protected void updateChangedTables(String ddl, String newSchemaName, String tableName) {
+    protected void updateChangedTables(String ddl, String newSchemaName, String tableName, SourceField sourceField) {
         if (SqlTools.isCreateOrAlterTableStatement(ddl)) {
             changedTableNameList.add(newSchemaName + "." + tableName);
         }
@@ -304,9 +305,9 @@ public class ReplayTask {
                 modifiedDdl = ignoreSchemaName(ddl, schemaName, tableName);
             }
             sqlList.add(modifiedDdl);
-            updateChangedTables(ddl, newSchemaName, tableName);
+            updateChangedTables(ddl, newSchemaName, tableName, sourceField);
         }
-        updateTransaction(sourceField);
+        updateTransaction(sinkRecordObject);
     }
 
     /**

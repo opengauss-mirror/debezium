@@ -187,7 +187,9 @@ public class Transaction implements Cloneable {
             transaction = (Transaction) super.clone();
             transaction.setSourceField(this.sourceField.clone());
             transaction.setSqlList(new ArrayList<>(this.sqlList));
-            transaction.setSqlOffsets(new LinkedList<>(this.sqlOffsets));
+            if (getIsDml()) {
+                transaction.setSqlOffsets(new LinkedList<>(this.sqlOffsets));
+            }
         }
         catch (CloneNotSupportedException exp) {
             LOGGER.error("Clone transaction failed.", exp);
