@@ -32,10 +32,13 @@ import io.debezium.connector.mysql.sink.replay.transaction.TransactionReplayTask
  **/
 public class MysqlSinkConnectorTask extends SinkTask {
     private static final Logger LOGGER = LoggerFactory.getLogger(MysqlSinkConnectorTask.class);
+    private static final int COMMIT_RETRY_TIMES = 5;
 
     private MySqlSinkConnectorConfig config;
     private ReplayTask jdbcDbWriter;
     private int count = 0;
+    private int commitRetryTimes = 0;
+    private long preOffset;
 
     @Override
     public String version() {
@@ -91,6 +94,19 @@ public class MysqlSinkConnectorTask extends SinkTask {
         Map<TopicPartition, OffsetAndMetadata> preCommitOffsets = new HashMap<>();
         Long minReplayedOffset = jdbcDbWriter.getReplayedOffset();
         if (minReplayedOffset < currentOffset && minReplayedOffset > 0L) {
+            if (minReplayedOffset.equals(preOffset)) {
+                commitRetryTimes++;
+            } else {
+                preOffset = minReplayedOffset;
+                commitRetryTimes = 0;
+            }
+            if (commitRetryTimes == COMMIT_RETRY_TIMES) {
+                LOGGER.warn("commit the same offset [{}] times, maybe occur kafka exception and clear buffer, "
+                            + "currentOffsets is {}", COMMIT_RETRY_TIMES, currentOffsets);
+                jdbcDbWriter.clearReplayedOffset(currentOffset);
+                this.flush(preCommitOffsets);
+                return currentOffsets;
+            }
             OffsetAndMetadata replayedOffset = new OffsetAndMetadata(minReplayedOffset, "");
             Set<TopicPartition> topicPartitions = currentOffsets.keySet();
             TopicPartition topicPartition = topicPartitions.iterator().next();

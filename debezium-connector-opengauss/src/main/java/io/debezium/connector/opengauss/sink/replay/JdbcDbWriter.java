@@ -383,6 +383,18 @@ public class JdbcDbWriter {
         return endOffset + 1;
     }
 
+    /**
+     * if commit the same offset five times, will clear replayed offset queue
+     *
+     * @param offset offset
+     */
+    public void clearReplayedOffset(long offset) {
+        breakPointRecord.getReplayedOffset().clear();
+        breakPointRecord.getReplayedOffset().add(offset);
+        addedQueueMap.clear();
+        addedQueueMap.put(offset, -1L);
+    }
+
     private void findProperWorkThread(String tableFullName, SinkRecordObject sinkRecordObject,
                                       String schemaName) {
         if (runnableMap.containsKey(tableFullName)) {
