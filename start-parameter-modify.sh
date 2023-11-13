@@ -11,4 +11,5 @@ target="${CONFLUENT_PATH}/bin/connect-standalone"
 line=`cat $target |grep -E 'export KAFKA_HEAP_OPTS'`
 val=${line#*=}
 sed -i "s/$val/$result/g" $target
+sed -i "s#\r#\\\ #g" $target
 echo  success

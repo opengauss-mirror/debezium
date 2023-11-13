@@ -1,12 +1,12 @@
-From df06ae79fce6c4039de4b8e98121eb020f7acbaa Mon Sep 17 00:00:00 2001
+From 26ee6f4cc8615bc5e74a8133fbdcef90abbcd1a7 Mon Sep 17 00:00:00 2001
 From: mmoogg <zyw2573@163.com>
-Date: Wed, 30 Aug 2023 11:29:48 +0800
+Date: Fri, 24 Nov 2023 14:08:26 +0800
 Subject: [PATCH] parallel parse binlog events & flow control
 
 ---
  pom.xml                                       |   2 +-
- .../shyiko/mysql/binlog/BinaryLogClient.java  | 289 +++++++++++++++++-
- 2 files changed, 289 insertions(+), 2 deletions(-)
+ .../shyiko/mysql/binlog/BinaryLogClient.java  | 287 +++++++++++++++++-
+ 2 files changed, 287 insertions(+), 2 deletions(-)
 
 diff --git a/pom.xml b/pom.xml
 index 5920031..bccbeec 100644
@@ -22,7 +22,7 @@ index 5920031..bccbeec 100644
      <name>mysql-binlog-connector-java</name>
      <description>MySQL Binary Log connector</description>
 diff --git a/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java b/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java
-index d8b8299..6741165 100644
+index d8b8299..f017276 100644
 --- a/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java
 +++ b/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java
 @@ -15,6 +15,7 @@
@@ -60,7 +60,7 @@ index d8b8299..6741165 100644
  import java.util.concurrent.CopyOnWriteArrayList;
  import java.util.concurrent.CountDownLatch;
  import java.util.concurrent.ExecutorService;
-@@ -79,12 +88,15 @@ import java.util.concurrent.Executors;
+@@ -79,6 +88,7 @@ import java.util.concurrent.Executors;
  import java.util.concurrent.ThreadFactory;
  import java.util.concurrent.TimeUnit;
  import java.util.concurrent.TimeoutException;
@@ -68,15 +68,7 @@ index d8b8299..6741165 100644
  import java.util.concurrent.atomic.AtomicReference;
  import java.util.concurrent.locks.Lock;
  import java.util.concurrent.locks.ReentrantLock;
- import java.util.logging.Level;
- import java.util.logging.Logger;
- 
-+import static com.github.shyiko.mysql.binlog.event.EventType.EXT_WRITE_ROWS;
-+
- /**
-  * MySQL replication stream client.
-  *
-@@ -169,6 +181,21 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
+@@ -169,6 +179,21 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
      private final Lock connectLock = new ReentrantLock();
      private final Lock keepAliveThreadExecutorLock = new ReentrantLock();
  
@@ -98,8 +90,8 @@ index d8b8299..6741165 100644
      /**
       * Alias for BinaryLogClient("localhost", 3306, &lt;no schema&gt; = null, username, password).
       * @see BinaryLogClient#BinaryLogClient(String, int, String, String, String)
-@@ -244,6 +271,14 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
-         return this.masterServerId;
+@@ -501,6 +526,14 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
+         this.threadFactory = threadFactory;
      }
  
 +    public void setIsParallelParseEvent(boolean isParallelParseEvent) {
@@ -111,9 +103,9 @@ index d8b8299..6741165 100644
 +    }
 +
      /**
-      * @return server id (65535 by default)
-      * @see #setServerId(long)
-@@ -596,7 +631,11 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
+      * Connect to the replication stream. Note that this method blocks until disconnected.
+      * @throws AuthenticationException if authentication fails
+@@ -596,7 +629,11 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
                      ensureEventDataDeserializer(EventType.QUERY, QueryEventDataDeserializer.class);
                  }
              }
@@ -126,7 +118,7 @@ index d8b8299..6741165 100644
          } finally {
              connectLock.unlock();
              if (notifyWhenDisconnected) {
-@@ -991,6 +1030,254 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
+@@ -991,6 +1028,254 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
          }
      }
  
@@ -178,8 +170,7 @@ index d8b8299..6741165 100644
 +                        }
 +                        continue;
 +                    }
-+                }
-+                else {
++                } else {
 +                    Thread.sleep(500);
 +                }
 +            }
@@ -229,7 +220,7 @@ index d8b8299..6741165 100644
 +        Thread.currentThread().setName("packet-to-event-" + index);
 +        byte[] packet;
 +        Event event = null;
-+        while(true) {
++        while (true) {
 +            packet = packetQueueList.get(index).poll();
 +            if (packet != null) {
 +                event = eventDeserializer.nextEvent(new ByteArrayInputStream(packet));
@@ -253,13 +244,14 @@ index d8b8299..6741165 100644
 +            Event event = null;
 +            int index = 0;
 +            int xidEventCount = 0;
-+            while(true) {
++            int dmlCount = 0;
++            while (true) {
 +                event = eventQueueList.get(index).poll();
 +                if (event != null) {
 +                    if (event.getHeader().getEventType() == EventType.QUERY) {
 +                        queryEventCount++;
 +                    }
-+                    dmlParseCount += statDmlCount(event);
++                    dmlCount += statDmlCount(event);
 +                    if (event.getHeader().getEventType() == EventType.XID) {
 +                        xidEventCount++;
 +                        index++;
@@ -268,6 +260,7 @@ index d8b8299..6741165 100644
 +                        }
 +                    }
 +                    ddlParseCount = queryEventCount - xidEventCount;
++                    dmlParseCount = dmlCount;
 +                    if (connected) {
 +                        eventLastSeen = System.currentTimeMillis();
 +                        updateGtidSet(event);
@@ -306,7 +299,7 @@ index d8b8299..6741165 100644
 +                @Override
 +                public void run() {
 +                    String date = ofPattern.format(LocalDateTime.now());
-+                    String result = String.format("have parsed %s GtidEvent, and current time is %s, and current "
++                    String result = String.format("have parsed %s QueryEvent, and current time is %s, and current "
 +                        + "speed is %s", queryEventCount, date, queryEventCount - before[0]);
 +                    if (logger.isLoggable(Level.WARNING)) {
 +                        logger.log(Level.WARNING, result);
@@ -315,8 +308,7 @@ index d8b8299..6741165 100644
 +                }
 +            };
 +            timer.schedule(task, 1000, 1000);
-+        }
-+        else {
++        } else {
 +            final int[] before = {dmlParseCount + ddlParseCount};
 +            TimerTask task = new TimerTask() {
 +                @Override
@@ -352,7 +344,7 @@ index d8b8299..6741165 100644
 +                    if (size > openFlowControlQueueSize) {
 +                        if (!isBlock.get()) {
 +                            logger.warning("[start flow control] current isBlock is " + isBlock + ", queue size is " + size + ", which is "
-+                                + "more than "+ openFlowControlThreshold + " * " + maxQueueSize + ", so open flow control");
++                                + "more than " + openFlowControlThreshold + " * " + maxQueueSize + ", so open flow control");
 +                        }
 +                        isBlock.set(true);
 +                        break;
@@ -368,7 +360,7 @@ index d8b8299..6741165 100644
 +                if (num == THREAD_NUM) {
 +                    if (isBlock.get()) {
 +                        logger.warning("[close flow control] current isBlock is " + isBlock + ", all eventQueue size is lower than "
-+                            + closeFlowControlThreshold +" * " + maxQueueSize + ", so close flow control.");
++                            + closeFlowControlThreshold + " * " + maxQueueSize + ", so close flow control.");
 +                    }
 +                    isBlock.set(false);
 +                }
