@@ -23,9 +23,13 @@ import java.util.Set;
  */
 public class OpengaussSinkConnectorTask extends SinkTask {
     private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussSinkConnectorTask.class);
+    private static final int COMMIT_RETRY_TIMES = 5;
+
     private OpengaussSinkConnectorConfig config;
     private JdbcDbWriter jdbcDbWriter;
     private int count = 0;
+    private int commitRetryTimes = 0;
+    private long preOffset;
 
     @Override
     public String version() {
@@ -76,6 +80,19 @@ public class OpengaussSinkConnectorTask extends SinkTask {
         Map<TopicPartition, OffsetAndMetadata> preCommitOffsets = new HashMap<>();
         Long minReplayedOffset = jdbcDbWriter.getReplayedOffset();
         if (minReplayedOffset < currentOffset && minReplayedOffset > 0L) {
+            if (minReplayedOffset.equals(preOffset)) {
+                commitRetryTimes++;
+            } else {
+                preOffset = minReplayedOffset;
+                commitRetryTimes = 0;
+            }
+            if (commitRetryTimes == COMMIT_RETRY_TIMES) {
+                LOGGER.warn("commit the same offset [{}] times, maybe occur kafka exception and clear buffer, "
+                            + "currentOffsets is {}", COMMIT_RETRY_TIMES, currentOffsets);
+                jdbcDbWriter.clearReplayedOffset(currentOffset);
+                this.flush(preCommitOffsets);
+                return currentOffsets;
+            }
             OffsetAndMetadata replayedOffset = new OffsetAndMetadata(minReplayedOffset, "");
             Set<TopicPartition> topicPartitions = currentOffsets.keySet();
             TopicPartition topicPartition = topicPartitions.iterator().next();

@@ -418,6 +418,18 @@ public class ReplayTask {
     }
 
     /**
+     * if commit the same offset five times, will clear replayed offset queue
+     *
+     * @param offset offset
+     */
+    public void clearReplayedOffset(long offset) {
+        breakPointRecord.getReplayedOffset().clear();
+        breakPointRecord.getReplayedOffset().add(offset);
+        addedQueueMap.clear();
+        addedQueueMap.put(offset, "");
+    }
+
+    /**
      * Init breakpoint record properties
      *
      * @param config mysql sink connector config
