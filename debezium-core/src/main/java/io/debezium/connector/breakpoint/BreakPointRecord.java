@@ -15,6 +15,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -120,6 +121,7 @@ public class BreakPointRecord {
     private PriorityBlockingQueue<Long> replayedOffsets;
     private boolean isGetBp;
     private Long breakpointEndOffset = UNLIMITED_VALUE;
+    private KafkaConsumer<String, String> bpRecordConsumer;
 
     /**
      * configure the breakpoint properties
@@ -184,7 +186,6 @@ public class BreakPointRecord {
                 }
                 int numRecordsProcessed = 0;
                 endOffset = getEndOffsetOfDbBreakPointTopic(endOffset, breakpointConsumer);
-                LOGGER.debug("End offset of breakpoint topic is {}", endOffset);
                 ConsumerRecords<String, String> breakpointRecords = breakpointConsumer.poll(Duration.ofSeconds(1));
                 for (ConsumerRecord<String, String> record : breakpointRecords) {
                     try {
@@ -326,9 +327,8 @@ public class BreakPointRecord {
         if (breakpointFilterList.isEmpty() && breakpointFilterMap.isEmpty()) {
             isGetBp = false;
         }
-        KafkaConsumer<String, String> bpRecordConsumer = null;
-        if (!isGetBp) {
-            bpRecordConsumer = client.getConsumer();
+        if (Objects.isNull(bpRecordConsumer) && !isGetBp) {
+            bpRecordConsumer = client.getReadConsumer();
         }
         long lastProcessedOffset = UNLIMITED_VALUE;
         Long endOffset = getEndOffsetOfDbBreakPointTopic(null, bpRecordConsumer);
@@ -340,7 +340,6 @@ public class BreakPointRecord {
                         + RECOVERY_POLL_ATTEMPTS.name());
                 break;
             }
-            endOffset = getEndOffsetOfDbBreakPointTopic(endOffset, bpRecordConsumer);
             Iterator<SinkRecord> iterator = records.iterator();
             SinkRecord firstSinkRecord = iterator.next();
             ConsumerRecords<String, String> breakpointRecords = bpRecordConsumer.poll(Duration.ofSeconds(1));
@@ -489,7 +488,7 @@ public class BreakPointRecord {
      * @return Long the real breakpoint offset
      */
     public Long preDeleteOffset(Long committedOffset) {
-        KafkaConsumer<String, String> getDeleteOffsetConsumer = client.getConsumer();
+        KafkaConsumer<String, String> getDeleteOffsetConsumer = client.getPreDeleteConsumer();
         boolean isTransaction = false;
         Long preDeleteOffset = null;
         long lastProcessedOffset = UNLIMITED_VALUE;
