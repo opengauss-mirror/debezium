@@ -258,7 +258,7 @@ public class TransactionReplayTask extends ReplayTask {
                         MysqlSinkProcessInfo.SINK_PROCESS_INFO.autoIncreaseExtractCount();
                         MysqlSinkProcessInfo.SINK_PROCESS_INFO.autoIncreaseSkippedExcludeEventCount();
                     }
-                    if (skipNum == value.getInt64(TransactionRecordField.EVENT_COUNT)) {
+                    if (skipNum == value.getInt64(TransactionRecordField.EVENT_COUNT) && skipNum > 0) {
                         addReplayedOffset(sinkQueueFirstOffset);
                         addReplayedOffset(sinkRecord.kafkaOffset());
                     }

@@ -390,9 +390,8 @@ public class JdbcDbWriter {
      */
     public void clearReplayedOffset(long offset) {
         breakPointRecord.getReplayedOffset().clear();
-        breakPointRecord.getReplayedOffset().add(offset);
         addedQueueMap.clear();
-        addedQueueMap.put(offset, -1L);
+        addedQueueMap.put(offset - 1, -1L);
     }
 
     private void findProperWorkThread(String tableFullName, SinkRecordObject sinkRecordObject,
