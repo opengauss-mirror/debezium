@@ -88,10 +88,11 @@ public class ColumnMetaData {
     }
 
     /**
-     * Get wrapped column name
+     * Sets boolean about primary key column
      *
+     * @param primaryColumn boolean the isPrimaryColumn
      */
-    public String getWrappedColumnName() {
-        return SqlTools.addingBackQuote(columnName);
+    public void setPrimaryKeyColumn(boolean primaryColumn) {
+        isPrimaryKeyColumn = primaryColumn;
     }
 }

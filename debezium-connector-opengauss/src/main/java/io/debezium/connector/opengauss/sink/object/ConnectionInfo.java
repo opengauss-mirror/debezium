@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 
 /**
@@ -21,6 +22,11 @@ public class ConnectionInfo {
     private static final Logger LOGGER = LoggerFactory.getLogger(ConnectionInfo.class);
 
     /**
+     * The openGauss JDBC driver class
+     */
+    private static final String OPENGAUSS_JDBC_DRIVER = "org.postgresql.Driver";
+
+    /**
      * The mysql JDBC driver class
      */
     public static final String MYSQL_JDBC_DRIVER = "com.mysql.cj.jdbc.Driver";
@@ -29,6 +35,7 @@ public class ConnectionInfo {
     private final String username;
     private final String password;
     private final String url;
+    private String databaseType = "mysql";
 
     /**
      * Constructor
@@ -38,11 +45,16 @@ public class ConnectionInfo {
      * @param password String the password
      * @param port int the port
      */
-    public ConnectionInfo(String url, String username, String password, Integer port) {
+    public ConnectionInfo(String url, String username, String password, Integer port, String databaseType) {
         this.url = url;
         this.username = username;
         this.password = password;
         this.port = port;
+        this.databaseType = databaseType;
+    }
+
+    public String getDatabaseType() {
+        return databaseType;
     }
 
     /**
@@ -101,4 +113,25 @@ public class ConnectionInfo {
         }
         return false;
     }
+
+    /**
+     * Create openGauss connection
+     *
+     * @return Connection the connection
+     */
+    public Connection createOpenGaussConnection() {
+        String driver = OPENGAUSS_JDBC_DRIVER;
+        Connection connection = null;
+        try {
+            Class.forName(driver);
+            connection = DriverManager.getConnection(url, username, password);
+            PreparedStatement ps = connection.prepareStatement("set session_timeout = 0");
+            ps.execute();
+        }
+        catch (ClassNotFoundException | SQLException exp) {
+            LOGGER.error("Create openGauss connection failed.", exp);
+        }
+        return connection;
+    }
+
 }

@@ -19,6 +19,8 @@ import io.debezium.connector.opengauss.sink.object.SinkRecordObject;
 import io.debezium.connector.opengauss.sink.object.SourceField;
 import io.debezium.connector.opengauss.sink.object.TableMetaData;
 import io.debezium.connector.opengauss.sink.task.OpengaussSinkConnectorConfig;
+import io.debezium.connector.opengauss.sink.utils.MysqlSqlTools;
+import io.debezium.connector.opengauss.sink.utils.OpengaussSqlTools;
 import io.debezium.connector.opengauss.sink.utils.SqlTools;
 import io.debezium.data.Envelope;
 import org.apache.kafka.connect.data.Struct;
@@ -36,6 +38,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.Timer;
@@ -68,7 +71,7 @@ public class JdbcDbWriter {
 
     private int threadCount;
     private int runCount;
-    private ConnectionInfo mysqlConnection;
+    private ConnectionInfo databaseConnection;
     private SqlTools sqlTools;
     private OgProcessCommitter failSqlCommitter;
     private OpengaussSinkConnectorConfig config;
@@ -111,11 +114,16 @@ public class JdbcDbWriter {
         this.config = config;
         initSchemaMappingMap(config.schemaMappings);
         initRecordBreakpoint(config);
-        mysqlConnection = new ConnectionInfo(config.mysqlUrl, config.mysqlUsername, config.mysqlPassword, config.port);
-        sqlTools = new SqlTools(mysqlConnection);
+        databaseConnection = new ConnectionInfo(config.databaseUrl, config.databaseUsername, config.databasePassword, config.port, config.databaseType);
+        if ("mysql".equals(config.databaseType.toLowerCase(Locale.ROOT))) {
+            sqlTools = new MysqlSqlTools(databaseConnection.createMysqlConnection());
+        }
+        else {
+            sqlTools = new OpengaussSqlTools(databaseConnection.createOpenGaussConnection());
+        }
         this.threadCount = config.maxThreadCount;
         for (int i = 0; i < threadCount; i++) {
-            WorkThread workThread = new WorkThread(schemaMappingMap, mysqlConnection, sqlTools, i, breakPointRecord);
+            WorkThread workThread = new WorkThread(schemaMappingMap, databaseConnection, sqlTools, i, breakPointRecord);
             workThread.setClearFile(config.isDelCsv);
             threadList.add(workThread);
         }

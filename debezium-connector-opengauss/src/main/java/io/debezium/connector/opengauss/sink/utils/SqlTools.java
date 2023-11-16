@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
@@ -6,356 +6,52 @@
 package io.debezium.connector.opengauss.sink.utils;
 
 import io.debezium.connector.opengauss.sink.object.ColumnMetaData;
-import io.debezium.connector.opengauss.sink.object.ConnectionInfo;
 import io.debezium.connector.opengauss.sink.object.TableMetaData;
 import io.debezium.data.Envelope;
 import org.apache.kafka.connect.data.Struct;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
 
-/**
- * Description: SqlTools class
- * @author wangzhengyuan
- * @date 2022/12/01
- */
-public class SqlTools {
-    private static final Logger LOGGER = LoggerFactory.getLogger(SqlTools.class);
-    private ConnectionInfo connectionInfo;
-    private boolean isConnection;
-    private List<String> binaryTypes = Arrays.asList("tinyblob", "mediumblob", "longblob", "binary", "varbinary");
-
+public abstract class SqlTools {
     /**
-     * Constructor
+     * Get wrapped name
      *
-     * @return Connection the connection
+     * @paran name the name
+     * @return String the wrapped name
      */
-    public SqlTools(ConnectionInfo connectionInfo) {
-        this.connectionInfo= connectionInfo;
-        this.isConnection = true;
-    }
-
-    /**
-     * Gets table meta data
-     *
-     * @param schemaName String the schema name
-     * @param tableName String the table name
-     * @return TableMetaData the tableMetaData
-     */
-    public  TableMetaData getTableMetaData(String schemaName, String tableName) {
-        List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
-        String sql = String.format(Locale.ENGLISH, "select column_name, data_type, column_key from " +
-                        "information_schema.columns where table_schema = '%s' and table_name = '%s'" +
-                        " order by ordinal_position;",
-                schemaName, tableName);
-        TableMetaData tableMetaData = null;
-        try (Connection connection = connectionInfo.createMysqlConnection();
-             Statement statement = connection.createStatement();
-             ResultSet rs = statement.executeQuery(sql)) {
-            while (rs.next()) {
-                columnMetaDataList.add(new ColumnMetaData(rs.getString("column_name"),
-                        rs.getString("data_type"), "PRI".equals(rs.getString("column_key"))));
-            }
-            tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
-        }
-        catch (SQLException exp) {
-            try {
-                if (!connectionInfo.createMysqlConnection().isValid(1)) {
-                    isConnection = false;
-                    return tableMetaData;
-                }
-            } catch (SQLException exception) {
-                LOGGER.error("Connection exception occurred");
-            }
-            LOGGER.error("SQL exception occurred, the sql statement is " + sql);
-        }
-        return tableMetaData;
-    }
-
-    /**
-     * Gets rely table list
-     *
-     * @param tableFullName String the table full name
-     * @return List<String> the table name list rely on the old table
-     */
-    public List<String> getForeignTableList(String tableFullName) {
-        String sql = String.format(Locale.ENGLISH, "select TABLE_NAME, TABLE_SCHEMA from INFORMATION_SCHEMA"
-                + ".KEY_COLUMN_USAGE where REFERENCED_TABLE_NAME='%s' and TABLE_SCHEMA='%s'", tableFullName
-                .split("\\.")[1], tableFullName.split("\\.")[0]);
-        try (Connection connection = connectionInfo.createMysqlConnection();
-             PreparedStatement preparedStatement = connection.prepareStatement(sql);
-             ResultSet resultSet = preparedStatement.executeQuery();) {
-            List<String> tableList = new ArrayList<>();
-            while (resultSet.next()) {
-                tableList.add(resultSet.getString("TABLE_SCHEMA") + "." + resultSet.getString("TABLE_NAME"));
-            }
-            return tableList;
-        } catch (SQLException e) {
-            LOGGER.error("SQL exception occurred in sql tools", e);
-        }
-        return null;
-    }
-
-    /**
-     * Adding back quote
-     *
-     * @param name String the name
-     * @return String the name wrapped by back quote
-     */
-    public static String addingBackQuote(String name) {
+    public String getWrappedName(String name) {
         return "`" + name + "`";
     }
 
     /**
-     * Gets insert sql
+     * Get table full name
      *
-     * @param tableMetaData TableMetaData the table meta data
-     * @param after Struct the after
-     * @return String the insert sql
+     * @param TableMetaData the table metadata
+     * @return String the table Full name
      */
-    public String getInsertSql(TableMetaData tableMetaData, Struct after){
-        StringBuilder sb = new StringBuilder();
-        sb.append("insert into ").append(tableMetaData.getTableFullName()).append(" values(");
-        ArrayList<String> valueList = getValueList(tableMetaData.getColumnList(), after, Envelope.Operation.CREATE);
-        sb.append(String.join(", ", valueList));
-        sb.append(");");
-        return sb.toString();
+    public String getTableFullName(TableMetaData tableMetaData) {
+        return getWrappedName(tableMetaData.getSchemaName()) + "." + getWrappedName(tableMetaData.getTableName());
     }
 
-    /**
-     * Gets update sql
-     *
-     * @param tableMetaData TableMetaData the table meta data
-     * @param before Struct the before
-     * @param after Struct the after
-     * @return String the update sql
-     */
-    public String getUpdateSql(TableMetaData tableMetaData, Struct before, Struct after) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("update ").append(tableMetaData.getTableFullName()).append(" set ");
-        ArrayList<String> updateSetValueList = getValueList(tableMetaData.getColumnList(), after, Envelope.Operation.UPDATE);
-        sb.append(String.join(", ", updateSetValueList));
-        sb.append(" where ");
-        return sb + getWhereCondition(tableMetaData, before, Envelope.Operation.DELETE);
-    }
+    public abstract TableMetaData getTableMetaData(String schemaName, String table);
 
-    /**
-     * Gets delete sql
-     *
-     * @param tableMetaData TableMetaData the table meta data
-     * @param before Struct the before
-     * @return String the delete sql
-     */
-    public String getDeleteSql(TableMetaData tableMetaData, Struct before) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("delete from ").append(tableMetaData.getTableFullName()).append(" where ");
-        return sb + getWhereCondition(tableMetaData, before, Envelope.Operation.DELETE);
-    }
+    public abstract Boolean getIsConnection();
 
-    /**
-     * Full data type conversion
-     * Full data type conversion
-     *
-     * @param columnList ColumnMetaData the table meta data
-     * @param data old data
-     * @param after Struct
-     * @return new data
-     */
-    public List<String> conversionFullData(List<ColumnMetaData> columnList, List<String> data, Struct after) {
-        List<String> result = new ArrayList<>();
-        for (String datum : data) {
-            StringBuilder sb = new StringBuilder();
-            String[] colDatas = datum.split(" \\| ");
-            for (int i = 0; i < colDatas.length; i++) {
-                String colData = colDatas[i];
-                ColumnMetaData columnMetaData = columnList.get(i);
-                String value = FullDataConverters.getValue(columnMetaData, colData, after);
-                sb.append(value);
-                if (i != colDatas.length - 1) {
-                    sb.append(",");
-                }
-            }
-            result.add(sb.toString());
-        }
-        return result;
-    }
+    public abstract String getInsertSql(TableMetaData tableMetaData, Struct after);
 
-    /**
-     * Gets isConnection.
-     *
-     * @return the value of isConnection
-     */
-    public Boolean getIsConnection() {
-        return isConnection;
-    }
+    public abstract String getUpdateSql(TableMetaData tableMetaData, Struct before, Struct after);
 
-    /**
-     * modifying sql statements
-     *
-     * @param tableMetaData TableMetaData the table meta data
-     * @param columnString sql columnString
-     * @param sql sql of load data
-     * @return load data
-     */
-    public String sqlAddBitCast(TableMetaData tableMetaData, String columnString, String sql) {
-        List<ColumnMetaData> columnList = tableMetaData.getColumnList();
-        StringBuilder condition = new StringBuilder(" set");
-        boolean hasSpecialType = false;
-        String column = columnString;
-        String query = sql;
-        for (ColumnMetaData columnMetaData : columnList) {
-            if ("bit".equals(columnMetaData.getColumnType())) {
-                hasSpecialType = true;
-                column = column.replace(columnMetaData.getColumnName(),
-                        "@" + columnMetaData.getColumnName());
-                condition.append(String.format(Locale.ROOT, " %s=cast(@%s as signed)",
-                        columnMetaData.getColumnName(), columnMetaData.getColumnName()));
-                condition.append(",");
-            }
-            if (binaryTypes.contains(columnMetaData.getColumnType())) {
-                hasSpecialType = true;
-                column = column.replace(columnMetaData.getColumnName(),
-                        "@" + columnMetaData.getColumnName());
-                condition.append(String.format(Locale.ROOT, " %s=UNHEX(@%s)",
-                        columnMetaData.getColumnName(), columnMetaData.getColumnName()));
-                condition.append(",");
-            }
-        }
-        query = query + "(" + column + ")";
-        if (hasSpecialType) {
-            condition.deleteCharAt(condition.length() - 1);
-            return query + condition.toString();
-        }
-        return query;
-    }
+    public abstract String getDeleteSql(TableMetaData tableMetaData, Struct before);
 
-    private String getWhereCondition(TableMetaData tableMetaData, Struct before, Envelope.Operation option) {
-        ArrayList<String> whereConditionValueList = getWhereConditionList(tableMetaData, before, option);
-        StringBuilder sb = new StringBuilder();
-        sb.append(String.join(" and ", whereConditionValueList));
-        sb.append(";");
-        return sb.toString();
-    }
+    public abstract String sqlAddBitCast(TableMetaData tableMetaData, String columnString, String loadSql);
 
-    private ArrayList<String> getWhereConditionList(TableMetaData tableMetaData, Struct before,
-                                                    Envelope.Operation option) {
-        List<ColumnMetaData> primaryColumnMetaDataList = new ArrayList<>();
-        for (ColumnMetaData column : tableMetaData.getColumnList()) {
-            if (column.isPrimaryKeyColumn()) {
-                primaryColumnMetaDataList.add(column);
-            }
-        }
-        ArrayList<String> whereConditionValueList;
-        if (primaryColumnMetaDataList.size() > 0) {
-            whereConditionValueList = getValueList(primaryColumnMetaDataList, before, option);
-        }
-        else {
-            whereConditionValueList = getValueList(tableMetaData.getColumnList(), before, option);
-        }
-        return whereConditionValueList;
-    }
+    public abstract List<String> conversionFullData(List<ColumnMetaData> columnList, List<String> lineList, Struct after);
 
-    private ArrayList<String> getValueList(List<ColumnMetaData> columnMetaDataList, Struct after, Envelope.Operation operation) {
-        ArrayList<String> valueList = new ArrayList<>();
-        String singleValue;
-        String columnName;
-        String columnType;
-        for (ColumnMetaData columnMetaData : columnMetaDataList) {
-            singleValue = DebeziumValueConverters.getValue(columnMetaData, after);
-            columnName = columnMetaData.getWrappedColumnName();
-            columnType = columnMetaData.getColumnType();
-            switch (operation) {
-                case CREATE:
-                    valueList.add(singleValue);
-                    break;
-                case UPDATE:
-                    valueList.add(columnName + " = " + singleValue);
-                    break;
-                case DELETE:
-                    if (singleValue == null) {
-                        valueList.add(columnName + " is null");
-                    } else if ("json".equals(columnType)){
-                        valueList.add(columnName + "= CAST(" + singleValue + " AS json)");
-                    } else {
-                        valueList.add(columnName + " = " + singleValue);
-                    }
-                    break;
-            }
-        }
-        return valueList;
-    }
+    public abstract String getReadSql(TableMetaData tableMetaData, Struct after, Envelope.Operation create);
 
-    /**
-     * Get read sql
-     *
-     * @param tableMetaData the tableMetaData
-     * @param struct the struct
-     * @param operation the operation
-     * @return read sql
-     */
-    public String getReadSql(TableMetaData tableMetaData, Struct struct, Envelope.Operation operation) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("select * from ").append(tableMetaData.getTableFullName()).append(" where ");
-        List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
-        ArrayList<String> valueList = getValueList(columnMetaDataList, struct, operation);
-        sb.append(String.join(" and ", valueList));
-        sb.append(";");
-        return sb.toString();
-    }
+    public abstract boolean isExistSql(String sql);
 
-    /**
-     * Get read sql for update
-     *
-     * @param tableMetaData tableMetaData
-     * @param before before
-     * @param after after
-     * @return list sql list
-     */
-    public List<String> getReadSqlForUpdate(TableMetaData tableMetaData, Struct before, Struct after) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("select * from ").append(tableMetaData.getTableFullName()).append(" where ");
-        String extraSql = sb.toString();
-        ArrayList<String> updateSetValueList = getValueList(tableMetaData.getColumnList(), after,
-                Envelope.Operation.UPDATE);
-        ArrayList<String> whereConditionList = getWhereConditionList(tableMetaData, before, Envelope.Operation.DELETE);
-        List<String> sqlList = new ArrayList<>();
-        sb.append(String.join(" and ", updateSetValueList));
-        sb.append(";");
-        sqlList.add(sb.toString());
-        if (updateSetValueList.size() == whereConditionList.size()) {
-            extraSql = extraSql + String.join(" and ", whereConditionList) + ";";
-            sqlList.add(extraSql);
-        }
-        return sqlList;
-    }
+    public abstract List<String> getReadSqlForUpdate(TableMetaData tableMetaData, Struct before, Struct after);
 
-    /**
-     * Is or not exist data
-     *
-     * @param sql the sql
-     * @return exist the data
-     */
-    public boolean isExistSql(String sql) {
-        boolean isExistSql = false;
-        try (
-                Connection connection = connectionInfo.createMysqlConnection();
-                Statement statement = connection.createStatement();
-                ResultSet rs = statement.executeQuery(sql)) {
-            if (rs.next()) {
-                isExistSql = true;
-            }
-        } catch (SQLException exception) {
-            LOGGER.error("SQL exception occurred, the sql statement is " + sql);
-        }
-        return isExistSql;
-    }
+    public abstract List<String> getForeignTableList(String tableFullName);
 }
