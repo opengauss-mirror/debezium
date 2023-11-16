@@ -424,9 +424,8 @@ public class ReplayTask {
      */
     public void clearReplayedOffset(long offset) {
         breakPointRecord.getReplayedOffset().clear();
-        breakPointRecord.getReplayedOffset().add(offset);
         addedQueueMap.clear();
-        addedQueueMap.put(offset, "");
+        addedQueueMap.put(offset - 1, "");
     }
 
     /**

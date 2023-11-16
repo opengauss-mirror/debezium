@@ -245,7 +245,7 @@ public class WorkThread extends Thread {
         String sql = "";
         if (tableMetaData == null && !sqlTools.getIsConnection()) {
             isConnection = false;
-            LOGGER.error("There is a connection problem with the mysql,"
+            LOGGER.error("There is a connection problem with the openGauss,"
                     + " check the database status or connection");
             return sql;
         }
