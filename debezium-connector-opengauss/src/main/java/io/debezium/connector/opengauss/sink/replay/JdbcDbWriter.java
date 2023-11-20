@@ -280,7 +280,7 @@ public class JdbcDbWriter {
                 }
             }
             String tableFullName = schemaMappingMap.get(schemaName) + "." + tableName;
-            findProperWorkThread(tableFullName, sinkRecordObject, schemaMappingMap.get(schemaName));
+            findProperWorkThread(tableFullName, sinkRecordObject);
         }
     }
 
@@ -394,14 +394,13 @@ public class JdbcDbWriter {
         addedQueueMap.put(offset - 1, -1L);
     }
 
-    private void findProperWorkThread(String tableFullName, SinkRecordObject sinkRecordObject,
-                                      String schemaName) {
+    private void findProperWorkThread(String tableFullName, SinkRecordObject sinkRecordObject) {
         if (runnableMap.containsKey(tableFullName)) {
             WorkThread workThread = threadList.get(runnableMap.get(tableFullName));
             workThread.addData(sinkRecordObject);
             return;
         }
-        int relyThreadIndex = getRelyIndex(tableFullName, schemaName);
+        int relyThreadIndex = getRelyIndex(tableFullName);
         if (relyThreadIndex != -1) {
             WorkThread workThread = threadList.get(relyThreadIndex);
             workThread.addData(sinkRecordObject);
@@ -557,15 +556,14 @@ public class JdbcDbWriter {
         return new int[]{successCount, failCount, successCount + failCount};
     }
 
-    private int getRelyIndex(String tableFullName, String schemaName) {
+    private int getRelyIndex(String currentTableName) {
         Set<String> set = runnableMap.keySet();
         Iterator<String> iterator = set.iterator();
         while (iterator.hasNext()) {
-            String oldTableName = iterator.next();
-            if (!sqlTools.getRelyTableList(oldTableName, schemaName).contains(tableFullName)) {
-                return -1;
-            } else {
-                return runnableMap.get(oldTableName);
+            String previousTableName = iterator.next();
+            if (sqlTools.getForeignTableList(previousTableName).contains(currentTableName)
+                    || sqlTools.getForeignTableList(currentTableName).contains(previousTableName)) {
+                return runnableMap.get(previousTableName);
             }
         }
         return -1;
