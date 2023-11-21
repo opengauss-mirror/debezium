@@ -565,6 +565,7 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
                 unLockTable(tableCount, dataEventsParam.getSnapshotContext());
                 processData(dataEventsParam, rs, pageRows, ogFullSourceProcessInfo, size);
             }
+            connection.commit();
         } catch (SQLException e) {
             LOGGER.error("Snapshotting of table " + table.id() + " failed", e);
         } catch (IOException e) {
@@ -798,6 +799,7 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
     }
 
     private Statement readTableStatementOpengauss(Connection connection) throws SQLException {
+        connection.setAutoCommit(false);
         return jdbcConnection.readTableStatementOpengauss(connectorConfig, connection);
     }
 
