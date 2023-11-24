@@ -84,22 +84,22 @@ public class SqlTools {
     /**
      * Gets rely table list
      *
-     * @param oldTableName String the old table name
-     * @param schemaName String the schema name
+     * @param tableFullName String the table full name
      * @return List<String> the table name list rely on the old table
      */
-    public  List<String> getRelyTableList(String oldTableName, String schemaName){
-        String sql = String.format(Locale.ENGLISH, "select TABLE_NAME, TABLE_SCHEMA from INFORMATION_SCHEMA.KEY_COLUMN_USAGE" +
-                "  where REFERENCED_TABLE_NAME='%s' and TABLE_SCHEMA='%s'", oldTableName, schemaName);
-        try(Connection connection = connectionInfo.createMysqlConnection();
-            PreparedStatement preparedStatement = connection.prepareStatement(sql);
-            ResultSet resultSet=preparedStatement.executeQuery(); ){
+    public List<String> getForeignTableList(String tableFullName) {
+        String sql = String.format(Locale.ENGLISH, "select TABLE_NAME, TABLE_SCHEMA from INFORMATION_SCHEMA"
+                + ".KEY_COLUMN_USAGE where REFERENCED_TABLE_NAME='%s' and TABLE_SCHEMA='%s'", tableFullName
+                .split("\\.")[1], tableFullName.split("\\.")[0]);
+        try (Connection connection = connectionInfo.createMysqlConnection();
+             PreparedStatement preparedStatement = connection.prepareStatement(sql);
+             ResultSet resultSet = preparedStatement.executeQuery();) {
             List<String> tableList = new ArrayList<>();
-            while (resultSet.next()){
+            while (resultSet.next()) {
                 tableList.add(resultSet.getString("TABLE_SCHEMA") + "." + resultSet.getString("TABLE_NAME"));
             }
             return tableList;
-        } catch (SQLException e){
+        } catch (SQLException e) {
             LOGGER.error("SQL exception occurred in sql tools", e);
         }
         return null;

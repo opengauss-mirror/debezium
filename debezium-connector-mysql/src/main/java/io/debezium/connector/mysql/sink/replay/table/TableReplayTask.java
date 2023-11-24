@@ -270,11 +270,11 @@ public class TableReplayTask extends ReplayTask {
             sinkRecordObject.setSourceField(sourceField);
             constructDdl(sinkRecordObject);
             if (sqlList.size() > 0) {
-                findDdlThread(tableFullName, sinkRecordObject, getSinkSchema(schemaName));
+                findDdlThread(tableFullName, sinkRecordObject);
             }
             return;
         }
-        findProperWorkThread(tableFullName, sinkRecordObject, getSinkSchema(schemaName));
+        findProperWorkThread(tableFullName, sinkRecordObject);
     }
 
     private void waitUnlockFlowControl() {
@@ -288,42 +288,37 @@ public class TableReplayTask extends ReplayTask {
         }
     }
 
-    private void findDdlThread(String tableFullName, SinkRecordObject sinkRecordObject, String schemaName) {
+    private void findDdlThread(String tableFullName, SinkRecordObject sinkRecordObject) {
         sinkRecordObject.getDdlSqlList().addAll(sqlList);
         sinkRecordObject.getChangedTableList().addAll(changedTableNameList);
         sqlList.clear();
         changedTableNameList.clear();
         if ("".equals(primaryTable)) {
-            findProperWorkThread(tableFullName, sinkRecordObject, schemaName);
+            findProperWorkThread(tableFullName, sinkRecordObject);
             return;
         }
         String tableName;
-        String relySchemaName;
         if (runnableMap.containsKey(primaryTable)) {
             if (runnableMap.containsKey(tableFullName)
                     && !runnableMap.get(primaryTable).equals(runnableMap.get(tableFullName))) {
                 mergeWorkQueue(tableFullName);
                 tableName = primaryTable;
-                relySchemaName = primaryTable.split("\\.")[0];
             }
             else {
                 runnableMap.put(tableFullName, runnableMap.get(primaryTable));
                 tableName = tableFullName;
-                relySchemaName = schemaName;
             }
         }
         else if (runnableMap.containsKey(tableFullName)) {
             runnableMap.put(primaryTable, runnableMap.get(tableFullName));
             tableName = primaryTable;
-            relySchemaName = schemaName;
         }
         else {
-            findProperWorkThread(primaryTable, null, primaryTable.split("\\.")[0]);
+            findProperWorkThread(primaryTable, null);
             runnableMap.put(tableFullName, runnableMap.get(primaryTable));
             tableName = tableFullName;
-            relySchemaName = schemaName;
         }
-        findProperWorkThread(tableName, sinkRecordObject, relySchemaName);
+        findProperWorkThread(tableName, sinkRecordObject);
         primaryTable = "";
     }
 
@@ -402,13 +397,13 @@ public class TableReplayTask extends ReplayTask {
         }
     }
 
-    private void findProperWorkThread(String tableFullName, SinkRecordObject sinkRecordObject, String schemaName) {
+    private void findProperWorkThread(String tableFullName, SinkRecordObject sinkRecordObject) {
         if (runnableMap.containsKey(tableFullName)) {
             WorkThread workThread = threadList.get(runnableMap.get(tableFullName));
             workThread.addData(sinkRecordObject, tableFullName);
             return;
         }
-        int relyThreadIndex = getRelyIndex(tableFullName, schemaName);
+        int relyThreadIndex = getRelyIndex(tableFullName);
         if (relyThreadIndex != -1) {
             WorkThread workThread = threadList.get(relyThreadIndex);
             workThread.addData(sinkRecordObject, tableFullName);
@@ -532,16 +527,14 @@ public class TableReplayTask extends ReplayTask {
         return new int[]{ successCount, failCount, successCount + failCount };
     }
 
-    private int getRelyIndex(String tableFullName, String schemaName) {
+    private int getRelyIndex(String currentTableName) {
         Set<String> set = runnableMap.keySet();
         Iterator<String> iterator = set.iterator();
         while (iterator.hasNext()) {
-            String oldTableName = iterator.next();
-            if (!sqlTools.getRelyTableList(oldTableName, schemaName).contains(tableFullName)) {
-                return -1;
-            }
-            else {
-                return runnableMap.get(oldTableName);
+            String previousTableName = iterator.next();
+            if (sqlTools.getForeignTableList(previousTableName).contains(currentTableName)
+                    || sqlTools.getForeignTableList(currentTableName).contains(previousTableName)) {
+                return runnableMap.get(previousTableName);
             }
         }
         return -1;
