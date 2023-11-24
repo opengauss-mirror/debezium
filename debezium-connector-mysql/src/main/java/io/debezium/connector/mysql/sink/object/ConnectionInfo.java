@@ -7,8 +7,8 @@ package io.debezium.connector.mysql.sink.object;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Statement;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -170,8 +170,10 @@ public class ConnectionInfo {
         try {
             Class.forName(driver);
             connection = DriverManager.getConnection(url, username, password);
-            PreparedStatement ps = connection.prepareStatement("set session_timeout = 0");
-            ps.execute();
+            Statement stmt = connection.createStatement();
+            stmt.execute("set session_timeout = 0");
+            stmt.execute("set dolphin.b_compatibility_mode to on");
+            stmt.close();
         }
         catch (ClassNotFoundException | SQLException exp) {
             LOGGER.error("Create openGauss connection failed.", exp);

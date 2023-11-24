@@ -150,26 +150,28 @@ topics=mysql_server_topic
 
 (5) 新增配置参数说明
 
-| 参数                              | 类型      | 参数说明                                                                                       |
-|---------------------------------|---------|--------------------------------------------------------------------------------------------|
-| snapshot.offset.binlog.filename | String  | 自定义配置快照点的binlog文件名                                                                         |
-| snapshot.offset.binlog.position | String  | 自定义配置快照点的binlog位置                                                                          |
-| snapshot.offset.gtid.set        | String  | 自定义配置快照点的Executed_Gtid_Set，需注意最大事务号需减1                                                     |
-| parallel.parse.event            | boolean | 是否启用并行解析event能力，默认为true，表示启用并行解析能力                                                         |
-| commit.process.while.running    | boolean | 是否开启迁移进度上报功能，默认为false，表示不开启该功能                                                             |
-| source.process.file.path        | String  | 迁移进度文件输出路径，默认在迁移插件同一目录下，在迁移进度上报功能开启后起作用                                                    |
-| commit.time.interval            | int     | 迁移进度上报的时间间隔，默认值为1，单位：秒，在迁移进度上报功能开启后起作用                                                     |
-| create.count.info.path          | String  | 源端binlog日志的事务号输出路径，默认在迁移插件同一目录下，必须与sink端的该路径保持一致，用于和sink端交互获取总体同步时延                        |
-| process.file.count.limit        | int     | 同一目录下文件数目限制，超过该数目工具会按时间从早到晚删除多余进度文件，默认为10                                                  |
-| process.file.time.limit         | int     | 进度文件保存时间，超过该时间后工具会删除对应的进度文件，默认为168，单位：小时                                                   |
-| append.write                    | boolean | 进度文件写入方式，true表示追加写入，false表示覆盖写入，默认值为false                                                  |
-| file.size.limit                 | int     | 文件大小限制，超过该限制值工具会另启新文件写入，默认为10，单位：兆                                                         |
-| min.start.memory                | String  | 自定义配置debezium最小启动内存，通过脚本生效，默认为256M                                                         |
-| max.start.memory                | String  | 自定义配置debezium最大启动内存，通过脚本生效，默认为2G                                                           |
-| queue.size.limit                | int     | source端抽取binlog事件存储队列的最大长度，int类型，默认值为1000000                                               |
-| open.flow.control.threshold     | double  | 流量控制参数，double类型，默认值为0.8，当存储binlog事件的某一队列长度>最大长度queue.size.limit*该门限值时，将启用流量控制，暂停抽取binlog事件 |
-| close.flow.control.threshold    | double  | 流量控制参数，double类型，默认值为0.7，当存储binlog事件的各个队列长度<最大长度queue.size.limit*该门限值时，将关闭流量控制，继续抽取binlog事件 |
-| kafka.bootstrap.server          | String  | 自定义记录source端与sink端关联参数的Kafka启动服务器地址，可根据实际情况修改，默认值为localhost:9092                           |
+| 参数                              | 类型      | 参数说明                                                                                                                                                          |
+|---------------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| snapshot.offset.binlog.filename | String  | 自定义配置快照点的binlog文件名                                                                                                                                            |
+| snapshot.offset.binlog.position | String  | 自定义配置快照点的binlog位置                                                                                                                                             |
+| snapshot.offset.gtid.set        | String  | 自定义配置快照点的Executed_Gtid_Set，需注意最大事务号需减1                                                                                                                        |
+| parallel.parse.event            | boolean | 是否启用并行解析event能力，默认为true，表示启用并行解析能力                                                                                                                            |
+| commit.process.while.running    | boolean | 是否开启迁移进度上报功能，默认为false，表示不开启该功能                                                                                                                                |
+| source.process.file.path        | String  | 迁移进度文件输出路径，默认在迁移插件同一目录下，在迁移进度上报功能开启后起作用                                                                                                                       |
+| commit.time.interval            | int     | 迁移进度上报的时间间隔，默认值为1，单位：秒，在迁移进度上报功能开启后起作用                                                                                                                        |
+| create.count.info.path          | String  | 源端binlog日志的事务号输出路径，默认在迁移插件同一目录下，必须与sink端的该路径保持一致，用于和sink端交互获取总体同步时延                                                                                           |
+| process.file.count.limit        | int     | 同一目录下文件数目限制，超过该数目工具会按时间从早到晚删除多余进度文件，默认为10                                                                                                                     |
+| process.file.time.limit         | int     | 进度文件保存时间，超过该时间后工具会删除对应的进度文件，默认为168，单位：小时                                                                                                                      |
+| append.write                    | boolean | 进度文件写入方式，true表示追加写入，false表示覆盖写入，默认值为false                                                                                                                     |
+| file.size.limit                 | int     | 文件大小限制，超过该限制值工具会另启新文件写入，默认为10，单位：兆                                                                                                                            |
+| min.start.memory                | String  | 自定义配置debezium最小启动内存，通过脚本生效，默认为256M                                                                                                                            |
+| max.start.memory                | String  | 自定义配置debezium最大启动内存，通过脚本生效，默认为2G                                                                                                                              |
+| queue.size.limit                | int     | source端抽取binlog事件存储队列的最大长度，int类型，默认值为1000000                                                                                                                  |
+| open.flow.control.threshold     | double  | 流量控制参数，double类型，默认值为0.8，当存储binlog事件的某一队列长度>最大长度queue.size.limit*该门限值时，将启用流量控制，暂停抽取binlog事件                                                                    |
+| close.flow.control.threshold    | double  | 流量控制参数，double类型，默认值为0.7，当存储binlog事件的各个队列长度<最大长度queue.size.limit*该门限值时，将关闭流量控制，继续抽取binlog事件                                                                    |
+| kafka.bootstrap.server          | String  | 自定义记录source端与sink端关联参数的Kafka启动服务器地址，可根据实际情况修改，默认值为localhost:9092                                                                                              |
+| provide.transaction.metadata          | boolean | debezium原生参数，指定连接器是否用事务形式封装binlog事件，当配置为true时，增量数据以事务传递，回放方式为按事务并行回放，当配置为false时，增量数据以单条更新事件传递，回放方式为按表并行回放，默认值为false；注意：该配置项每次修改过后首次启动时，须等source端启动成功后再启动sink端 |
+
 
 
 快照点参数配置说明：
@@ -367,18 +369,19 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
 
 ### 性能指标
 
-利用sysbench进行测试，在openEuler arm操作系统2p Kunpeng-920机器，针对混合IUD场景，10张表50个线程（insert-30线程，update-10线程，delete-10线程），性能可达3w tps。
+按事务回放时，利用sysbench进行测试，在openEuler arm操作系统2p Kunpeng-920机器，针对混合IUD场景，10张表50个线程（insert-30线程，update-10线程，delete-10线程），性能可达3w tps；
+按表回放时，利用sysbench进行测试，在openEuler arm操作系统2p Kunpeng-920机器，针对混合IUD场景，50张表50个线程（insert-30线程，update-10线程，delete-10线程），性能可达3w tps。
 
 ### 部署过程
 
 #### 下载依赖
 
-- [kafka](https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/3.2.3/kafka_2.13-3.2.3.tgz)
-
+- [kafka](https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/)
+（以kafka_2.13-3.6.0为例）
   ```
-  wget -c https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/3.2.3/kafka_2.13-3.2.3.tgz
+  wget -c https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/3.6.0/kafka_2.13-3.6.0.tgz
   
-  tar -zxf kafka_2.13-3.2.3.tgz
+  tar -zxf kafka_2.13-3.6.0.tgz
   ```
 
 - [confluent community](https://packages.confluent.io/archive/5.5/confluent-community-5.5.1-2.12.zip)
@@ -389,12 +392,12 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
   unzip confluent-community-5.5.1-2.12.zip
   ```
 
-- [debezium-connector-mysql](https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-mysql2openGauss-5.1.0.tar.gz)
+- [debezium-connector-mysql](https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-mysql2openGauss-5.1.1.tar.gz)
 
   ```
-  wget -c https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-mysql2openGauss-5.1.0.tar.gz
+  wget -c https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-mysql2openGauss-5.1.1.tar.gz
   
-  tar -zxvf replicate-mysql2openGauss-5.1.0.tar.gz
+  tar -zxvf replicate-mysql2openGauss-5.1.1.tar.gz
   ```
 
 #### 修改配置文件
@@ -404,21 +407,21 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
 - zookeeper
 
   ```
-  配置文件位置：/kafka_2.13-3.2.3/config/zookeeper.properties
+  配置文件位置：/kafka_2.13-3.6.0/config/zookeeper.properties
   ```
   zookeeper的默认端口号为2181，对应参数clientPort=2181。
   
   若端口冲突，需要修改端口号，则同步修改以下文件对应参数：
   ```
-  kafka_2.13-3.2.3/config/zookeeper.properties------clientPort=2181
-  kafka_2.13-3.2.3/config/server.properties------zookeeper.connect=localhost:2181
+  kafka_2.13-3.6.0/config/zookeeper.properties------clientPort=2181
+  kafka_2.13-3.6.0/config/server.properties------zookeeper.connect=localhost:2181
   confluent-5.5.1/etc/schema-registry/schema-registry.properties------kafkastore.connection.url=localhost:2181
    ```
 
 - kafka
 
   ```
-  配置文件位置：/kafka_2.13-3.2.3/config/server.properties
+  配置文件位置：/kafka_2.13-3.6.0/config/server.properties
   ```
 
   注意topic的分区数必须为1，因此需设置参数num.partitions=1，该参数默认值即为1，因此无需单独修改该参数。
@@ -427,7 +430,7 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
 
   若端口冲突，需要修改端口号，则同步修改以下文件对应参数：
   ```
-  kafka_2.13-3.2.3/config/server.properties------listeners=PLAINTEXT://:9092
+  kafka_2.13-3.6.0/config/server.properties------listeners=PLAINTEXT://:9092
   confluent-5.5.1/etc/schema-registry/schema-registry.properties------kafkastore.bootstrap.servers=PLAINTEXT://localhost:9092
   confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties------bootstrap.servers=localhost:9092
   confluent-5.5.1/etc/kafka/mysql-source.properties------database.history.kafka.bootstrap.servers=127.0.0.1:9092
@@ -487,14 +490,14 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
 （1）启动zookeeper
 
 ```
-cd kafka_2.13-3.2.3
+cd kafka_2.13-3.6.0
 ./bin/zookeeper-server-start.sh ./config/zookeeper.properties
 ```
 
 （2）启动kafka
 
 ```
-cd kafka_2.13-3.2.3
+cd kafka_2.13-3.6.0
 ./bin/kafka-server-start.sh ./config/server.properties
 ```
 
@@ -532,14 +535,14 @@ cd confluent-5.5.1
 （1）查看topic
 
 ```
-cd kafka_2.13-3.2.3
+cd kafka_2.13-3.6.0
 ./bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list
 ```
 
 （2）查看topic的信息
 
 ```
-cd kafka_2.13-3.2.3
+cd kafka_2.13-3.6.0
 ./bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --describe --topic topic_name
 ```
 
@@ -578,10 +581,6 @@ sch_chameleon.t_replica_tables中。
 若在全量迁移未结束时，就启动sink端，将会导致数据乱序，属于不合理的操作步骤，实际操作过程应避免不合理的操作。
 
 ### 性能测试
-
-#### 性能指标
-
-利用sysbench进行测试，在openEuler arm操作系统2p Kunpeng-920机器，针对混合IUD场景，10张表50个线程（insert-30线程，update-10线程，delete-10线程），性能可达3w tps。
 
 #### 配置条件
 (1) mysql
@@ -652,7 +651,8 @@ numactl -C 64-95 -m 0 ./bin/connect-standalone etc/schema-registry/connect-avro-
 ```
 (4) sysbench执行run命令，给mysql压入数据
 
-混合IUD场景，10张表50个线程（insert-30线程，update-10线程，delete-10线程）
+按事务并发时，混合IUD场景，10张表50个线程（insert-30线程，update-10线程，delete-10线程）
+按表并发时，混合IUD场景，50张表50个线程（insert-30线程，update-10线程，delete-10线程），性能可达3w tps。
 
 (5) 统计迁移工具日志，得到迁移效率
 
@@ -880,17 +880,18 @@ wal_level=logical
     （1）反向迁移sink端按表分发数据，不支持按事务分发，日志中记录的回放条数为实际成功执行的sql语句条数，openGauss分区表执行update操作时，如果更新前的数据和更新后的数据在同一分区，只会执行一条update语句，如果不在同一分区，会以事务的形式先后执行一条delete语句和一条insert语句，这种情形下日志会显示回放了两条数据；
     （2）反向迁移connector端配置连接数据库的用户需要有对应数据库下所有schema以及所有表的操作权限
     （3）反向迁移数据类型映射与变色龙的默认数据类型映射相反，当两端数据类型不一致时，只能迁移两端数据类型都支持的数据变更
+    （4）在迁移binary, varbinary, blob, tinyblob, blob, mediumblob, longblob类型时，需设置源端数据库参数dolphin.b_compatibility_mode=on
 
 ### 部署过程
 
 #### 下载依赖
 
-- [kafka](https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/3.2.3/kafka_2.13-3.2.3.tgz)
-
+- [kafka](https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/)
+  （以kafka_2.13-3.6.0为例）
   ```
-  wget -c https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/3.2.3/kafka_2.13-3.2.3.tgz
+  wget -c https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/3.6.0/kafka_2.13-3.6.0.tgz
   
-  tar -zxf kafka_2.13-3.2.3.tgz
+  tar -zxf kafka_2.13-3.6.0.tgz
   ```
 
 - [confluent community](https://packages.confluent.io/archive/5.5/confluent-community-5.5.1-2.12.zip)
@@ -901,12 +902,12 @@ wal_level=logical
   unzip confluent-community-5.5.1-2.12.zip
   ```
 
-- [debezium-connector-opengauss](https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-openGauss2mysql-5.1.0.tar.gz)
+- [debezium-connector-opengauss](https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-openGauss2mysql-5.1.1.tar.gz)
 
   ```
-  wget -c https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-openGauss2mysql-5.1.0.tar.gz
+  wget -c https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-openGauss2mysql-5.1.1.tar.gz
   
-  tar -zxvf replicate-openGauss2mysql-5.1.0.tar.gz
+  tar -zxvf replicate-openGauss2mysql-5.1.1.tar.gz
   ```
 
 #### 修改配置文件
@@ -914,13 +915,13 @@ wal_level=logical
 - zookeeper
 
   ```
-  配置文件位置：/kafka_2.13-3.2.3/config/zookeeper.properties
+  配置文件位置：/kafka_2.13-3.6.0/config/zookeeper.properties
   ```
 
 - kafka
 
   ```
-  配置文件位置：/kafka_2.13-3.2.3/config/server.properties
+  配置文件位置：/kafka_2.13-3.6.0/config/server.properties
   ```
 
 - schema-registry
@@ -966,14 +967,14 @@ wal_level=logical
 （1）启动zookeeper
 
 ```
-cd kafka_2.13-3.2.3
+cd kafka_2.13-3.6.0
 ./bin/zookeeper-server-start.sh ./config/zookeeper.properties
 ```
 
 （2）启动kafka
 
 ```
-cd kafka_2.13-3.2.3
+cd kafka_2.13-3.6.0
 ./bin/kafka-server-start.sh ./config/server.properties
 ```
 
@@ -1005,7 +1006,7 @@ cd confluent-5.5.1
 （1）查看topic
 
 ```
-cd kafka_2.13-3.2.3
+cd kafka_2.13-3.6.0
 ./bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list
 ```
 

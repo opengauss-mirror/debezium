@@ -269,8 +269,9 @@ public final class DebeziumValueConverters {
     }
 
     private static String convertBinary(String columnName, Struct value){
-        String hexString = convertBinaryToHex(columnName, value);
-        return hexString == null ? null : addingSingleQuotation(new String(Objects.requireNonNull(parseHexStr2bytes(hexString))));
+        byte[] bytes = value.getBytes(columnName);
+        return bytes == null ? null : HEX_PREFIX + addingSingleQuotation(new String(bytes, StandardCharsets.UTF_8)
+                .substring(2));
     }
 
     private static String formatMultiGeometry(String columnName, Struct value) {

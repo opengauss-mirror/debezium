@@ -9,7 +9,6 @@ package io.debezium.connector.opengauss.connection;
 import java.nio.charset.Charset;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -637,12 +636,13 @@ public class OpengaussConnection extends JdbcConnection {
     }
 
     @Override
-    public synchronized void setSessionTimeout() {
+    public synchronized void setSessionParameter() {
         Connection conn = getConnection();
-        try (PreparedStatement ps = conn.prepareStatement("set session_timeout = 0");) {
-            ps.execute();
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("set session_timeout = 0");
+            stmt.execute("set dolphin.b_compatibility_mode to on");
         } catch (SQLException exp) {
-            LOGGER.error("SQL Exception occurred when set session_timeout.");
+            LOGGER.error("SQL Exception occurred when set session parameter.");
         }
     }
 

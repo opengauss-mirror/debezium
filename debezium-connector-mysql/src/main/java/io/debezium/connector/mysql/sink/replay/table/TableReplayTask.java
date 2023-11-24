@@ -553,8 +553,8 @@ public class TableReplayTask extends ReplayTask {
             while (true) {
                 try {
                     Thread.sleep(1000);
-                    if (LOGGER.isInfoEnabled()) {
-                        LOGGER.info("have replayed {} data, and current time is {}, and current "
+                    if (LOGGER.isWarnEnabled()) {
+                        LOGGER.warn("have replayed {} data, and current time is {}, and current "
                                 + "speed is {}", getSuccessAndFailCount()[2],
                                 ofPattern.format(LocalDateTime.now()),
                                 getSuccessAndFailCount()[2] - before);
