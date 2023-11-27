@@ -34,10 +34,10 @@ public class SqlTools {
     private static final String POINT_POLYGON_PREFIX = "~";
     private static final long ATTEMPTS = 5000L;
     private static final String B_COMPATIBILITY = "B";
-    private static final String BACK_QUOTE = "`";
+    private static final char BACK_QUOTE = '`';
     // default use double quotes to wrap object name, however when database compatibility is B
     // and contains dolphin extension, use back quote to wrap object name
-    private static String objectWrappedSymbol = "\"";
+    private static char objectWrappedSymbol = '"';
 
     private Connection connection;
     private boolean isConnection;
@@ -108,21 +108,20 @@ public class SqlTools {
     /**
      * Gets rely table list
      *
-     * @param oldTableName String the old table name
-     * @param schemaName String the schema name
+     * @param tableFullName String the table full name
      * @return List<String> the table name list rely on the old table
      */
-    public List<String> getRelyTableList(String oldTableName, String schemaName) {
+    public List<String> getForeignTableList(String tableFullName) {
         String sql = String.format(Locale.ENGLISH, "select c.relname, ns.nspname from pg_class c left join"
                 + " pg_namespace ns on c.relnamespace=ns.oid left join pg_constraint cons on c.oid=cons.conrelid"
                 + " left join pg_class oc on cons.confrelid=oc.oid"
                 + " left join  pg_namespace ons on oc.relnamespace=ons.oid"
                 + " where oc.relname='%s' and ons.nspname='%s';",
-                oldTableName, schemaName);
+                tableFullName.split("\\.")[1], tableFullName.split("\\.")[0]);
         try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
             List<String> tableList = new ArrayList<>();
             while (rs.next()) {
-                tableList.add(rs.getString("ns.nspname") + "." + rs.getString("c.relname"));
+                tableList.add(rs.getString("nspname") + "." + rs.getString("relname"));
             }
             return tableList;
         }
@@ -193,6 +192,19 @@ public class SqlTools {
      */
     public static String addingBackQuote(String name) {
         return BACK_QUOTE + name + BACK_QUOTE;
+    }
+
+    /**
+     * Remove back quote
+     *
+     * @param target String the target name
+     * @return String the name wrapped by back quote
+     */
+    public static String removeBackQuote(String target) {
+        if (target.charAt(0) == BACK_QUOTE && target.charAt(target.length() - 1) == BACK_QUOTE) {
+            return target.substring(1, target.length() - 1);
+        }
+        return target;
     }
 
     public String getInsertSql(TableMetaData tableMetaData, Struct after) {

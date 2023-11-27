@@ -237,6 +237,15 @@ public class SourceField implements Cloneable {
         this.position = position;
     }
 
+    /**
+     * Is full data, debezium provide source database's full data but we needn't handle it
+     *
+     * @return boolean the isFullData
+     */
+    public boolean isFullData() {
+        return "true".equals(snapshot) || "last".equals(snapshot);
+    }
+
     @Override
     public String toString() {
         return "SourceField{" +

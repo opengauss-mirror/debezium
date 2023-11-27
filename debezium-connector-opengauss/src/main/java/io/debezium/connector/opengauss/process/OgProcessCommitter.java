@@ -9,6 +9,7 @@ import com.alibaba.fastjson.JSON;
 import io.debezium.connector.opengauss.OpengaussConnectorConfig;
 import io.debezium.connector.opengauss.sink.task.OpengaussSinkConnectorConfig;
 import io.debezium.connector.process.BaseProcessCommitter;
+import io.debezium.connector.process.BaseSourceProcessInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,7 +42,7 @@ public class OgProcessCommitter extends BaseProcessCommitter {
 
     private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(1, 1, 100,
             TimeUnit.SECONDS, new LinkedBlockingQueue<>(1));
-    private OgSourceProcessInfo sourceProcessInfo;
+    private BaseSourceProcessInfo sourceProcessInfo = BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO;
     private OgSinkProcessInfo sinkProcessInfo;
     private String sharePath;
 
@@ -164,13 +165,12 @@ public class OgProcessCommitter extends BaseProcessCommitter {
      *
      * @return OgSourceProcessInfo the opengauss source process information
      */
-    protected OgSourceProcessInfo statSourceProcessInfo() {
+    protected String statSourceProcessInfo() {
         long before = waitTimeInterval(true);
-        sourceProcessInfo = OgSourceProcessInfo.SOURCE_PROCESS_INFO;
         sourceProcessInfo.setSpeed(before, commitTimeInterval);
-        sourceProcessInfo.setRest(sourceProcessInfo.getSkippedExcludeCount());
+        sourceProcessInfo.setRest();
         sourceProcessInfo.setTimestamp();
-        return sourceProcessInfo;
+        return sourceProcessInfo.toString();
     }
 
     /**
@@ -178,9 +178,8 @@ public class OgProcessCommitter extends BaseProcessCommitter {
      *
      * @return OgSinkProcessInfo the opengauss sink process information
      */
-    protected OgSinkProcessInfo statSinkProcessInfo() {
+    protected String statSinkProcessInfo() {
         long before = waitTimeInterval(false);
-        sinkProcessInfo = OgSinkProcessInfo.SINK_PROCESS_INFO;
         sinkProcessInfo.setSpeed(before, commitTimeInterval);
         sinkProcessInfo.setRest(0, 0);
         sinkProcessInfo.setTimestamp();
@@ -193,7 +192,7 @@ public class OgProcessCommitter extends BaseProcessCommitter {
         if (sourceCreateCount != -1) {
             sinkProcessInfo.setOverallPipe(sourceCreateCount);
         }
-        return sinkProcessInfo;
+        return sinkProcessInfo.toString();
     }
 
     private String getSourceFullFilePath() {
@@ -220,20 +219,9 @@ public class OgProcessCommitter extends BaseProcessCommitter {
         });
     }
 
-    private void waitSuitableTime() {
-        long fileTimeMillis = inputCreateCount(createCountInfoPath + File.separator
-                + CREATE_COUNT_INFO_NAME);
-        long currentMillis = System.currentTimeMillis();
-        while (fileTimeMillis != -1L && fileTimeMillis < currentMillis) {
-            fileTimeMillis = inputCreateCount(createCountInfoPath + File.separator
-                    + CREATE_COUNT_INFO_NAME);
-        }
-    }
-
     private long waitTimeInterval(boolean isSource) {
         long before;
         if (isSource) {
-            sourceProcessInfo = OgSourceProcessInfo.SOURCE_PROCESS_INFO;
             before = sourceProcessInfo.getPollCount();
         } else {
             sinkProcessInfo = OgSinkProcessInfo.SINK_PROCESS_INFO;

@@ -5,10 +5,9 @@
  */
 package io.debezium.connector.opengauss.sink.replay;
 
+import io.debezium.connector.breakpoint.BreakPointRecord;
 import io.debezium.connector.opengauss.process.OgFullSinkProcessInfo;
 import io.debezium.connector.opengauss.process.OgFullSourceProcessInfo;
-import io.debezium.config.Configuration;
-import io.debezium.connector.breakpoint.BreakPointRecord;
 import io.debezium.connector.opengauss.process.OgProcessCommitter;
 import io.debezium.connector.opengauss.process.OgSinkProcessInfo;
 import io.debezium.connector.opengauss.process.ProgressStatus;
@@ -22,7 +21,6 @@ import io.debezium.connector.opengauss.sink.object.TableMetaData;
 import io.debezium.connector.opengauss.sink.task.OpengaussSinkConnectorConfig;
 import io.debezium.connector.opengauss.sink.utils.SqlTools;
 import io.debezium.data.Envelope;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
@@ -43,10 +41,10 @@ import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -68,7 +66,6 @@ public class JdbcDbWriter {
     private static final int TASK_GRACEFUL_SHUTDOWN_TIME = 5;
     private static final int BREAKPOINT_REPEAT_COUNT_LIMIT = 3000;
 
-    private long extractCount;
     private int threadCount;
     private int runCount;
     private ConnectionInfo mysqlConnection;
@@ -178,27 +175,9 @@ public class JdbcDbWriter {
      * @param config OpengaussSinkConnectorConfig openGauss sink connector config
      */
     private void initRecordBreakpoint(OpengaussSinkConnectorConfig config) {
-        // properties configuration
-        Configuration configuration = Configuration.create()
-                .with(BreakPointRecord.BOOTSTRAP_SERVERS, config.getBootstrapServers())
-                .with(BreakPointRecord.TOPIC, config.getBpTopic())
-                .with(BreakPointRecord.RECOVERY_POLL_ATTEMPTS, config.getBpMaxRetries())
-                .with(BreakPointRecord.RECOVERY_POLL_INTERVAL_MS, 500)
-                .with(BreakPointRecord.consumerConfigPropertyName(
-                        ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG),
-                        100)
-                .with(BreakPointRecord.consumerConfigPropertyName(
-                        ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG),
-                        50000)
-                .build();
-        breakPointRecord = new BreakPointRecord(configuration);
+        breakPointRecord = new BreakPointRecord(config);
         toDeleteOffsets = breakPointRecord.getToDeleteOffsets();
-        breakPointRecord.setBpQueueTimeLimit(config.getBpQueueTimeLimit());
-        breakPointRecord.setBpQueueSizeLimit(config.getBpQueueSizeLimit());
         breakPointRecord.start();
-        if (!breakPointRecord.isTopicExist()) {
-            breakPointRecord.initializeStorage();
-        }
     }
 
     /**
@@ -264,8 +243,7 @@ public class JdbcDbWriter {
                 breakPointRecord.getReplayedOffset().add(sinkRecord.kafkaOffset());
                 continue;
             }
-            extractCount++;
-            OgSinkProcessInfo.SINK_PROCESS_INFO.setExtractCount(extractCount);
+            OgSinkProcessInfo.SINK_PROCESS_INFO.autoIncreaseExtractCount();
             DmlOperation dmlOperation = new DmlOperation(value);
             SourceField sourceField = new SourceField(value);
             Long lsn = sourceField.getLsn();
@@ -302,7 +280,7 @@ public class JdbcDbWriter {
                 }
             }
             String tableFullName = schemaMappingMap.get(schemaName) + "." + tableName;
-            findProperWorkThread(tableFullName, sinkRecordObject, schemaMappingMap.get(schemaName));
+            findProperWorkThread(tableFullName, sinkRecordObject);
         }
     }
 
@@ -405,14 +383,24 @@ public class JdbcDbWriter {
         return endOffset + 1;
     }
 
-    private void findProperWorkThread(String tableFullName, SinkRecordObject sinkRecordObject,
-                                      String schemaName) {
+    /**
+     * if commit the same offset five times, will clear replayed offset queue
+     *
+     * @param offset offset
+     */
+    public void clearReplayedOffset(long offset) {
+        breakPointRecord.getReplayedOffset().clear();
+        addedQueueMap.clear();
+        addedQueueMap.put(offset - 1, -1L);
+    }
+
+    private void findProperWorkThread(String tableFullName, SinkRecordObject sinkRecordObject) {
         if (runnableMap.containsKey(tableFullName)) {
             WorkThread workThread = threadList.get(runnableMap.get(tableFullName));
             workThread.addData(sinkRecordObject);
             return;
         }
-        int relyThreadIndex = getRelyIndex(tableFullName, schemaName);
+        int relyThreadIndex = getRelyIndex(tableFullName);
         if (relyThreadIndex != -1) {
             WorkThread workThread = threadList.get(relyThreadIndex);
             workThread.addData(sinkRecordObject);
@@ -568,15 +556,14 @@ public class JdbcDbWriter {
         return new int[]{successCount, failCount, successCount + failCount};
     }
 
-    private int getRelyIndex(String tableFullName, String schemaName) {
+    private int getRelyIndex(String currentTableName) {
         Set<String> set = runnableMap.keySet();
         Iterator<String> iterator = set.iterator();
         while (iterator.hasNext()) {
-            String oldTableName = iterator.next();
-            if (!sqlTools.getRelyTableList(oldTableName, schemaName).contains(tableFullName)) {
-                return -1;
-            } else {
-                return runnableMap.get(oldTableName);
+            String previousTableName = iterator.next();
+            if (sqlTools.getForeignTableList(previousTableName).contains(currentTableName)
+                    || sqlTools.getForeignTableList(currentTableName).contains(previousTableName)) {
+                return runnableMap.get(previousTableName);
             }
         }
         return -1;

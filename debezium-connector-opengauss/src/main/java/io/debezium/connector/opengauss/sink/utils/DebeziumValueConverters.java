@@ -11,6 +11,8 @@ import io.debezium.data.geometry.Point;
 import io.debezium.util.HexConverter;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
+
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -59,6 +61,7 @@ public final class DebeziumValueConverters {
             put("timestamp", (columnName, value) -> convertDatetimeAndTimestamp(columnName, value));
             put("date", (columnName, value) -> convertDate(columnName, value));
             put("time", (columnName, value) -> convertTime(columnName, value));
+            put("year", (columnName, value) -> convertYear(columnName, value));
             put("binary", (columnName, value) -> convertBinary(columnName, value));
             put("varbinary", (columnName, value) -> convertBinary(columnName, value));
             put("bit", (columnName, value) -> convertBit(columnName, value));
@@ -67,18 +70,18 @@ public final class DebeziumValueConverters {
             put("geometry", (columnName, value) -> convertPoint(columnName, value));
             put("linestring", (columnName, value) -> convertLinestring(columnName, value));
             put("polygon", (columnName, value) -> convertPolygon(columnName, value));
-            put("multipoint", (columnName, value) -> convertMultipoint(columnName, value));
-            put("multilinestring", (columnName, value) -> convertMultilinestring(columnName, value));
-            put("multipolygon", (columnName, value) -> convertMultipolygon(columnName, value));
-            put("geometrycollection", (columnName, value) -> convertGeometrycollection(columnName, value));
+            put("multipoint", (columnName, value) -> convertByteaToMultiGeometry(columnName, value));
+            put("multilinestring", (columnName, value) -> convertByteaToMultiGeometry(columnName, value));
+            put("multipolygon", (columnName, value) -> convertByteaToMultiGeometry(columnName, value));
+            put("geometrycollection", (columnName, value) -> convertByteaToMultiGeometry(columnName, value));
         }
     };
 
     /**
      * Get value
      *
-     * @param ColumnMetaData the column metadata
-     * @param Struct the struct value
+     * @param columnMetaData ColumnMetaData the column metadata
+     * @param value Struct the struct value
      * @return String the value
      */
     public static String getValue(ColumnMetaData columnMetaData, Struct value) {
@@ -104,7 +107,7 @@ public final class DebeziumValueConverters {
         String schemaName = field.schema().type().name();
         if ("bytes".equals(schemaName.toLowerCase(Locale.ROOT))) {
             byte[] bytes = valueStruct.getBytes(columnName);
-            return new String(bytes);
+            return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
         }
         return convertNumberType(columnName, valueStruct);
     }
@@ -155,18 +158,35 @@ public final class DebeziumValueConverters {
         if (object == null){
             return null;
         }
-        if ("io.debezium.time.MicroTime".equals(schemaName)) {
-            long originMicro = Long.parseLong(object.toString()) * TimeUnit.MICROSECONDS.toNanos(1);
-            if (originMicro >= NANOSECOND_OF_DAY) {
-                return addingSingleQuotation(handleInvalidTime(originMicro));
+        if ("io.debezium.time.MicroTime".equals(schemaName) || "io.debezium.time.Time".equals(schemaName)) {
+            long originNano = getNanoOfTime(schemaName, object);
+
+            if (originNano >= NANOSECOND_OF_DAY) {
+                return addingSingleQuotation(handleInvalidTime(originNano));
             }
-            if (originMicro < 0) {
-                return addingSingleQuotation("-" + handleNegativeTime(-originMicro));
+            if (originNano < 0) {
+                return addingSingleQuotation("-" + handleNegativeTime(-originNano));
             }
         }
         Instant instant = convertDbzDateTime(object, schemaName);
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneOffset.UTC);
         return addingSingleQuotation(dateTimeFormatter.format(instant));
+    }
+
+    private static long getNanoOfTime(String schemaName, Object object) {
+        switch (schemaName) {
+            case "io.debezium.time.MicroTime":
+                return Long.parseLong(object.toString()) * TimeUnit.MICROSECONDS.toNanos(1);
+            case "io.debezium.time.Time":
+                return Long.parseLong(object.toString()) * 1000000;
+            default:
+                return 0;
+        }
+    }
+
+    private static String convertYear(String columnName, Struct valueStruct) {
+        byte[] bytes = valueStruct.getBytes(columnName);
+        return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
     }
 
     private static String handleInvalidTime(long originNano) {
@@ -249,8 +269,15 @@ public final class DebeziumValueConverters {
     }
 
     private static String convertBinary(String columnName, Struct value){
+        byte[] bytes = value.getBytes(columnName);
+        return bytes == null ? null : HEX_PREFIX + addingSingleQuotation(new String(bytes, StandardCharsets.UTF_8)
+                .substring(2));
+    }
+
+    private static String formatMultiGeometry(String columnName, Struct value) {
         String hexString = convertBinaryToHex(columnName, value);
-        return hexString == null ? null : addingSingleQuotation(new String(Objects.requireNonNull(parseHexStr2bytes(hexString))));
+        return hexString == null ? null : addingSingleQuotation(HEX_FORMAT_PREFIX + new String(Objects
+                .requireNonNull(parseHexStr2bytes(hexString))));
     }
 
     private static String convertBinaryToHex(String columnName, Struct value) {
@@ -373,40 +400,13 @@ public final class DebeziumValueConverters {
         return "ST_GeomFROMtEXT('POLYGON((" + formatCoordinate(coordinateArr) + "))')";
     }
 
-    private static String convertMultipoint(String columnName, Struct valueStruct) {
+    private static String convertByteaToMultiGeometry(String columnName, Struct valueStruct) {
         Field field = valueStruct.schema().field(columnName);
         String schemaName = field.schema().name();
         if (isGeometry(schemaName)) {
             return HEX_PREFIX + convertGeometry(columnName, valueStruct);
         }
-        return HEX_PREFIX + convertBinary(columnName, valueStruct);
-    }
-
-    private static String convertMultilinestring(String columnName, Struct valueStruct) {
-        Field field = valueStruct.schema().field(columnName);
-        String schemaName = field.schema().name();
-        if (isGeometry(schemaName)) {
-            return HEX_PREFIX + convertGeometry(columnName, valueStruct);
-        }
-        return HEX_PREFIX + convertBinary(columnName, valueStruct);
-    }
-
-    private static String convertMultipolygon(String columnName, Struct valueStruct) {
-        Field field = valueStruct.schema().field(columnName);
-        String schemaName = field.schema().name();
-        if (isGeometry(schemaName)) {
-            return HEX_PREFIX + convertGeometry(columnName, valueStruct);
-        }
-        return HEX_PREFIX + convertBinary(columnName, valueStruct);
-    }
-
-    private static String convertGeometrycollection(String columnName, Struct valueStruct) {
-        Field field = valueStruct.schema().field(columnName);
-        String schemaName = field.schema().name();
-        if (isGeometry(schemaName)) {
-            return HEX_PREFIX + convertGeometry(columnName, valueStruct);
-        }
-        return HEX_PREFIX + convertBinary(columnName, valueStruct);
+        return HEX_PREFIX + formatMultiGeometry(columnName, valueStruct);
     }
 
     private static String convertGeometry(String columnName, Struct valueStruct) {
@@ -416,7 +416,6 @@ public final class DebeziumValueConverters {
             return null;
         }
         return addingSingleQuotation(HEX_FORMAT_PREFIX + convertHexString(bytes));
-
     }
 
     private static String[] getCoordinate(byte[] bytes) {

@@ -73,9 +73,9 @@ import io.debezium.config.Configuration;
 import io.debezium.connector.mysql.MySqlConnectorConfig.GtidNewChannelPosition;
 import io.debezium.connector.mysql.MySqlConnectorConfig.SecureConnectionMode;
 import io.debezium.connector.mysql.process.MysqlProcessCommitter;
-import io.debezium.connector.mysql.process.MysqlSourceProcessInfo;
 import io.debezium.connector.mysql.sink.event.MyGtidEventData;
 import io.debezium.connector.mysql.sink.event.MyGtidEventDataDeserializer;
+import io.debezium.connector.process.BaseSourceProcessInfo;
 import io.debezium.data.Envelope.Operation;
 import io.debezium.function.BlockingConsumer;
 import io.debezium.pipeline.ErrorHandler;
@@ -109,8 +109,6 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
     private long initialEventsToSkip = 0L;
     private boolean skipEvent = false;
     private boolean ignoreDmlEventByGtidSource = false;
-    private long convertCount;
-    private long pollCount;
     private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(1, 1, 100,
             TimeUnit.SECONDS, new LinkedBlockingQueue<>(1));
     private final Predicate<String> gtidDmlSourceFilter;
@@ -237,6 +235,7 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
                 try {
                     // Delegate to the superclass ...
                     Event event = super.nextEvent(inputStream);
+                    statCreateCount(event);
 
                     // We have to record the most recent TableMapEventData for each table number for our custom deserializers ...
                     if (event.getHeader().getEventType() == EventType.TABLE_MAP) {
@@ -545,10 +544,8 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
         QueryEventData command = unwrapData(event);
         LOGGER.debug("Received query command: {}", event);
         String sql = command.getSql().trim();
-        convertCount++;
-        MysqlSourceProcessInfo.SOURCE_PROCESS_INFO.setConvertCount(convertCount);
-        pollCount++;
-        MysqlSourceProcessInfo.SOURCE_PROCESS_INFO.setPollCount(pollCount);
+        BaseSourceProcessInfo.statProcessCount(BaseSourceProcessInfo.TRANSACTION_SOURCE_PROCESS_INFO,
+                1, 0);
         if (sql.equalsIgnoreCase("BEGIN")) {
             // We are starting a new transaction ...
             offsetContext.startNextTransaction();
@@ -603,7 +600,15 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
         try {
             for (SchemaChangeEvent schemaChangeEvent : schemaChangeEvents) {
                 if (taskContext.getSchema().skipSchemaChangeEvent(schemaChangeEvent)) {
+                    BaseSourceProcessInfo.statProcessCount(BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO,
+                            0, 1);
+                    BaseSourceProcessInfo.statProcessCount(BaseSourceProcessInfo.TRANSACTION_SOURCE_PROCESS_INFO,
+                            -1, 1);
                     continue;
+                }
+                else {
+                    BaseSourceProcessInfo.statProcessCount(BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO,
+                            1, 0);
                 }
 
                 final TableId tableId = schemaChangeEvent.getTables().isEmpty() ? null : schemaChangeEvent.getTables().iterator().next().id();
@@ -714,7 +719,8 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
         handleChange(partition, offsetContext, event, "insert", WriteRowsEventData.class, x -> taskContext.getSchema().getTableId(x.getTableId()),
                 WriteRowsEventData::getRows,
                 (tableId, row) -> eventDispatcher.dispatchDataChangeEvent(tableId,
-                        new MySqlChangeRecordEmitter(partition, offsetContext, clock, Operation.CREATE, null, row)));
+                        new MySqlChangeRecordEmitter(partition, offsetContext, clock, Operation.CREATE, null, row)),
+                ((WriteRowsEventData) event.getData()).getRows().size());
     }
 
     /**
@@ -728,7 +734,9 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
         handleChange(partition, offsetContext, event, "update", UpdateRowsEventData.class, x -> taskContext.getSchema().getTableId(x.getTableId()),
                 UpdateRowsEventData::getRows,
                 (tableId, row) -> eventDispatcher.dispatchDataChangeEvent(tableId,
-                        new MySqlChangeRecordEmitter(partition, offsetContext, clock, Operation.UPDATE, row.getKey(), row.getValue())));
+                        new MySqlChangeRecordEmitter(partition, offsetContext, clock, Operation.UPDATE, row.getKey(),
+                                row.getValue())),
+                ((UpdateRowsEventData) event.getData()).getRows().size());
     }
 
     /**
@@ -743,13 +751,16 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
         handleChange(partition, offsetContext, event, "delete", DeleteRowsEventData.class, x -> taskContext.getSchema().getTableId(x.getTableId()),
                 DeleteRowsEventData::getRows,
                 (tableId, row) -> eventDispatcher.dispatchDataChangeEvent(tableId,
-                        new MySqlChangeRecordEmitter(partition, offsetContext, clock, Operation.DELETE, row, null)));
+                        new MySqlChangeRecordEmitter(partition, offsetContext, clock, Operation.DELETE, row,
+                                null)),
+                ((DeleteRowsEventData) event.getData()).getRows().size());
     }
 
     private <T extends EventData, U> void handleChange(MySqlPartition partition, MySqlOffsetContext offsetContext, Event event, String changeType,
                                                        Class<T> eventDataClass,
                                                        TableIdProvider<T> tableIdProvider,
-                                                       RowsProvider<T, U> rowsProvider, BinlogChangeEmitter<U> changeEmitter)
+                                                       RowsProvider<T, U> rowsProvider, BinlogChangeEmitter<U> changeEmitter,
+                                                       int dataCount)
             throws InterruptedException {
         if (skipEvent) {
             // We can skip this because we should already be at least this far ...
@@ -764,8 +775,8 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
         final TableId tableId = tableIdProvider.getTableId(data);
         final List<U> rows = rowsProvider.getRows(data);
 
+        int count = 0;
         if (tableId != null && taskContext.getSchema().schemaFor(tableId) != null) {
-            int count = 0;
             int numRows = rows.size();
             if (startingRowNumber < numRows) {
                 for (int row = startingRowNumber; row != numRows; ++row) {
@@ -794,6 +805,17 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
             informAboutUnknownTableIfRequired(partition, offsetContext, event, tableId, changeType + " row");
         }
         startingRowNumber = 0;
+        BaseSourceProcessInfo.statProcessCount(BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO, count, dataCount - count);
+    }
+
+    private void statCreateCount(Event event) {
+        if (!connectorConfig.shouldProvideTransactionMetadata() && event.getData() != null) {
+            if (event.getData() instanceof QueryEventData && !(((QueryEventData) event.getData())
+                    .getSql().equalsIgnoreCase("BEGIN"))) {
+                BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreaseCreateCount(1);
+            }
+            BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreaseCreateCount(client.statDmlCount(event));
+        }
     }
 
     /**
@@ -922,7 +944,6 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
                 effectiveOffsetContext.setCompletedGtidSet(filteredGtidSetStr);
                 gtidSet = new com.github.shyiko.mysql.binlog.GtidSet(filteredGtidSetStr);
                 if (connectorConfig.isCommitProcess()) {
-                    connectorConfig.rectifyParameter();
                     statCommit(filteredGtidSetStr);
                 }
             }

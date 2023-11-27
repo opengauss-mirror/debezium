@@ -5,9 +5,6 @@
  */
 package io.debezium.connector.mysql.sink.replay.table;
 
-import java.io.BufferedWriter;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -20,24 +17,22 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.debezium.config.Configuration;
-import io.debezium.connector.breakpoint.BreakPointRecord;
 import io.debezium.connector.mysql.process.MysqlProcessCommitter;
 import io.debezium.connector.mysql.process.MysqlSinkProcessInfo;
 import io.debezium.connector.mysql.sink.object.ConnectionInfo;
+import io.debezium.connector.mysql.sink.object.DataOperation;
+import io.debezium.connector.mysql.sink.object.DdlOperation;
 import io.debezium.connector.mysql.sink.object.DmlOperation;
 import io.debezium.connector.mysql.sink.object.SinkRecordObject;
 import io.debezium.connector.mysql.sink.object.SourceField;
@@ -62,25 +57,17 @@ public class TableReplayTask extends ReplayTask {
     private static final int TASK_GRACEFUL_SHUTDOWN_TIME = 5;
     private static final int BREAKPOINT_REPEAT_COUNT_LIMIT = 3000;
 
-    private long extractCount;
     private int threadCount;
     private int runCount;
-    private ConnectionInfo openGaussConnection;
-    private SqlTools sqlTools;
     private MysqlProcessCommitter failSqlCommitter;
-    private BreakPointRecord breakPointRecord;
     private ArrayList<WorkThread> threadList = new ArrayList<>();
-    private List<Long> toDeleteOffsets;
     private boolean isStop = false;
-    private String xlogLocation;
     private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(4, 4, 100,
             TimeUnit.SECONDS, new LinkedBlockingQueue<>(4));
     private final DateTimeFormatter ofPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
     private final Map<String, TableMetaData> oldTableMap = new HashMap<>();
 
     private Map<String, Integer> runnableMap = new HashMap<>();
-    private Map<String, String> schemaMappingMap = new HashMap<>();
-    private Map<Long, String> addedQueueMap = new ConcurrentHashMap<>();
     private MySqlSinkConnectorConfig config;
     private volatile AtomicBoolean isSinkQueueBlock = new AtomicBoolean(false);
     private volatile AtomicBoolean isWorkQueueBlock = new AtomicBoolean(false);
@@ -138,52 +125,6 @@ public class TableReplayTask extends ReplayTask {
         return this.isWorkQueueBlock.get();
     }
 
-    private void initSchemaMappingMap(String schemaMappings) {
-        String[] pairs = schemaMappings.split(";");
-        for (String pair : pairs) {
-            if (pair == null || " ".equals(pair)) {
-                LOGGER.error("the format of schema.mappings is error:" + schemaMappings);
-            }
-            String[] schema = pair.split(":");
-            if (schema.length == 2) {
-                schemaMappingMap.put(schema[0].trim(), schema[1].trim());
-            }
-        }
-    }
-
-    /**
-     * Init breakpoint record properties
-     *
-     * @param config OpengaussSinkConnectorConfig openGauss sink connector config
-     */
-    private void initRecordBreakpoint(MySqlSinkConnectorConfig config) {
-        // properties configuration
-        Configuration configuration = Configuration.create()
-                .with(BreakPointRecord.BOOTSTRAP_SERVERS, config.getBootstrapServers())
-                .with(BreakPointRecord.TOPIC, config.getBpTopic())
-                .with(BreakPointRecord.RECOVERY_POLL_ATTEMPTS, config.getBpMaxRetries())
-                .with(BreakPointRecord.RECOVERY_POLL_INTERVAL_MS, 500)
-                .with(BreakPointRecord.consumerConfigPropertyName(
-                        ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG),
-                        100)
-                .with(BreakPointRecord.consumerConfigPropertyName(
-                        ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG),
-                        50000)
-                .build();
-        breakPointRecord = new BreakPointRecord(configuration);
-        toDeleteOffsets = breakPointRecord.getToDeleteOffsets();
-        breakPointRecord.setBpQueueTimeLimit(config.getBpQueueTimeLimit());
-        breakPointRecord.setBpQueueSizeLimit(config.getBpQueueSizeLimit());
-        breakPointRecord.start();
-        if (!breakPointRecord.isTopicExist()) {
-            breakPointRecord.initializeStorage();
-        }
-    }
-
-    private void initXlogLocation(String xlogLocation) {
-        this.xlogLocation = xlogLocation;
-    }
-
     /**
      * Batch write
      *
@@ -221,19 +162,6 @@ public class TableReplayTask extends ReplayTask {
         }
     }
 
-    private void writeXlogResult() {
-        String xlogResult = sqlTools.getXlogLocation();
-        sqlTools.closeConnection();
-        try (BufferedWriter bw = new BufferedWriter(new FileWriter(xlogLocation))) {
-            bw.write("xlog.location=" + xlogResult);
-        }
-        catch (IOException exp) {
-            LOGGER.error("Fail to write xlog location {}", xlogResult);
-        }
-        LOGGER.info("Online migration from mysql to openGauss has gracefully stopped and current xlog"
-                + "location in openGauss is {}", xlogResult);
-    }
-
     private void closeConnection() {
         for (WorkThread workThread : threadList) {
             if (workThread.getConnection() != null) {
@@ -256,12 +184,13 @@ public class TableReplayTask extends ReplayTask {
      */
     @Override
     public void createWorkThreads() {
+        getTableSnapshot();
         parseSinkRecordThread();
         statTask();
         if (config.isCommitProcess()) {
             statCommit();
+            statReplayTask();
         }
-        statReplayTask();
     }
 
     private void parseSinkRecordThread() {
@@ -296,33 +225,113 @@ public class TableReplayTask extends ReplayTask {
                 breakPointRecord.getReplayedOffset().offer(sinkRecord.kafkaOffset());
                 continue;
             }
-            extractCount++;
-            MysqlSinkProcessInfo.SINK_PROCESS_INFO.setExtractCount(extractCount);
-            DmlOperation dmlOperation = new DmlOperation(value);
-            SourceField sourceField = new SourceField(value);
-            long kafkaOffset = sinkRecord.kafkaOffset();
-            SinkRecordObject sinkRecordObject = new SinkRecordObject();
-            sinkRecordObject.setDataOperation(dmlOperation);
-            sinkRecordObject.setSourceField(sourceField);
-            sinkRecordObject.setKafkaOffset(kafkaOffset);
-            String schemaName = sourceField.getDatabase();
-            String tableName = sourceField.getTable();
-            String gtid = sourceField.getGtid();
-            if (filterByDb(sinkRecord, gtid, kafkaOffset)) {
-                continue;
-            }
-            addedQueueMap.put(sinkRecord.kafkaOffset(), gtid);
-            String tableFullName = schemaMappingMap.get(schemaName) + "." + tableName;
-            while (isWorkQueueBlock()) {
-                try {
-                    Thread.sleep(50);
-                }
-                catch (InterruptedException exp) {
-                    LOGGER.warn("Receive interrupted exception while work queue block.", exp.getMessage());
-                }
-            }
-            findProperWorkThread(tableFullName, sinkRecordObject, schemaMappingMap.get(schemaName));
+            parseStructValue(sinkRecord, value);
         }
+    }
+
+    private void parseStructValue(SinkRecord sinkRecord, Struct value) {
+        SourceField sourceField = new SourceField(value);
+        if (sourceField.isFullData()) {
+            return;
+        }
+        MysqlSinkProcessInfo.SINK_PROCESS_INFO.autoIncreaseExtractCount();
+        if (isSkippedEvent(sourceField)) {
+            MysqlSinkProcessInfo.SINK_PROCESS_INFO.autoIncreaseSkippedCount();
+            LOGGER.warn("Skip one record: {}", sourceField);
+            return;
+        }
+        DataOperation dataOperation;
+        long kafkaOffset = sinkRecord.kafkaOffset();
+        SinkRecordObject sinkRecordObject = new SinkRecordObject();
+        sinkRecordObject.setKafkaOffset(kafkaOffset);
+        String schemaName = sourceField.getDatabase();
+        String gtid = sourceField.getGtid();
+        if (filterByDb(sinkRecord, gtid, kafkaOffset)) {
+            return;
+        }
+        addedQueueMap.put(sinkRecord.kafkaOffset(), gtid);
+        if (!schemaMappingMap.containsKey(schemaName)) {
+            LOGGER.error("schema mapping of source schema {} is not initialized, "
+                    + "this ddl will be ignored.", schemaName);
+            noSchemaCount++;
+            return;
+        }
+        waitUnlockFlowControl();
+        String tableName = sourceField.getTable();
+        String tableFullName = getSinkSchema(schemaName) + "." + tableName;
+        try {
+            dataOperation = new DmlOperation(value);
+            sinkRecordObject.setDataOperation(dataOperation);
+            sinkRecordObject.setSourceField(sourceField);
+        }
+        catch (DataException exception) {
+            dataOperation = new DdlOperation(value);
+            sinkRecordObject.setDataOperation(dataOperation);
+            sinkRecordObject.setSourceField(sourceField);
+            constructDdl(sinkRecordObject);
+            if (sqlList.size() > 0) {
+                findDdlThread(tableFullName, sinkRecordObject);
+            }
+            return;
+        }
+        findProperWorkThread(tableFullName, sinkRecordObject);
+    }
+
+    private void waitUnlockFlowControl() {
+        while (isWorkQueueBlock()) {
+            try {
+                Thread.sleep(50);
+            }
+            catch (InterruptedException exp) {
+                LOGGER.warn("Receive interrupted exception while work queue block.", exp.getMessage());
+            }
+        }
+    }
+
+    private void findDdlThread(String tableFullName, SinkRecordObject sinkRecordObject) {
+        sinkRecordObject.getDdlSqlList().addAll(sqlList);
+        sinkRecordObject.getChangedTableList().addAll(changedTableNameList);
+        sqlList.clear();
+        changedTableNameList.clear();
+        if ("".equals(primaryTable)) {
+            findProperWorkThread(tableFullName, sinkRecordObject);
+            return;
+        }
+        String tableName;
+        if (runnableMap.containsKey(primaryTable)) {
+            if (runnableMap.containsKey(tableFullName)
+                    && !runnableMap.get(primaryTable).equals(runnableMap.get(tableFullName))) {
+                mergeWorkQueue(tableFullName);
+                tableName = primaryTable;
+            }
+            else {
+                runnableMap.put(tableFullName, runnableMap.get(primaryTable));
+                tableName = tableFullName;
+            }
+        }
+        else if (runnableMap.containsKey(tableFullName)) {
+            runnableMap.put(primaryTable, runnableMap.get(tableFullName));
+            tableName = primaryTable;
+        }
+        else {
+            findProperWorkThread(primaryTable, null);
+            runnableMap.put(tableFullName, runnableMap.get(primaryTable));
+            tableName = tableFullName;
+        }
+        findProperWorkThread(tableName, sinkRecordObject);
+        primaryTable = "";
+    }
+
+    private void mergeWorkQueue(String tableFullName) {
+        WorkThread workThread = threadList.get(runnableMap.get(tableFullName));
+        int index = runnableMap.get(primaryTable);
+        WorkThread targetThread = threadList.get(index);
+        for (String tableName : workThread.getTableSet()) {
+            runnableMap.remove(tableName);
+            runnableMap.put(tableName, index);
+        }
+        targetThread.addWorkData(workThread.getSinkRecordQueue(), workThread.getTableSet());
+        workThread.removeWorkData();
     }
 
     private boolean filterByDb(SinkRecord sinkRecord, String gtid, long kafkaOffset) {
@@ -351,7 +360,7 @@ public class TableReplayTask extends ReplayTask {
         }
         DmlOperation dmlOperation = new DmlOperation(value);
         SourceField sourceField = new SourceField(value);
-        String schemaName = schemaMappingMap.get(sourceField.getDatabase());
+        String schemaName = getSinkSchema(sourceField.getDatabase());
         String operation = dmlOperation.getOperation();
         String tableFullName = schemaName + "." + sourceField.getTable();
         TableMetaData tableMetaData;
@@ -388,70 +397,28 @@ public class TableReplayTask extends ReplayTask {
         }
     }
 
-    /**
-     * Get the offset of already replayed record
-     *
-     * @return the continuous and maximum offset
-     */
-    public Long getReplayedOffset() {
-        PriorityBlockingQueue<Long> replayedOffsets = breakPointRecord.getReplayedOffset();
-        Long offset = replayedOffsets.peek();
-        Long endOffset = -1L;
-        boolean isContinuous = true;
-        while (isContinuous && !replayedOffsets.isEmpty()) {
-            Long num;
-            try {
-                num = replayedOffsets.take();
-                if (num.equals(offset)) {
-                    endOffset = num;
-                }
-                else {
-                    replayedOffsets.offer(num);
-                    isContinuous = false;
-                }
-                offset++;
-            }
-            catch (InterruptedException exp) {
-                LOGGER.error("Interrupted exception occurred", exp);
-            }
-        }
-        if (endOffset == -1L) {
-            return endOffset;
-        }
-        replayedOffsets.offer(endOffset);
-        Iterator<Map.Entry<Long, String>> iterator = addedQueueMap.entrySet().iterator();
-        while (iterator.hasNext()) {
-            Map.Entry<Long, String> entry = iterator.next();
-            if (entry.getKey() < endOffset) {
-                iterator.remove();
-            }
-        }
-        toDeleteOffsets.add(endOffset);
-        return endOffset + 1;
-    }
-
-    private void findProperWorkThread(String tableFullName, SinkRecordObject sinkRecordObject, String schemaName) {
+    private void findProperWorkThread(String tableFullName, SinkRecordObject sinkRecordObject) {
         if (runnableMap.containsKey(tableFullName)) {
             WorkThread workThread = threadList.get(runnableMap.get(tableFullName));
-            workThread.addData(sinkRecordObject);
+            workThread.addData(sinkRecordObject, tableFullName);
             return;
         }
-        int relyThreadIndex = getRelyIndex(tableFullName, schemaName);
+        int relyThreadIndex = getRelyIndex(tableFullName);
         if (relyThreadIndex != -1) {
             WorkThread workThread = threadList.get(relyThreadIndex);
-            workThread.addData(sinkRecordObject);
+            workThread.addData(sinkRecordObject, tableFullName);
             runnableMap.put(tableFullName, relyThreadIndex);
             return;
         }
         WorkThread workThread;
         if (runCount < threadCount) {
             workThread = threadList.get(runCount);
-            workThread.addData(sinkRecordObject);
+            workThread.addData(sinkRecordObject, tableFullName);
             workThread.start();
         }
         else {
             workThread = threadList.get(runCount % threadCount);
-            workThread.addData(sinkRecordObject);
+            workThread.addData(sinkRecordObject, tableFullName);
         }
         runnableMap.put(tableFullName, runCount % threadCount);
         runCount++;
@@ -479,7 +446,7 @@ public class TableReplayTask extends ReplayTask {
                 for (WorkThread workThread : threadList) {
                     SinkRecordObject sinkRecordObject = workThread.getThreadSinkRecordObject();
                     if (sinkRecordObject != null) {
-                        LOGGER.error("[Breakpoint] {} in work thread {}",
+                        LOGGER.warn("[Breakpoint] {} in work thread {}",
                                 sinkRecordObject.getSourceField().toString(), workThread.getName());
                     }
                 }
@@ -552,7 +519,7 @@ public class TableReplayTask extends ReplayTask {
 
     private int[] getSuccessAndFailCount() {
         int successCount = 0;
-        int failCount = 0;
+        int failCount = noSchemaCount;
         for (WorkThread workThread : threadList) {
             successCount += workThread.getSuccessCount();
             failCount += workThread.getFailCount();
@@ -560,16 +527,14 @@ public class TableReplayTask extends ReplayTask {
         return new int[]{ successCount, failCount, successCount + failCount };
     }
 
-    private int getRelyIndex(String tableFullName, String schemaName) {
+    private int getRelyIndex(String currentTableName) {
         Set<String> set = runnableMap.keySet();
         Iterator<String> iterator = set.iterator();
         while (iterator.hasNext()) {
-            String oldTableName = iterator.next();
-            if (!sqlTools.getRelyTableList(oldTableName, schemaName).contains(tableFullName)) {
-                return -1;
-            }
-            else {
-                return runnableMap.get(oldTableName);
+            String previousTableName = iterator.next();
+            if (sqlTools.getForeignTableList(previousTableName).contains(currentTableName)
+                    || sqlTools.getForeignTableList(currentTableName).contains(previousTableName)) {
+                return runnableMap.get(previousTableName);
             }
         }
         return -1;
@@ -581,8 +546,8 @@ public class TableReplayTask extends ReplayTask {
             while (true) {
                 try {
                     Thread.sleep(1000);
-                    if (LOGGER.isInfoEnabled()) {
-                        LOGGER.info("have replayed {} data, and current time is {}, and current "
+                    if (LOGGER.isWarnEnabled()) {
+                        LOGGER.warn("have replayed {} data, and current time is {}, and current "
                                 + "speed is {}", getSuccessAndFailCount()[2],
                                 ofPattern.format(LocalDateTime.now()),
                                 getSuccessAndFailCount()[2] - before);

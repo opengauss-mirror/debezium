@@ -14,10 +14,6 @@ import io.debezium.connector.opengauss.sink.object.SourceField;
 import io.debezium.connector.opengauss.sink.object.SinkRecordObject;
 import io.debezium.connector.opengauss.sink.object.ConnectionInfo;
 import io.debezium.connector.opengauss.sink.object.DmlOperation;
-import io.debezium.connector.opengauss.sink.object.SinkRecordObject;
-import io.debezium.connector.opengauss.sink.object.SourceField;
-import io.debezium.connector.opengauss.sink.object.TableMetaData;
-import io.debezium.connector.opengauss.sink.object.DmlOperation;
 import io.debezium.connector.opengauss.sink.object.TableMetaData;
 import io.debezium.connector.opengauss.sink.utils.SqlTools;
 import org.apache.kafka.connect.errors.DataException;
@@ -148,12 +144,7 @@ public class WorkThread extends Thread {
                 updateConnectionAndExecuteSql(sql, sinkRecordObject);
             } catch (SQLException exp) {
                 failCount++;
-                failSqlList.add("-- " + sqlPattern.format(LocalDateTime.now()) + ": "
-                        + sinkRecordObject.getSourceField() + System.lineSeparator()
-                        + "-- " + exp.getMessage() + System.lineSeparator() + sql + System.lineSeparator());
-                LOGGER.error("SQL exception occurred in struct date {}", sinkRecordObject.getSourceField());
-                LOGGER.error("The error SQL statement executed is: {}", sql);
-                LOGGER.error("the cause of the exception is {}", exp.getMessage());
+                printSqlException(sinkRecordObject.getSourceField().toString(), exp, sql);
             } catch (InterruptedException exp) {
                 LOGGER.warn("Interrupted exception occurred", exp);
             } catch (DataException exp) {
@@ -309,12 +300,7 @@ public class WorkThread extends Thread {
                 return;
             }
             failCount++;
-            failSqlList.add("-- " + sqlPattern.format(LocalDateTime.now()) + ": "
-                    + path + System.lineSeparator()
-                    + "-- " + e.getMessage() + System.lineSeparator() + sql + System.lineSeparator());
-            LOGGER.error("SQL exception occurred in file date {}", path);
-            LOGGER.error("The error SQL statement executed is: {}", sql);
-            LOGGER.error("the cause of the exception is {}", e.getMessage());
+            printSqlException(path, e, sql);
         } finally {
             try {
                 inputStream.close();
@@ -397,11 +383,28 @@ public class WorkThread extends Thread {
             savedBreakPointInfo(sinkRecordObject, false);
             successCount++;
         } catch (SQLException exp) {
+            failCount++;
             if (!connectionInfo.checkConnectionStatus(connection)) {
                 return;
             }
-            LOGGER.error("SQL exception occurred in work thread", exp);
+            printSqlException(sinkRecordObject.getSourceField().toString(), exp, sql);
         }
+    }
+
+    private void printSqlException(String data, SQLException exp, String sql) {
+        failSqlList.add("-- "
+                + sqlPattern.format(LocalDateTime.now())
+                + ": "
+                + data
+                + System.lineSeparator()
+                + "-- "
+                + exp.getMessage()
+                + System.lineSeparator()
+                + sql
+                + System.lineSeparator());
+        LOGGER.error("SQL exception occurred in data {}", data);
+        LOGGER.error("The error SQL statement executed is: {}", sql);
+        LOGGER.error("the cause of the exception is {}", exp.getMessage());
     }
 
     /**

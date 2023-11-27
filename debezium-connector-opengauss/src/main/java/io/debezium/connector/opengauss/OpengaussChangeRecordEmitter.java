@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 
 import io.debezium.connector.opengauss.connection.OpengaussConnection;
 import io.debezium.connector.opengauss.connection.ReplicationMessage;
-import io.debezium.connector.opengauss.process.OgSourceProcessInfo;
+import io.debezium.connector.process.BaseSourceProcessInfo;
 import io.debezium.data.Envelope.Operation;
 import io.debezium.function.Predicates;
 import io.debezium.pipeline.spi.ChangeRecordEmitter;
@@ -49,8 +49,6 @@ import org.slf4j.LoggerFactory;
 public class OpengaussChangeRecordEmitter extends RelationalChangeRecordEmitter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussChangeRecordEmitter.class);
-    private static long convertCount;
-    private static long pollCount;
 
     private final ReplicationMessage message;
     private final OpengaussSchema schema;
@@ -99,8 +97,7 @@ public class OpengaussChangeRecordEmitter extends RelationalChangeRecordEmitter 
         super.emitChangeRecords(schema, receiver);
         if (getOperation().name().equals("CREATE") || getOperation().name().equals("UPDATE")
                 || getOperation().name().equals("DELETE")) {
-            pollCount++;
-            OgSourceProcessInfo.SOURCE_PROCESS_INFO.setPollCount(pollCount);
+            BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreasePollCount(1);
         }
 
     }
@@ -121,8 +118,7 @@ public class OpengaussChangeRecordEmitter extends RelationalChangeRecordEmitter 
                 case UPDATE:
                     return columnValues(message.getOldTupleList(), tableId, true, message.hasTypeMetadata(), true, true);
                 default:
-                    convertCount++;
-                    OgSourceProcessInfo.SOURCE_PROCESS_INFO.setConvertCount(convertCount);
+                    BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreaseConvertCount(1);
                     return columnValues(message.getOldTupleList(), tableId, true, message.hasTypeMetadata(), false, true);
             }
         }
@@ -134,8 +130,7 @@ public class OpengaussChangeRecordEmitter extends RelationalChangeRecordEmitter 
     @Override
     protected Object[] getNewColumnValues() {
         try {
-            convertCount++;
-            OgSourceProcessInfo.SOURCE_PROCESS_INFO.setConvertCount(convertCount);
+            BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreaseConvertCount(1);
             switch (getOperation()) {
                 case CREATE:
                     return columnValues(message.getNewTupleList(), tableId, true, message.hasTypeMetadata(), false, false);

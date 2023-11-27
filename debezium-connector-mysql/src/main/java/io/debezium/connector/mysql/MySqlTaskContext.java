@@ -30,6 +30,9 @@ public class MySqlTaskContext extends CdcSourceTaskContext {
         if (config.getParallelParseEvent()) {
             binaryLogClient.setIsParallelParseEvent(true);
         }
+        binaryLogClient.setIsProvideTransactionMetadata(config.shouldProvideTransactionMetadata());
+        binaryLogClient.initFlowControl(config.queueSizeLimit(), config.openFlowControlThreshold(),
+                config.closeFlowControlThreshold());
         topicSelector = MySqlTopicSelector.defaultSelector(config);
     }
 
