@@ -27,27 +27,29 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
     /**
      * Mysql username
      */
-    public static final String MYSQL_USERNAME = "mysql.username";
+    public static final String DATABASE_USERNAME = "database.username";
 
     /**
      * Mysql password
      */
-    public static final String MYSQL_PASSWORD = "mysql.password";
+    public static final String DATABASE_PASSWORD = "database.password";
 
     /**
      * Mysql url
      */
-    public static final String MYSQL_URL = "mysql.url";
+    public static final String DATABASE_URL = "database.url";
 
     /**
      * Mysql port
      */
-    public static final String PORT = "mysql.port";
+    public static final String PORT = "database.port";
 
     /**
      * Whether to delete the csv file
      */
     public static final String DELETE_FULL_CSV_FILE = "delete.full.csv.file";
+
+    public static final String DATABASE_TYPE = "database.type";
 
     /**
      * ConfigDef
@@ -56,10 +58,11 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
             .define(DELETE_FULL_CSV_FILE, ConfigDef.Type.BOOLEAN, false, ConfigDef.Importance.HIGH,
             "whether to delete the csv file")
             .define(MAX_THREAD_COUNT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "max thread count")
-            .define(MYSQL_USERNAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "mysql username")
-            .define(MYSQL_PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "mysql password")
-            .define(MYSQL_URL, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "mysql url")
-            .define(PORT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "mysql port");
+            .define(DATABASE_USERNAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "database username")
+            .define(DATABASE_PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "database password")
+            .define(DATABASE_URL, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "database url")
+            .define(PORT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "database port")
+            .define(DATABASE_TYPE, ConfigDef.Type.STRING, "mysql", ConfigDef.Importance.HIGH, "database type");
     private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussSinkConnectorConfig.class);
 
     /**
@@ -68,19 +71,19 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
     public final Integer maxThreadCount;
 
     /**
-     * mysqlUsername
+     * databaseUsername
      */
-    public final String mysqlUsername;
+    public final String databaseUsername;
 
     /**
-     * mysqlPassword
+     * databasePassword
      */
-    public final String mysqlPassword;
+    public final String databasePassword;
 
     /**
-     * mysqlUrl
+     * databaseUrl
      */
-    public final String mysqlUrl;
+    public final String databaseUrl;
 
     /**
      * port
@@ -92,13 +95,19 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
      */
     public final boolean isDelCsv;
 
+    /**
+     * Database type
+     */
+    public final String databaseType;
+
     public OpengaussSinkConnectorConfig(Map<?, ?> props){
         super(CONFIG_DEF, props);
         this.maxThreadCount = getInt(MAX_THREAD_COUNT);
 
-        this.mysqlUsername = getString(MYSQL_USERNAME);
-        this.mysqlPassword = getString(MYSQL_PASSWORD);
-        this.mysqlUrl = getString(MYSQL_URL);
+        this.databaseType = getString(DATABASE_TYPE);
+        this.databaseUsername = getString(DATABASE_USERNAME);
+        this.databasePassword = getString(DATABASE_PASSWORD);
+        this.databaseUrl = getString(DATABASE_URL);
         this.port = getInt(PORT);
         this.isDelCsv = getBoolean(DELETE_FULL_CSV_FILE);
 
@@ -111,6 +120,6 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
         props.forEach((k, v) -> {
             allConfig.put(String.valueOf(k), v);
         });
-        logAll(allConfig, MYSQL_PASSWORD);
+        logAll(allConfig, DATABASE_PASSWORD);
     }
 }

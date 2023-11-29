@@ -111,7 +111,12 @@ public class WorkThread extends Thread {
     @Override
     public void run() {
         SinkRecordObject sinkRecordObject = null;
-        connection = connectionInfo.createMysqlConnection();
+        if ("mysql".equals(connectionInfo.getDatabaseType().toLowerCase(Locale.ROOT))) {
+            connection = connectionInfo.createMysqlConnection();
+        }
+        else {
+            connection = connectionInfo.createOpenGaussConnection();
+        }
         try {
             statement = connection.createStatement();
         } catch (SQLException exp) {
@@ -377,7 +382,12 @@ public class WorkThread extends Thread {
         try {
             statement.close();
             connection.close();
-            connection = connectionInfo.createMysqlConnection();
+            if ("mysql".equals(connectionInfo.getDatabaseType().toLowerCase(Locale.ROOT))) {
+                connection = connectionInfo.createMysqlConnection();
+            }
+            else {
+                connection = connectionInfo.createOpenGaussConnection();
+            }
             statement = connection.createStatement();
             statement.executeUpdate(sql);
             savedBreakPointInfo(sinkRecordObject, false);

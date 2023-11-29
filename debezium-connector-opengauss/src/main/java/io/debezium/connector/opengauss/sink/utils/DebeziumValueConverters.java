@@ -74,6 +74,14 @@ public final class DebeziumValueConverters {
             put("multilinestring", (columnName, value) -> convertByteaToMultiGeometry(columnName, value));
             put("multipolygon", (columnName, value) -> convertByteaToMultiGeometry(columnName, value));
             put("geometrycollection", (columnName, value) -> convertByteaToMultiGeometry(columnName, value));
+            put("uint1", (columnName, value) -> convertNumberType(columnName, value));
+            put("uint2", (columnName, value) -> convertNumberType(columnName, value));
+            put("uint4", (columnName, value) -> convertNumberType(columnName, value));
+            put("uint8", (columnName, value) -> convertNumberType(columnName, value));
+            put("\"binary\"", (columnName, value) -> convertBinary(columnName, value));
+            put("\"varbinary\"", (columnName, value) -> convertBinary(columnName, value));
+            put("time without time zone", (columnName, value) -> convertTime(columnName, value));
+            put("real", ((columnName, value) -> convertNumberType(columnName, value)));
         }
     };
 
