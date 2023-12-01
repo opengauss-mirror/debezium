@@ -56,6 +56,12 @@ import org.slf4j.LoggerFactory;
  */
 public class KafkaClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(KafkaClient.class);
+
+    /**
+     * The one and only partition of the breakpoint record topic.
+     */
+    public static final String CONFIGURATION_FIELD_PREFIX_STRING = "record.breakpoint.";
+
     private static final String CONFIG_TOPIC_PREFIX = "config_";
     private static final String DEFAULT_TOPIC_REPLICATION_FACTOR_PROP_NAME = "default.replication.factor";
     private static final short DEFAULT_TOPIC_REPLICATION_FACTOR = 1;
@@ -134,13 +140,11 @@ public class KafkaClient {
                 .withDefault(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class)
                 .withDefault(ProducerConfig.MAX_BLOCK_MS_CONFIG, 10_000) // wait at most this if we can't reach Kafka
                 .build();
-        if (LOGGER.isInfoEnabled()) {
-            LOGGER.info("BreakPointRecord Consumer config: {}", consumerConfig.withMaskedPasswords());
-            LOGGER.info("BreakPointRecord Producer config: {}", producerConfig.withMaskedPasswords());
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("BreakPointRecord Consumer config: {}", consumerConfig.withMaskedPasswords());
+            LOGGER.debug("BreakPointRecord Producer config: {}", producerConfig.withMaskedPasswords());
         }
         this.producer = new KafkaProducer<>(this.producerConfig.asProperties());
-        this.consumer = new KafkaConsumer<>(consumerConfig.asProperties());
-        consumer.subscribe(Collect.arrayListOf(topicName));
     }
 
     public KafkaProducer<String, String> getProducer() {
@@ -148,7 +152,37 @@ public class KafkaClient {
     }
 
     public KafkaConsumer<String, String> getConsumer() {
-        return consumer;
+        KafkaConsumer<String, String> defaultConsumer = new KafkaConsumer<>(consumerConfig.asProperties());
+        defaultConsumer.subscribe(Collect.arrayListOf(topicName));
+        return defaultConsumer;
+    }
+
+    /**
+     * get read breakpoint info consumer
+     *
+     * @return kafkaConsumer kafkaConsumer
+     */
+    public KafkaConsumer<String, String> getReadConsumer() {
+        this.consumerConfig = Configuration.copy(consumerConfig)
+                .with(ConsumerConfig.GROUP_ID_CONFIG, CONFIGURATION_FIELD_PREFIX_STRING + UUID.randomUUID())
+                .build();
+        KafkaConsumer<String, String> readConsumer = new KafkaConsumer<>(this.consumerConfig.asProperties());
+        readConsumer.subscribe(Collect.arrayListOf(topicName));
+        return readConsumer;
+    }
+
+    /**
+     * get pre breakpoint info consumer
+     *
+     * @return kafkaConsumer kafkaConsumer
+     */
+    public KafkaConsumer<String, String> getPreDeleteConsumer() {
+        this.consumerConfig = Configuration.copy(consumerConfig)
+                .with(ConsumerConfig.GROUP_ID_CONFIG, CONFIGURATION_FIELD_PREFIX_STRING + UUID.randomUUID())
+                .build();
+        KafkaConsumer<String, String> preDeleteConsumer = new KafkaConsumer<>(this.consumerConfig.asProperties());
+        preDeleteConsumer.subscribe(Collect.arrayListOf(topicName));
+        return preDeleteConsumer;
     }
 
     /**

@@ -111,7 +111,7 @@ public class WorkThread extends Thread {
     @Override
     public void run() {
         SinkRecordObject sinkRecordObject = null;
-        connection = connectionInfo.createMysqlConnection();
+        connection = createConnection();
         try {
             statement = connection.createStatement();
         } catch (SQLException exp) {
@@ -377,7 +377,7 @@ public class WorkThread extends Thread {
         try {
             statement.close();
             connection.close();
-            connection = connectionInfo.createMysqlConnection();
+            connection = createConnection();
             statement = connection.createStatement();
             statement.executeUpdate(sql);
             savedBreakPointInfo(sinkRecordObject, false);
@@ -488,5 +488,20 @@ public class WorkThread extends Thread {
         openGaussBpObject.setLsn(lsn);
         openGaussBpObject.setTimeStamp(LocalDateTime.now().toString());
         breakPointRecord.storeRecord(openGaussBpObject, isTransaction, isFull);
+    }
+
+    /**
+     * Create connection by name
+     *
+     * @return
+     */
+    private Connection createConnection() {
+        if ("mysql".equals(connectionInfo.getDatabaseType().toLowerCase(Locale.ROOT))) {
+            return connectionInfo.createMysqlConnection();
+        } else if ("oracle".equals(connectionInfo.getDatabaseType().toLowerCase(Locale.ROOT))) {
+            return connectionInfo.createOracleConnection();
+        } else {
+            return connectionInfo.createOpenGaussConnection();
+        }
     }
 }

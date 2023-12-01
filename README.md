@@ -307,32 +307,31 @@ connector.class=io.debezium.connector.mysql.sink.MysqlSinkConnector
 
 ### 迁移进度上报信息说明
 
-### source端
+#### Source端
 
 | 参数                           | 参数说明                           |
 |------------------------------|--------------------------------|
 | timestamp                       | source端当前上报信息的时间戳              |
 | createCount             | 生产事务数（写入binlog的事务数）            |
 | skippedExcludeCount             | source端跳过的黑名单之内或白名单之外的变更数      |
-| convertCount           | 完成解析的事务数                       
-| pollCount                       | 存入kafka的事务数                    |
-| rest             | source端剩余事务数（已生产但未存入kafka的事务数） |
-| speed           | source端处理速度（每秒处理的事务数）          
+| convertCount | 完成解析的事务数 |
+| pollCount | 存入kafka的事务数 |
+| rest | source端剩余事务数（已生产但未存入kafka的事务数） |
+| speed | source端处理速度（每秒处理的事务数） |
+#### Sink端
 
-### sink端
-
-| 参数                           | 参数说明                                                                                                                                                                                                                                                                                                                                               |
-|------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| timestamp                       | sink端当前上报信息的时间戳                                                                                                                                                                                                                                                                                                                              |
-| extractCount             | 从kafka抽取的事务数                                                                                                                                                                                                                                                                                                                                       |
-| skippedCount           | 跳过的事务数
-| replayedCount                       | 已回放事务总数                                                                                                                                                                                                                                                                                                                              |
-| successCount             | 回放成功的事务数                                                                                                                                                                                                                                                                                                                                       |
-| failCount                       | 回放失败的事务数                                                                                                                                                                                                                                                                                                                              |
-| skippedExcludeEventCount             | 跳过的黑名单表的事务数                                                                                                                                                                                                                                                                                                                                       |
-| rest           | 剩余事务数（已抽取但未回放的事务数）
-| speed           | sink端处理速度（每秒处理的事务数）
-| overallPipe           | 当前时间片处于迁移管道中的事务总数
+| 参数                     | 参数说明                             |
+| ------------------------ | ------------------------------------ |
+| timestamp                | sink端当前上报信息的时间戳           |
+| extractCount             | 从kafka抽取的事务数                  |
+| skippedCount             | 跳过的事务数                         |
+| replayedCount            | 已回放事务总数                       |
+| successCount             | 回放成功的事务数                     |
+| failCount                | 回放失败的事务数                     |
+| skippedExcludeEventCount | 跳过的黑名单表的事务数               |
+| rest                     | 剩余事务数（已抽取但未回放的事务数） |
+| speed                    | sink端处理速度（每秒处理的事务数）   |
+| overallPipe              | 当前时间片处于迁移管道中的事务总数   |
 
 ## 基于Debezium mysql connector进行在线迁移
 
@@ -416,7 +415,7 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
   kafka_2.13-3.6.0/config/zookeeper.properties------clientPort=2181
   kafka_2.13-3.6.0/config/server.properties------zookeeper.connect=localhost:2181
   confluent-5.5.1/etc/schema-registry/schema-registry.properties------kafkastore.connection.url=localhost:2181
-   ```
+  ```
 
 - kafka
 
@@ -448,8 +447,10 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
   confluent-5.5.1/etc/schema-registry/schema-registry.properties------listeners=http://0.0.0.0:8081
   confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties------key.converter.schema.registry.url=http://localhost:8081
   confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties------value.converter.schema.registry.url=http://localhost:8081
+  若需查看kafka topic内容，需修改
+  confluent-5.5.1/bin/kafka-avro-console-consumer------DEFAULT_SCHEMA_REGISTRY_URL="--property schema.registry.url=http://192.168.0.219:8081"
   ```
-
+  
 - connect-standalone
 
   ```
@@ -656,22 +657,6 @@ numactl -C 64-95 -m 0 ./bin/connect-standalone etc/schema-registry/connect-avro-
 
 (5) 统计迁移工具日志，得到迁移效率
 
-### FAQ
-
-(1) schema-registry报错: Schema being registered is incompatible with an earlier schema
-
-解决方案：
-停止schema-registry进程，执行下面curl命令，并重新启动schema-registry和kafka-connect
-
-可根据实际配置修改ip:localhost和端口:8081
-```
-curl -X GET http://localhost:8081/config
-
-curl -X PUT -H "Content-Type: application/vnd.schemaregistry.v1+json" \
-  --data '{"compatibility": "NONE"}' \
-  http://localhost:8081/config
-```
-
 ## Debezium opengauss connector
 
 ### 功能介绍
@@ -686,7 +671,7 @@ curl -X PUT -H "Content-Type: application/vnd.schemaregistry.v1+json" \
 
 ### 新增配置参数说明
 
-#### source端
+#### Source端
 
 ```
 connector.class=io.debezium.connector.opengauss.OpengaussConnector
@@ -797,32 +782,32 @@ connector.class=io.debezium.connector.opengauss.sink.OpengaussSinkConnector
 
 ### 迁移进度上报信息说明
 
-### source端
+#### Source端
 
-| 参数                           | 参数说明                                                                                                                                                                                                                                                                                                                                               |
-|------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| timestamp                       | source端当前上报信息的时间戳                                                                                                                                                                                                                                                                                                                              |
-| createCount             | 生产数据量（写入xlog的数据量）                                                                                                                                                                                                                                                                                                                                       |
-| convertCount           | 完成解析数据量
-| pollCount                       | 存入kafka的数据量                                                                                                                                                                                                                                                                                                                              |
-| skippedExcludeDataCount                       | 跳过的黑名单表的数据量                                                                                                                                                                                                                                                                                                                              |
-| rest             | 剩余数据量（已写入xlog但未存入kafka的数据量）                                                                                                                                                                                                                                                                                                                                       |
-| speed           | source端处理速度（每秒处理的数据量）
+| 参数                    | 参数说明                                      |
+| ----------------------- | --------------------------------------------- |
+| timestamp               | source端当前上报信息的时间戳                  |
+| createCount             | 生产数据量（写入xlog的数据量）                |
+| convertCount            | 完成解析数据量                                |
+| pollCount               | 存入kafka的数据量                             |
+| skippedExcludeDataCount | 跳过的黑名单表的数据量                        |
+| rest                    | 剩余数据量（已写入xlog但未存入kafka的数据量） |
+| speed                   | source端处理速度（每秒处理的数据量）          |
 
-### sink端
+#### Sink端
 
-| 参数                           | 参数说明                                                                                                                                                                                                                                                                                                                                               |
-|------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| timestamp                       | sink端当前上报信息的时间戳                                                                                                                                                                                                                                                                                                                              |
-| extractCount             | 从kafka抽取的数据量                                                                                                                                                                                                                                                                                                                                       |
-| replayedCount                       | 已完成回放的数据量                                                                                                                                                                                                                                                                                                                              |
-| successCount             | 回放成功的数据量                                                                                                                                                                                                                                                                                                                                       |
-| failCount                       | 回放失败的数据量                                                                                                                                                                                                                                                                                                                              |
-| rest           | 剩余数据量（已抽取但未回放）
-| speed           | sink端处理速度（每秒处理的数据量）
-| overallPipe           | 当前时间片处于迁移管道中的数据总数
+| 参数          | 参数说明                           |
+| ------------- | ---------------------------------- |
+| timestamp     | sink端当前上报信息的时间戳         |
+| extractCount  | 从kafka抽取的数据量                |
+| replayedCount | 已完成回放的数据量                 |
+| successCount  | 回放成功的数据量                   |
+| failCount     | 回放失败的数据量                   |
+| rest          | 剩余数据量（已抽取但未回放）       |
+| speed         | sink端处理速度（每秒处理的数据量） |
+| overallPipe   | 当前时间片处于迁移管道中的数据总数 |
 
-### 全量数据迁移进度上报
+#### 全量数据迁移进度上报
 
 ```
 {
@@ -1021,14 +1006,17 @@ cd confluent-5.5.1
 
 利用sysbench进行测试，在openEuler arm操作系统2p Kunpeng-920机器，针对混合IUD场景，50张表50个线程（insert-30线程，update-10线程，delete-10线程），性能可达1w tps。
 
-### FAQ
+## FAQ
 
-(1) schema-registry报错: Schema being registered is incompatible with an earlier schema
+### (1) schema-registry报错
+
+schema-registry报错: `Schema being registered is incompatible with an earlier schema`
 
 解决方案：
 停止schema-registry进程，执行下面curl命令，并重新启动schema-registry和kafka-connect
 
 可根据实际配置修改ip:localhost和端口:8081
+
 ```
 curl -X GET http://localhost:8081/config
 
@@ -1036,3 +1024,85 @@ curl -X PUT -H "Content-Type: application/vnd.schemaregistry.v1+json" \
   --data '{"compatibility": "NONE"}' \
   http://localhost:8081/config
 ```
+
+### (2) kafka消息过大
+
+kafka消息过大：`org.apache.kafka.common.errors.RecordTooLargeException`
+
+```
+The message is 2110235 bytes when serialized which is larger than 1048576, which is the value of the max.request.size configuration.
+The request included a message larger than the max message size the server will accept.
+```
+
+解决方案：
+
+kafka默认配置对发送的消息大小有一定的限制，默认为1M。若需发送大消息，需同步修改kafka，producer和consumer端的参数，以允许发送大消息。
+
+kafka，producer，consumer相关的参数详情请参考[参数说明](https://docs.confluent.io/platform/current/installation/configuration/index.html)。
+
+对于kafka connect，若需重写producer或者consumer默认的worker线程相关的配置，请添加对应的producer/consumer.override前缀，详情请参考[参数重写](https://docs.confluent.io/platform/current/connect/references/allconfigs.html#override-the-worker-configuration)。
+
+即对于producer，参数重写添加`producer.override`前缀；对于consumer，参数重写添加`consumer.override`前缀。
+
+参数重写生效的前提需配置参数
+
+```
+connector.client.config.override.policy=All
+```
+
+该参数配置在`confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties`文件中。
+
+针对kafka发送large message，需修改的参数如下，详情请参考[kafka send large message](https://www.baeldung.com/java-kafka-send-large-message)：
+
+| 参数                      | 默认值            | 参数含义                                     | 所属范围 | 修改方式                                                     |
+| ------------------------- | ----------------- | -------------------------------------------- | -------- | ------------------------------------------------------------ |
+| max.request.size          | 1048576B，即1MB   | 生产者能发送的消息的最大值                   | producer | 作为producer，在source端修改，source端配置文件增加该参数，需增加producer.override前缀 |
+| message.max.bytes         | 1048588B          | kafka broker能接收的消息的最大值             | kafka    | 作为kafka参数，需在配置文件server.properties中增加该参数     |
+| fetch.max.bytes           | 52428800B，即50MB | 消费者单次从kafka broker获取消息的最大字节数 | consumer | 作为consumer，在sink端修改，sink端配置文件增加该参数，需增加consumer.override前缀 |
+| max.partition.fetch.bytes | 1048576B，即1MB   | 消费者从单个分区获取消息的最大字节数         | consumer | 作为consumer，在sink端修改，sink端配置文件增加该参数，需增加consumer.override前缀 |
+
+举例如下：
+
+若需修改kafka消息为3MB=3145728B，需同步修改如下文件：
+
+- producer
+
+  若为正向迁移，mysql-> openGauss, `mysql-source.properties`文件中增加下述参数；
+
+  若为反向迁移，openGauss -> mysql, `opengauss-source.properties`文件中增加下述参数：
+
+  ```
+  producer.override.max.request.size=3145728
+  ```
+
+- kafka
+
+  若通过confluent启动kafka，`confluent-5.5.1/etc/kafka/server.properties`文件中增加下述参数；
+
+  若通过kafka安装包启动kafka，`kafka_2.13-3.6.0/config/server.properties`文件中增加下述参数：
+
+  ```
+  message.max.bytes=3145728
+  ```
+
+  该参数需重启生效
+
+- consumer
+
+  若为正向迁移，mysql-> openGauss, `mysql-sink.properties`文件中增加下述参数；
+
+  若为反向迁移，openGauss -> mysql, `opengauss-sink.properties`文件中增加下述参数：
+
+  ```
+  consumer.override.fetch.max.bytes=3145728
+  consumer.override.max.partition.fetch.bytes=3145728
+  ```
+
+- confluent
+
+  各个启动配置文件`confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties`中增加参数重写的前置要求：
+
+  ```
+  connector.client.config.override.policy=All
+  ```
+
