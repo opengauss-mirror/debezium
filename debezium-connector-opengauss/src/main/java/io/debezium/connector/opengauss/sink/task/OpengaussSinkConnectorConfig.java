@@ -52,6 +52,11 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
     public static final String DATABASE_TYPE = "database.type";
 
     /**
+     * oracle sid
+     */
+    public static final String ORACLE_DATABASE = "oracle.database";
+
+    /**
      * ConfigDef
      */
     public static final ConfigDef CONFIG_DEF = getConfigDef()
@@ -62,7 +67,8 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
             .define(DATABASE_PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "database password")
             .define(DATABASE_URL, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "database url")
             .define(PORT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "database port")
-            .define(DATABASE_TYPE, ConfigDef.Type.STRING, "mysql", ConfigDef.Importance.HIGH, "database type");
+            .define(DATABASE_TYPE, ConfigDef.Type.STRING, "mysql", ConfigDef.Importance.HIGH, "database type")
+            .define(ORACLE_DATABASE, ConfigDef.Type.STRING, "helowin", ConfigDef.Importance.HIGH, "oracle database");
     private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussSinkConnectorConfig.class);
 
     /**
@@ -100,10 +106,16 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
      */
     public final String databaseType;
 
+    /**
+     * Oracle database
+     */
+    public final String database;
+
     public OpengaussSinkConnectorConfig(Map<?, ?> props){
         super(CONFIG_DEF, props);
         this.maxThreadCount = getInt(MAX_THREAD_COUNT);
 
+        this.database = getString(ORACLE_DATABASE);
         this.databaseType = getString(DATABASE_TYPE);
         this.databaseUsername = getString(DATABASE_USERNAME);
         this.databasePassword = getString(DATABASE_PASSWORD);

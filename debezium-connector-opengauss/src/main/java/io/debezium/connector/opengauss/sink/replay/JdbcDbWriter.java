@@ -21,6 +21,7 @@ import io.debezium.connector.opengauss.sink.object.TableMetaData;
 import io.debezium.connector.opengauss.sink.task.OpengaussSinkConnectorConfig;
 import io.debezium.connector.opengauss.sink.utils.MysqlSqlTools;
 import io.debezium.connector.opengauss.sink.utils.OpengaussSqlTools;
+import io.debezium.connector.opengauss.sink.utils.OracleSqlTools;
 import io.debezium.connector.opengauss.sink.utils.SqlTools;
 import io.debezium.data.Envelope;
 import org.apache.kafka.connect.data.Struct;
@@ -117,8 +118,10 @@ public class JdbcDbWriter {
         databaseConnection = new ConnectionInfo(config.databaseUrl, config.databaseUsername, config.databasePassword, config.port, config.databaseType);
         if ("mysql".equals(config.databaseType.toLowerCase(Locale.ROOT))) {
             sqlTools = new MysqlSqlTools(databaseConnection.createMysqlConnection());
-        }
-        else {
+        } else if ("oracle".equals(config.databaseType.toLowerCase(Locale.ROOT))) {
+            databaseConnection.setDatabase(config.database);
+            sqlTools = new OracleSqlTools(databaseConnection.createOracleConnection());
+        } else {
             sqlTools = new OpengaussSqlTools(databaseConnection.createOpenGaussConnection());
         }
         this.threadCount = config.maxThreadCount;
