@@ -22,6 +22,11 @@ public class ConnectionInfo {
     private static final Logger LOGGER = LoggerFactory.getLogger(ConnectionInfo.class);
 
     /**
+     * The oracle JDBC driver class
+     */
+    private static final String ORACLE_JDBC_DRIVER = "oracle.jdbc.driver.OracleDriver";
+
+    /**
      * The openGauss JDBC driver class
      */
     private static final String OPENGAUSS_JDBC_DRIVER = "org.postgresql.Driver";
@@ -36,6 +41,7 @@ public class ConnectionInfo {
     private final String password;
     private final String url;
     private String databaseType = "mysql";
+    private String database;
 
     /**
      * Constructor
@@ -134,4 +140,30 @@ public class ConnectionInfo {
         return connection;
     }
 
+    /**
+     * Create oracle connection
+     *
+     * @return Connection the connection
+     */
+    public Connection createOracleConnection() {
+        String dbUrl = "jdbc:oracle:thin:@//" + url + ":" + port + "/" + database;
+        String driver = ORACLE_JDBC_DRIVER;
+        Connection connection = null;
+        try {
+            Class.forName(driver);
+            connection = DriverManager.getConnection(dbUrl, username, password);
+        } catch (ClassNotFoundException | SQLException exp) {
+            exp.printStackTrace();
+        }
+        return connection;
+    }
+
+    /**
+     * Set database
+     *
+     * @param database String the sid
+     */
+    public void setDatabase(String database) {
+        this.database = database;
+    }
 }
