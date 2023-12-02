@@ -493,7 +493,7 @@ public class WorkThread extends Thread {
     /**
      * Create connection by name
      *
-     * @return
+     * @return connection
      */
     private Connection createConnection() {
         if ("mysql".equals(connectionInfo.getDatabaseType().toLowerCase(Locale.ROOT))) {
