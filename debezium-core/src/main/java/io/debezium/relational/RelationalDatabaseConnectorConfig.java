@@ -958,7 +958,7 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
      * @return String the kafka bootstrap server
      */
     public String kafkaBootstrapServer() {
-        if (isSeverPathValid(KAFKA_BOOTSTRAP_SERVER.toString())) {
+        if (isSeverPathValid(KAFKA_BOOTSTRAP_SERVER)) {
             return getConfig().getString(KAFKA_BOOTSTRAP_SERVER);
         }
         LOGGER.warn("The parameter " + KAFKA_BOOTSTRAP_SERVER.name() + " is invalid, it must be server path,"
@@ -966,7 +966,7 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
         return KAFKA_BOOTSTRAP_SERVER.defaultValueAsString();
     }
 
-    private Boolean isSeverPathValid(String parameterName) {
+    private Boolean isSeverPathValid(Field parameterName) {
         String value = getConfig().getString(parameterName);
         if (value.contains("localhost")) {
             value = value.replace("localhost", "127.0.0.1");
