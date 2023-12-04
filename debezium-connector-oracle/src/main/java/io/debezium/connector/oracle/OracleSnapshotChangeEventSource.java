@@ -9,11 +9,11 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Savepoint;
 import java.sql.Statement;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.List;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -116,8 +116,7 @@ public class OracleSnapshotChangeEventSource extends RelationalSnapshotChangeEve
                     statement.execute("LOCK TABLE " + quote(tableId) + " IN ROW SHARE MODE");
                 }
             }
-        }
-        else {
+        } else {
             LOGGER.info("Schema locking was disabled in connector configuration");
         }
     }
@@ -143,15 +142,19 @@ public class OracleSnapshotChangeEventSource extends RelationalSnapshotChangeEve
         }
 
         Optional<Scn> latestTableDdlScn = getLatestTableDdlScn(ctx);
-        Scn currentScn;
-
-        // we must use an SCN for taking the snapshot that represents a later timestamp than the latest DDL change than
-        // any of the captured tables; this will not be a problem in practice, but during testing it may happen that the
-        // SCN of "now" represents the same timestamp as a newly created table that should be captured; in that case
-        // we'd get a ORA-01466 when running the flashback query for doing the snapshot
-        do {
-            currentScn = jdbcConnection.getCurrentScn();
-        } while (areSameTimestamp(latestTableDdlScn.orElse(null), currentScn));
+        Scn currentScn = connectorConfig.getSnapshotOffsetScn();
+        if (currentScn != null) {
+            LOGGER.info("using scn '{}' according to user-defined configuration file", currentScn.longValue());
+        }
+        else {
+            // we must use an SCN for taking the snapshot that represents a later timestamp than the latest DDL change
+            // than any of the captured tables; this will not be a problem in practice, but during testing it may
+            // happen that the SCN of "now" represents the same timestamp as a newly created table that should be
+            // captured; in that case we'd get a ORA-01466 when running the flashback query for doing the snapshot
+            do {
+                currentScn = jdbcConnection.getCurrentScn();
+            } while (areSameTimestamp(latestTableDdlScn.orElse(null), currentScn));
+        }
 
         // Record the starting SCNs for all currently in-progress transactions.
         // We should mine from the oldest still-reachable start SCN, but only for those transactions.

@@ -7,6 +7,9 @@ package io.debezium.connector.oracle;
 
 import java.sql.SQLException;
 import java.util.List;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.connect.source.SourceRecord;
@@ -19,6 +22,7 @@ import io.debezium.config.Field;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.connector.common.BaseSourceTask;
 import io.debezium.connector.oracle.StreamingAdapter.TableNameCaseSensitivity;
+import io.debezium.connector.oracle.process.OracleProcessCommitter;
 import io.debezium.pipeline.ChangeEventSourceCoordinator;
 import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.pipeline.ErrorHandler;
@@ -34,6 +38,9 @@ public class OracleConnectorTask extends BaseSourceTask<OraclePartition, OracleO
     private static final Logger LOGGER = LoggerFactory.getLogger(OracleConnectorTask.class);
     private static final String CONTEXT_NAME = "oracle-connector-task";
 
+    private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(1, 1, 100,
+            TimeUnit.SECONDS, new LinkedBlockingQueue<>(1));
+
     private volatile OracleTaskContext taskContext;
     private volatile ChangeEventQueue<DataChangeEvent> queue;
     private volatile OracleConnection jdbcConnection;
@@ -48,8 +55,11 @@ public class OracleConnectorTask extends BaseSourceTask<OraclePartition, OracleO
     @Override
     public ChangeEventSourceCoordinator<OraclePartition, OracleOffsetContext> start(Configuration config) {
         OracleConnectorConfig connectorConfig = new OracleConnectorConfig(config);
-        TopicSelector<TableId> topicSelector = OracleTopicSelector.defaultSelector(connectorConfig);
-        SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
+
+        if (connectorConfig.isCommitProcess()) {
+            connectorConfig.rectifyParameter();
+            statCommit(connectorConfig);
+        }
 
         Configuration jdbcConfig = connectorConfig.getJdbcConfig();
         jdbcConnection = new OracleConnection(jdbcConfig, () -> getClass().getClassLoader());
@@ -59,6 +69,8 @@ public class OracleConnectorTask extends BaseSourceTask<OraclePartition, OracleO
         OracleValueConverters valueConverters = new OracleValueConverters(connectorConfig, jdbcConnection);
         OracleDefaultValueConverter defaultValueConverter = new OracleDefaultValueConverter(valueConverters, jdbcConnection);
         TableNameCaseSensitivity tableNameCaseSensitivity = connectorConfig.getAdapter().getTableNameCaseSensitivity(jdbcConnection);
+        TopicSelector<TableId> topicSelector = OracleTopicSelector.defaultSelector(connectorConfig);
+        SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
         this.schema = new OracleDatabaseSchema(connectorConfig, valueConverters, defaultValueConverter, schemaNameAdjuster,
                 topicSelector, tableNameCaseSensitivity);
 
@@ -180,5 +192,12 @@ public class OracleConnectorTask extends BaseSourceTask<OraclePartition, OracleO
             return;
         }
         schema.recover(Offsets.of(partition, offset));
+    }
+
+    private void statCommit(OracleConnectorConfig connectorConfig) {
+        threadPool.execute(() -> {
+            OracleProcessCommitter processCommitter = new OracleProcessCommitter(connectorConfig);
+            processCommitter.commitSourceProcessInfo();
+        });
     }
 }
