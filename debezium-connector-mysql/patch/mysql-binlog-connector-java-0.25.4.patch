@@ -1,12 +1,12 @@
-From 26ee6f4cc8615bc5e74a8133fbdcef90abbcd1a7 Mon Sep 17 00:00:00 2001
+From d84114cb5243468f59a5f59c9509d171f9712563 Mon Sep 17 00:00:00 2001
 From: mmoogg <zyw2573@163.com>
 Date: Fri, 24 Nov 2023 14:08:26 +0800
 Subject: [PATCH] parallel parse binlog events & flow control
 
 ---
  pom.xml                                       |   2 +-
- .../shyiko/mysql/binlog/BinaryLogClient.java  | 287 +++++++++++++++++-
- 2 files changed, 287 insertions(+), 2 deletions(-)
+ .../shyiko/mysql/binlog/BinaryLogClient.java  | 305 +++++++++++++++++-
+ 2 files changed, 305 insertions(+), 2 deletions(-)
 
 diff --git a/pom.xml b/pom.xml
 index 5920031..bccbeec 100644
@@ -22,7 +22,7 @@ index 5920031..bccbeec 100644
      <name>mysql-binlog-connector-java</name>
      <description>MySQL Binary Log connector</description>
 diff --git a/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java b/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java
-index d8b8299..f017276 100644
+index d8b8299..fe6c926 100644
 --- a/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java
 +++ b/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java
 @@ -15,6 +15,7 @@
@@ -33,7 +33,7 @@ index d8b8299..f017276 100644
  import com.github.shyiko.mysql.binlog.event.Event;
  import com.github.shyiko.mysql.binlog.event.EventHeader;
  import com.github.shyiko.mysql.binlog.event.EventHeaderV4;
-@@ -22,6 +23,8 @@ import com.github.shyiko.mysql.binlog.event.EventType;
+@@ -22,12 +23,15 @@ import com.github.shyiko.mysql.binlog.event.EventType;
  import com.github.shyiko.mysql.binlog.event.GtidEventData;
  import com.github.shyiko.mysql.binlog.event.QueryEventData;
  import com.github.shyiko.mysql.binlog.event.RotateEventData;
@@ -42,7 +42,14 @@ index d8b8299..f017276 100644
  import com.github.shyiko.mysql.binlog.event.deserialization.ChecksumType;
  import com.github.shyiko.mysql.binlog.event.deserialization.EventDataDeserializationException;
  import com.github.shyiko.mysql.binlog.event.deserialization.EventDataDeserializer;
-@@ -67,11 +70,17 @@ import java.net.SocketException;
+ import com.github.shyiko.mysql.binlog.event.deserialization.EventDeserializer;
+ import com.github.shyiko.mysql.binlog.event.deserialization.EventDeserializer.EventDataWrapper;
+ import com.github.shyiko.mysql.binlog.event.deserialization.GtidEventDataDeserializer;
++import com.github.shyiko.mysql.binlog.event.deserialization.MissingTableMapEventException;
+ import com.github.shyiko.mysql.binlog.event.deserialization.QueryEventDataDeserializer;
+ import com.github.shyiko.mysql.binlog.event.deserialization.RotateEventDataDeserializer;
+ import com.github.shyiko.mysql.binlog.io.ByteArrayInputStream;
+@@ -67,11 +71,17 @@ import java.net.SocketException;
  import java.security.GeneralSecurityException;
  import java.security.cert.CertificateException;
  import java.security.cert.X509Certificate;
@@ -60,7 +67,7 @@ index d8b8299..f017276 100644
  import java.util.concurrent.CopyOnWriteArrayList;
  import java.util.concurrent.CountDownLatch;
  import java.util.concurrent.ExecutorService;
-@@ -79,6 +88,7 @@ import java.util.concurrent.Executors;
+@@ -79,6 +89,7 @@ import java.util.concurrent.Executors;
  import java.util.concurrent.ThreadFactory;
  import java.util.concurrent.TimeUnit;
  import java.util.concurrent.TimeoutException;
@@ -68,7 +75,7 @@ index d8b8299..f017276 100644
  import java.util.concurrent.atomic.AtomicReference;
  import java.util.concurrent.locks.Lock;
  import java.util.concurrent.locks.ReentrantLock;
-@@ -169,6 +179,21 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
+@@ -169,6 +180,21 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
      private final Lock connectLock = new ReentrantLock();
      private final Lock keepAliveThreadExecutorLock = new ReentrantLock();
  
@@ -90,7 +97,7 @@ index d8b8299..f017276 100644
      /**
       * Alias for BinaryLogClient("localhost", 3306, &lt;no schema&gt; = null, username, password).
       * @see BinaryLogClient#BinaryLogClient(String, int, String, String, String)
-@@ -501,6 +526,14 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
+@@ -501,6 +527,14 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
          this.threadFactory = threadFactory;
      }
  
@@ -105,7 +112,7 @@ index d8b8299..f017276 100644
      /**
       * Connect to the replication stream. Note that this method blocks until disconnected.
       * @throws AuthenticationException if authentication fails
-@@ -596,7 +629,11 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
+@@ -596,7 +630,11 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
                      ensureEventDataDeserializer(EventType.QUERY, QueryEventDataDeserializer.class);
                  }
              }
@@ -118,7 +125,7 @@ index d8b8299..f017276 100644
          } finally {
              connectLock.unlock();
              if (notifyWhenDisconnected) {
-@@ -991,6 +1028,254 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
+@@ -991,6 +1029,271 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
          }
      }
  
@@ -150,7 +157,15 @@ index d8b8299..f017276 100644
 +                        break;
 +                    }
 +                    try {
-+                        packet = inputStream.read(packetLength - 1);
++                        if (packetLength == MAX_PACKET_LENGTH) {
++                            packet = readPacketSplitInChunks(inputStream, packetLength - 1);
++                            if (logger.isLoggable(Level.WARNING)) {
++                                logger.log(Level.WARNING, "[MAX_PACKET_LENGTH] receive a packet length "
++                                    + MAX_PACKET_LENGTH);
++                            }
++                        } else {
++                            packet = inputStream.read(packetLength - 1);
++                        }
 +                        packetQueueList.get(index).add(packet);
 +                        if (packet[4] == 16) {
 +                            index++;
@@ -223,7 +238,17 @@ index d8b8299..f017276 100644
 +        while (true) {
 +            packet = packetQueueList.get(index).poll();
 +            if (packet != null) {
-+                event = eventDeserializer.nextEvent(new ByteArrayInputStream(packet));
++                try {
++                    event = eventDeserializer.nextEvent(new ByteArrayInputStream(packet));
++                } catch (EventDataDeserializationException | MissingTableMapEventException exp) {
++                    if (logger.isLoggable(Level.WARNING)) {
++                        logger.log(Level.WARNING, "[Deserialization exception]" + exp.getMessage());
++                    }
++                } catch (IOException exp) {
++                    if (logger.isLoggable(Level.WARNING)) {
++                        logger.log(Level.WARNING, "[IO exception]" + exp.getMessage());
++                    }
++                }
 +                if (event == null) {
 +                    if (logger.isLoggable(Level.WARNING)) {
 +                        logger.log(Level.WARNING, "Deserialize a null event");
@@ -231,7 +256,6 @@ index d8b8299..f017276 100644
 +                    break;
 +                }
 +                eventQueueList.get(index).add(event);
-+                packet = null;
 +            } else {
 +                Thread.sleep(1);
 +            }
@@ -374,5 +398,5 @@ index d8b8299..f017276 100644
          byte[] result = inputStream.read(packetLength);
          int chunkLength;
 -- 
-2.38.1.windows.1
+2.32.0.windows.1
 
