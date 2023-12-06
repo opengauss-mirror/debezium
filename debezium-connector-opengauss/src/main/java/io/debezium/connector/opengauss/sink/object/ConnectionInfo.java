@@ -5,6 +5,7 @@
  */
 package io.debezium.connector.opengauss.sink.object;
 
+import io.debezium.connector.opengauss.sink.task.OpengaussSinkConnectorConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,24 +40,22 @@ public class ConnectionInfo {
     private Integer port;
     private final String username;
     private final String password;
-    private final String url;
+    private final String ip;
     private String databaseType = "mysql";
     private String database;
 
     /**
      * Constructor
      *
-     * @param url String the url
-     * @param username String the username
-     * @param password String the password
-     * @param port int the port
+     * @param OpengaussSinkConnectorConfig the config
      */
-    public ConnectionInfo(String url, String username, String password, Integer port, String databaseType) {
-        this.url = url;
-        this.username = username;
-        this.password = password;
-        this.port = port;
-        this.databaseType = databaseType;
+    public ConnectionInfo(OpengaussSinkConnectorConfig config) {
+        this.username = config.databaseUsername;
+        this.password = config.databasePassword;
+        this.ip = config.databaseIp;
+        this.port = config.databasePort;
+        this.database = config.databaseName;
+        this.databaseType = config.databaseType;
     }
 
     public String getDatabaseType() {
@@ -87,7 +86,7 @@ public class ConnectionInfo {
      * @return Connection the connection
      */
     public Connection createMysqlConnection(){
-        String dbUrl = "jdbc:mysql://" + url + ":" + port + "/mysql?useSSL=false&allowPublicKeyRetrieval=true&"
+        String dbUrl = "jdbc:mysql://" + ip + ":" + port + "/mysql?useSSL=false&allowPublicKeyRetrieval=true&"
                 + "rewriteBatchedStatements=true&allowLoadLocalInfile=true&serverTimezone=UTC";
         Connection connection = null;
         try {
@@ -126,6 +125,7 @@ public class ConnectionInfo {
      * @return Connection the connection
      */
     public Connection createOpenGaussConnection() {
+        String url = String.format("jdbc:postgresql://%s:%s/%s?loggerLevel=OFF", ip, port, database);
         String driver = OPENGAUSS_JDBC_DRIVER;
         Connection connection = null;
         try {
@@ -146,7 +146,7 @@ public class ConnectionInfo {
      * @return Connection the connection
      */
     public Connection createOracleConnection() {
-        String dbUrl = "jdbc:oracle:thin:@//" + url + ":" + port + "/" + database;
+        String dbUrl = "jdbc:oracle:thin:@//" + ip + ":" + port + "/" + database;
         String driver = ORACLE_JDBC_DRIVER;
         Connection connection = null;
         try {
@@ -156,14 +156,5 @@ public class ConnectionInfo {
             exp.printStackTrace();
         }
         return connection;
-    }
-
-    /**
-     * Set database
-     *
-     * @param database String the sid
-     */
-    public void setDatabase(String database) {
-        this.database = database;
     }
 }
