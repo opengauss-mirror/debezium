@@ -25,36 +25,39 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
     public static final String MAX_THREAD_COUNT = "max.thread.count";
 
     /**
-     * Mysql username
+     * Database type
+     */
+    public static final String DATABASE_TYPE = "database.type";
+
+    /**
+     * Database username
      */
     public static final String DATABASE_USERNAME = "database.username";
 
     /**
-     * Mysql password
+     * Database password
      */
     public static final String DATABASE_PASSWORD = "database.password";
 
     /**
-     * Mysql url
+     * Database ip
      */
-    public static final String DATABASE_URL = "database.url";
+    public static final String DATABASE_IP = "database.ip";
 
     /**
-     * Mysql port
+     * Database port
      */
-    public static final String PORT = "database.port";
+    public static final String DATABASE_PORT = "database.port";
+
+    /**
+     * Database name
+     */
+    public static final String DATABASE_NAME = "database.name";
 
     /**
      * Whether to delete the csv file
      */
     public static final String DELETE_FULL_CSV_FILE = "delete.full.csv.file";
-
-    public static final String DATABASE_TYPE = "database.type";
-
-    /**
-     * oracle sid
-     */
-    public static final String ORACLE_DATABASE = "oracle.database";
 
     /**
      * ConfigDef
@@ -63,12 +66,17 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
             .define(DELETE_FULL_CSV_FILE, ConfigDef.Type.BOOLEAN, false, ConfigDef.Importance.HIGH,
             "whether to delete the csv file")
             .define(MAX_THREAD_COUNT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "max thread count")
-            .define(DATABASE_USERNAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "database username")
-            .define(DATABASE_PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "database password")
-            .define(DATABASE_URL, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "database url")
-            .define(PORT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "database port")
-            .define(DATABASE_TYPE, ConfigDef.Type.STRING, "mysql", ConfigDef.Importance.HIGH, "database type")
-            .define(ORACLE_DATABASE, ConfigDef.Type.STRING, "helowin", ConfigDef.Importance.HIGH, "oracle database");
+            .define(DATABASE_TYPE, ConfigDef.Type.STRING, "mysql", ConfigDef.Importance.HIGH,
+                    "database type")
+            .define(DATABASE_USERNAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH,
+                    "database username")
+            .define(DATABASE_PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH,
+                    "database password")
+            .define(DATABASE_IP, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "database ip")
+            .define(DATABASE_PORT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "database port")
+            .define(DATABASE_NAME, ConfigDef.Type.STRING, "mysql", ConfigDef.Importance.HIGH,
+                    "database name");
+
     private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussSinkConnectorConfig.class);
 
     /**
@@ -87,14 +95,19 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
     public final String databasePassword;
 
     /**
-     * databaseUrl
+     * databaseIp
      */
-    public final String databaseUrl;
+    public final String databaseIp;
 
     /**
-     * port
+     * databasePort
      */
-    public final Integer port;
+    public final Integer databasePort;
+
+    /**
+     * Oracle database
+     */
+    public final String databaseName;
 
     /**
      * isDelCsv
@@ -106,21 +119,17 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
      */
     public final String databaseType;
 
-    /**
-     * Oracle database
-     */
-    public final String database;
-
     public OpengaussSinkConnectorConfig(Map<?, ?> props){
         super(CONFIG_DEF, props);
         this.maxThreadCount = getInt(MAX_THREAD_COUNT);
 
-        this.database = getString(ORACLE_DATABASE);
         this.databaseType = getString(DATABASE_TYPE);
         this.databaseUsername = getString(DATABASE_USERNAME);
         this.databasePassword = getString(DATABASE_PASSWORD);
-        this.databaseUrl = getString(DATABASE_URL);
-        this.port = getInt(PORT);
+        this.databaseIp = getString(DATABASE_IP);
+        this.databasePort = getInt(DATABASE_PORT);
+        this.databaseName = getString(DATABASE_NAME);
+
         this.isDelCsv = getBoolean(DELETE_FULL_CSV_FILE);
 
         Map<String, Object> allConfig = CONFIG_DEF.defaultValues();

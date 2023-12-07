@@ -115,11 +115,10 @@ public class JdbcDbWriter {
         this.config = config;
         initSchemaMappingMap(config.schemaMappings);
         initRecordBreakpoint(config);
-        databaseConnection = new ConnectionInfo(config.databaseUrl, config.databaseUsername, config.databasePassword, config.port, config.databaseType);
+        databaseConnection = new ConnectionInfo(config);
         if ("mysql".equals(config.databaseType.toLowerCase(Locale.ROOT))) {
             sqlTools = new MysqlSqlTools(databaseConnection.createMysqlConnection());
         } else if ("oracle".equals(config.databaseType.toLowerCase(Locale.ROOT))) {
-            databaseConnection.setDatabase(config.database);
             sqlTools = new OracleSqlTools(databaseConnection.createOracleConnection());
         } else {
             sqlTools = new OpengaussSqlTools(databaseConnection.createOpenGaussConnection());
