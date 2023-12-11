@@ -1,6 +1,6 @@
 /**
  * Copyright Debezium Authors.
- *
+ * <p>
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
  */
 package io.debezium.connector.opengauss.sink.utils;
@@ -40,7 +40,7 @@ public class MysqlSqlTools extends SqlTools {
      * @return Connection the connection
      */
     public MysqlSqlTools(Connection connection) {
-        this.connection= connection;
+        this.connection = connection;
         this.isConnection = true;
     }
 
@@ -51,7 +51,7 @@ public class MysqlSqlTools extends SqlTools {
      * @param tableName String the table name
      * @return TableMetaData the tableMetaData
      */
-    public  TableMetaData getTableMetaData(String schemaName, String tableName) {
+    public TableMetaData getTableMetaData(String schemaName, String tableName) {
         List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
         String sql = String.format(Locale.ENGLISH, "select column_name, data_type, column_key from " +
                         "information_schema.columns where table_schema = '%s' and table_name = '%s'" +
@@ -65,8 +65,7 @@ public class MysqlSqlTools extends SqlTools {
                         rs.getString("data_type"), "PRI".equals(rs.getString("column_key"))));
             }
             tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
-        }
-        catch (SQLException exp) {
+        } catch (SQLException exp) {
             try {
                 if (!connection.isValid(1)) {
                     isConnection = false;
@@ -110,7 +109,7 @@ public class MysqlSqlTools extends SqlTools {
      * @param after Struct the after
      * @return String the insert sql
      */
-    public String getInsertSql(TableMetaData tableMetaData, Struct after){
+    public String getInsertSql(TableMetaData tableMetaData, Struct after) {
         StringBuilder sb = new StringBuilder();
         sb.append("insert into ").append(getTableFullName(tableMetaData)).append(" values(");
         ArrayList<String> valueList = getValueList(tableMetaData.getColumnList(), after, Envelope.Operation.CREATE);
@@ -130,7 +129,8 @@ public class MysqlSqlTools extends SqlTools {
     public String getUpdateSql(TableMetaData tableMetaData, Struct before, Struct after) {
         StringBuilder sb = new StringBuilder();
         sb.append("update ").append(getTableFullName(tableMetaData)).append(" set ");
-        ArrayList<String> updateSetValueList = getValueList(tableMetaData.getColumnList(), after, Envelope.Operation.UPDATE);
+        ArrayList<String> updateSetValueList = getValueList(tableMetaData.getColumnList(), after,
+                Envelope.Operation.UPDATE);
         sb.append(String.join(", ", updateSetValueList));
         sb.append(" where ");
         return sb + getWhereCondition(tableMetaData, before, Envelope.Operation.DELETE);
@@ -245,8 +245,7 @@ public class MysqlSqlTools extends SqlTools {
         ArrayList<String> whereConditionValueList;
         if (primaryColumnMetaDataList.size() > 0) {
             whereConditionValueList = getValueList(primaryColumnMetaDataList, before, option);
-        }
-        else {
+        } else {
             whereConditionValueList = getValueList(tableMetaData.getColumnList(), before, option);
         }
         return whereConditionValueList;
@@ -271,7 +270,7 @@ public class MysqlSqlTools extends SqlTools {
                 case DELETE:
                     if (singleValue == null) {
                         valueList.add(columnName + " is null");
-                    } else if ("json".equals(columnType)){
+                    } else if ("json".equals(columnType)) {
                         valueList.add(columnName + "= CAST(" + singleValue + " AS json)");
                     } else {
                         valueList.add(columnName + " = " + singleValue);
@@ -294,7 +293,12 @@ public class MysqlSqlTools extends SqlTools {
         StringBuilder sb = new StringBuilder();
         sb.append("select * from ").append(getTableFullName(tableMetaData)).append(" where ");
         List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
-        ArrayList<String> valueList = getValueList(columnMetaDataList, struct, operation);
+        ArrayList<String> valueList;
+        if (operation.equals(Envelope.Operation.CREATE)) {
+            valueList = getValueList(columnMetaDataList, struct, Envelope.Operation.UPDATE);
+        } else {
+            valueList = getValueList(columnMetaDataList, struct, operation);
+        }
         sb.append(String.join(" and ", valueList));
         sb.append(";");
         return sb.toString();

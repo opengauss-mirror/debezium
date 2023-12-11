@@ -339,7 +339,12 @@ public class SqlTools {
         StringBuilder sb = new StringBuilder();
         sb.append("select * from ").append(tableMetaData.getTableFullName()).append(" where ");
         List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
-        ArrayList<String> valueList = getValueList(columnMetaDataList, struct, operation);
+        ArrayList<String> valueList;
+        if (Envelope.Operation.CREATE.equals(operation)) {
+            valueList = getValueList(columnMetaDataList, struct, Envelope.Operation.UPDATE);
+        } else {
+            valueList = getValueList(columnMetaDataList, struct, operation);
+        }
         sb.append(String.join(" and ", valueList));
         sb.append(";");
         return sb.toString();

@@ -347,7 +347,12 @@ public class OpengaussSqlTools extends SqlTools {
         StringBuilder sb = new StringBuilder();
         sb.append("select * from ").append(getTableFullName(tableMetaData)).append(" where ");
         List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
-        ArrayList<String> valueList = getValueList(columnMetaDataList, struct, operation);
+        ArrayList<String> valueList;
+        if (operation.equals(Envelope.Operation.CREATE)) {
+            valueList = getValueList(columnMetaDataList, struct, Envelope.Operation.UPDATE);
+        } else {
+            valueList = getValueList(columnMetaDataList, struct, operation);
+        }
         sb.append(String.join(" and ", valueList));
         sb.append(";");
         return sb.toString();
