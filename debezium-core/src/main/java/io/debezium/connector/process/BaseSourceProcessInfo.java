@@ -5,13 +5,18 @@
  */
 package io.debezium.connector.process;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.concurrent.atomic.AtomicLong;
+
 /**
  * Description: BaseSourceProcessCommitter
  *
  * @author wangzhengyuan
  * @since 2023-03-31
  */
-public class BaseSourceProcessInfo {
+public class BaseSourceProcessInfo implements Cloneable {
     /**
      * SourceProcessInfo the sourceProcessInfo
      */
@@ -21,9 +26,10 @@ public class BaseSourceProcessInfo {
      * SourceProcessInfo the transaction source process information
      */
     public static final BaseSourceProcessInfo TRANSACTION_SOURCE_PROCESS_INFO = new BaseSourceProcessInfo();
+    private static final Logger LOGGER = LoggerFactory.getLogger(BaseSourceProcessInfo.class);
 
+    private final AtomicLong createCount = new AtomicLong();
     private long timestamp;
-    private long createCount;
     private long skippedExcludeCount;
     private long convertCount;
     private long pollCount;
@@ -54,7 +60,7 @@ public class BaseSourceProcessInfo {
      * @return Long the create count
      */
     public long getCreateCount() {
-        return createCount;
+        return createCount.get();
     }
 
     /**
@@ -63,7 +69,7 @@ public class BaseSourceProcessInfo {
      * @param createCount Long the create count
      */
     public void setCreateCount(long createCount) {
-        this.createCount = createCount;
+        this.createCount.set(createCount);
     }
 
     /**
@@ -112,7 +118,7 @@ public class BaseSourceProcessInfo {
     }
 
     public void setRest() {
-        this.rest = createCount - pollCount - skippedExcludeCount;
+        this.rest = createCount.get() - pollCount - skippedExcludeCount;
     }
 
     /**
@@ -149,7 +155,7 @@ public class BaseSourceProcessInfo {
      * @param autoIncreaseSize int the autoIncreaseSize
      */
     public void autoIncreaseCreateCount(int autoIncreaseSize) {
-        createCount += autoIncreaseSize;
+        createCount.addAndGet(autoIncreaseSize);
     }
 
     /**
@@ -177,6 +183,18 @@ public class BaseSourceProcessInfo {
      */
     public void autoIncreasePollCount(int autoIncreaseSize) {
         pollCount += autoIncreaseSize;
+    }
+
+    @Override
+    public BaseSourceProcessInfo clone() {
+        try {
+            if (super.clone() instanceof BaseSourceProcessInfo) {
+                return (BaseSourceProcessInfo) super.clone();
+            }
+        } catch (CloneNotSupportedException e) {
+            LOGGER.error("The process information object is not supported clone.");
+        }
+        return this;
     }
 
     /**

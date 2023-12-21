@@ -124,8 +124,12 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
         long before = waitTimeInterval(true);
         sourceProcessInfo.setSpeed(before, commitTimeInterval);
         if (isParallelBasedTransaction) {
+            BaseSourceProcessInfo processInfo = sourceProcessInfo.clone();
             refreshCreateCount();
-            sourceProcessInfo.setCreateCount(createCount);
+            processInfo.setCreateCount(createCount);
+            processInfo.setRest();
+            processInfo.setTimestamp();
+            return processInfo.toString();
         }
         sourceProcessInfo.setRest();
         sourceProcessInfo.setTimestamp();
