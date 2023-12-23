@@ -325,6 +325,10 @@ public class KafkaClient {
         refreshTopic(client, consumerProperties, topicName);
         produceAndSend(producerProperties, topicName, String.valueOf(sourceConnectorConfig.getConnectorConfigList()));
         client.close();
+        if (LOGGER.isInfoEnabled()) {
+            LOGGER.info("Send source config successfully, the result is:" + System.lineSeparator()
+                    + sourceConnectorConfig.getConnectorConfigList());
+        }
     }
 
     /**
@@ -333,6 +337,22 @@ public class KafkaClient {
      * @return String the source config list
      */
     public String readSourceConfig() {
+        while ("".equals(readConfig())) {
+            try {
+                LOGGER.info("Wait for source config ...");
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                LOGGER.error("Interrupted exception occurred", e);
+            }
+        }
+        String config = readConfig();
+        if (LOGGER.isInfoEnabled()) {
+            LOGGER.info("Read source config successfully, the result is:" + System.lineSeparator() + config);
+        }
+        return config;
+    }
+
+    private String readConfig() {
         Properties consumerProperties = getConsumerProperties(bootstrapServer);
 
         // Set whether to automatically submit after pulling information
