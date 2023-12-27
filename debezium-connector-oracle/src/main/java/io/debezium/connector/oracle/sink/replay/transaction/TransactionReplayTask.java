@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.Locale;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -326,7 +327,30 @@ public class TransactionReplayTask extends ReplayTask {
                 ddl = sqlTools.getCreateTableStatement(tableName, tableChangesField);
                 break;
             case "ALTER":
-                ddl = sqlTools.getAlterTableStatement(tableName, tableChangesField);
+                String originalDdl = ddlOperation.getDdl();
+                if (originalDdl.toLowerCase(Locale.ROOT).contains("rename to")) {
+                    int preIndex = originalDdl.toLowerCase(Locale.ROOT).indexOf("table");
+                    int postIndex = originalDdl.toLowerCase(Locale.ROOT).indexOf("rename");
+                    int endIndex = originalDdl.toLowerCase(Locale.ROOT).indexOf(";");
+                    String oldFullName = originalDdl.substring(preIndex + 6, postIndex).trim();
+                    String newName = originalDdl.substring(postIndex + 7, endIndex).trim()
+                            .substring(3).trim();
+                    String newNameWithoutQuote = newName.replaceAll("\"", "");
+                    String oldNameWithoutQuote;
+                    if (oldFullName.split("\\.").length == 2) {
+                        oldNameWithoutQuote = oldFullName.split("\\.")[1].replaceAll("\"", "");
+                    }
+                    else {
+                        oldNameWithoutQuote = oldFullName.replaceAll("\"", "");
+                    }
+
+                    String preparedDdl = originalDdl.replaceFirst(oldFullName, "?").replaceFirst(newName, "?");
+                    ddl = preparedDdl.replaceFirst("\\?", SqlTools.addingQuote(oldNameWithoutQuote))
+                            .replaceFirst("\\?", SqlTools.addingQuote(newNameWithoutQuote));
+                }
+                else {
+                    ddl = sqlTools.getAlterTableStatement(tableName, tableChangesField);
+                }
                 break;
             case "DROP":
                 ddl = sqlTools.getDropTableStatement(tableName);
