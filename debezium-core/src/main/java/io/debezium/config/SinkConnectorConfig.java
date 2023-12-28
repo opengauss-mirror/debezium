@@ -226,7 +226,10 @@ public class SinkConnectorConfig extends AbstractConfig {
         rectifyParameter();
     }
 
-    private void initCouplingConfig() {
+    /**
+     * initialize coupling config
+     */
+    protected void initCouplingConfig() {
         KafkaClient client = new KafkaClient(bootstrapServers, topics);
         String sourceConfig = client.readSourceConfig();
         String[] configs = sourceConfig.split(System.lineSeparator());

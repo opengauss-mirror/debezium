@@ -143,4 +143,7 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
         });
         logAll(allConfig, DATABASE_PASSWORD);
     }
+
+    @Override
+    protected void initCouplingConfig() {}
 }
