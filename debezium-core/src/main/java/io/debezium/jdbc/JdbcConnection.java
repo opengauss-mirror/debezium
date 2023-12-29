@@ -1408,7 +1408,9 @@ public class JdbcConnection implements AutoCloseable {
 
     protected List<Map<String, String>> readUniqueIndex(DatabaseMetaData metadata, TableId id, List<String> pkColumnNames) throws SQLException {
         final List<Map<String, String>> uniqueColumns = new ArrayList<>();
-        try (ResultSet rs = metadata.getIndexInfo(id.catalog(), id.schema(), id.table(), true, false)) {
+        TableId idQuoted = id.toDoubleQuoted();
+        try (ResultSet rs = metadata.getIndexInfo(
+                idQuoted.catalog(), idQuoted.schema(), idQuoted.table(), true, false)) {
             while (rs.next()) {
                 final Map<String, String> uniqueColumn = new HashMap<>();
                 final String indexName = rs.getString(6);

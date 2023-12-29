@@ -21,6 +21,7 @@ import io.debezium.config.Configuration;
 import io.debezium.config.Field;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.connector.common.BaseSourceTask;
+import io.debezium.connector.kafka.KafkaClient;
 import io.debezium.connector.oracle.StreamingAdapter.TableNameCaseSensitivity;
 import io.debezium.connector.oracle.process.OracleProcessCommitter;
 import io.debezium.pipeline.ChangeEventSourceCoordinator;
@@ -60,6 +61,9 @@ public class OracleConnectorTask extends BaseSourceTask<OraclePartition, OracleO
             connectorConfig.rectifyParameter();
             statCommit(connectorConfig);
         }
+
+        KafkaClient configClient = new KafkaClient(connectorConfig);
+        configClient.sendConfigToKafka();
 
         Configuration jdbcConfig = connectorConfig.getJdbcConfig();
         jdbcConnection = new OracleConnection(jdbcConfig, () -> getClass().getClassLoader());
