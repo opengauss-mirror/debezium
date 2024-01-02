@@ -632,6 +632,7 @@ public class SqlTools {
                 || "NVARCHAR2".equalsIgnoreCase(columnType) || "VARCHAR2".equalsIgnoreCase(columnType)) {
             precisionAndScale = constructPrecisionAndScale(columnField.getLength(), null);
         } else if (!"FLOAT".equalsIgnoreCase(columnType)
+                && !"BLOB".equalsIgnoreCase(columnType)
                 && !columnType.toLowerCase(Locale.ROOT).contains("interval")
                 && !columnType.toLowerCase(Locale.ROOT).contains("time zone")) {
             precisionAndScale = constructPrecisionAndScale(columnField.getLength(), columnField.getScale());

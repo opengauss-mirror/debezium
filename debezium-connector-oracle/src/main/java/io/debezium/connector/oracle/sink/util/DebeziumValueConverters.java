@@ -32,6 +32,7 @@ import io.debezium.time.NanoTimestamp;
 import org.apache.kafka.connect.data.Decimal;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.errors.DataException;
 
 import io.debezium.connector.oracle.sink.object.ColumnMetaData;
 import io.debezium.data.SpecialValueDecimal;
@@ -67,10 +68,10 @@ public class DebeziumValueConverters {
             // put("integer", DebeziumValueConverters::convertInteger);
             // put("bigint", DebeziumValueConverters::convertInteger);
             put("character", DebeziumValueConverters::convertChar);
-            put("tinyblob", DebeziumValueConverters::convertBinary);
-            put("mediumblob", DebeziumValueConverters::convertBinary);
-            put("blob", DebeziumValueConverters::convertBinary);
-            put("longblob", DebeziumValueConverters::convertBinary);
+            put("tinyblob", DebeziumValueConverters::convertBlob);
+            put("mediumblob", DebeziumValueConverters::convertBlob);
+            put("blob", DebeziumValueConverters::convertBlob);
+            put("longblob", DebeziumValueConverters::convertBlob);
             put("\"binary\"", DebeziumValueConverters::convertBinary);
             put("\"varbinary\"", DebeziumValueConverters::convertBinary);
             put("binary", DebeziumValueConverters::convertBinary);
@@ -184,6 +185,21 @@ public class DebeziumValueConverters {
 
     private static String convertHexString(byte[] bytes) {
         return addingSingleQuotation(HEX_PREFIX + HexConverter.convertToHexString(bytes));
+    }
+
+    private static String convertBlob(String columnName, Struct valueStruct) {
+        try {
+            byte[] bytes = valueStruct.getBytes(columnName);
+            if (bytes != null) {
+                String hexStr = HexConverter.convertToHexString(bytes);
+                return "hextoraw(" + addingSingleQuotation(hexStr) + ")::blob";
+            }
+        } catch (DataException e) {
+            // for longraw
+            return valueStruct.getString(columnName);
+        }
+
+        return null;
     }
 
     private static String convertBytea(String columnName, Struct value) {
