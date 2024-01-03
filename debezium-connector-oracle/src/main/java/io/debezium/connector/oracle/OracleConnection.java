@@ -560,7 +560,9 @@ public class OracleConnection extends JdbcConnection {
     @Override
     protected Set<String> readTableIndex(DatabaseMetaData metadata, TableId tableId) throws SQLException {
         Set<String> indexSet = new HashSet<>();
-        try (ResultSet indexInfo = metadata.getIndexInfo(tableId.catalog(), tableId.schema(), tableId.table(), false, false)) {
+        TableId idQuoted = tableId.toDoubleQuoted();
+        try (ResultSet indexInfo = metadata.getIndexInfo(
+                idQuoted.catalog(), idQuoted.schema(), idQuoted.table(), false, false)) {
             while (indexInfo.next()) {
                 String indexName = indexInfo.getString("INDEX_NAME");
                 if (!Strings.isNullOrEmpty(indexName)) {
