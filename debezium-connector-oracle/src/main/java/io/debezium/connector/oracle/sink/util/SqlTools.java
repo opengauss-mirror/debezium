@@ -10,11 +10,11 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Collections;
-import java.util.Arrays;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.connect.data.Struct;
@@ -627,11 +627,16 @@ public class SqlTools {
             columnType = columnField.getTypeName();
         }
 
-        String precisionAndScale = "";
-        if (!"FLOAT".equalsIgnoreCase(columnType)
+        String precisionAndScale;
+        if ("CHAR".equalsIgnoreCase(columnType) || "NCHAR".equalsIgnoreCase(columnType)
+                || "NVARCHAR2".equalsIgnoreCase(columnType) || "VARCHAR2".equalsIgnoreCase(columnType)) {
+            precisionAndScale = constructPrecisionAndScale(columnField.getLength(), null);
+        } else if (!"FLOAT".equalsIgnoreCase(columnType)
                 && !columnType.toLowerCase(Locale.ROOT).contains("interval")
                 && !columnType.toLowerCase(Locale.ROOT).contains("time zone")) {
             precisionAndScale = constructPrecisionAndScale(columnField.getLength(), columnField.getScale());
+        } else {
+            precisionAndScale = "";
         }
 
         return columnType + precisionAndScale;
