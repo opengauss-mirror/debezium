@@ -544,6 +544,11 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
         QueryEventData command = unwrapData(event);
         LOGGER.debug("Received query command: {}", event);
         String sql = command.getSql().trim();
+        // For mariadb, such as 10.4.32-MariaDB-log version, it contains QueryEvent, whose ddl is part of
+        // '# Dummy event replication...', so ignore it by filtering ddl that starts with '#'.
+        if (sql.startsWith("#")) {
+            return;
+        }
         BaseSourceProcessInfo.statProcessCount(BaseSourceProcessInfo.TRANSACTION_SOURCE_PROCESS_INFO,
                 1, 0);
         if (sql.equalsIgnoreCase("BEGIN")) {
@@ -810,8 +815,9 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
 
     private void statCreateCount(Event event) {
         if (!connectorConfig.shouldProvideTransactionMetadata() && event.getData() != null) {
-            if (event.getData() instanceof QueryEventData && !(((QueryEventData) event.getData())
-                    .getSql().equalsIgnoreCase("BEGIN"))) {
+            if (event.getData() instanceof QueryEventData
+                    && !(((QueryEventData) event.getData()).getSql().equalsIgnoreCase("BEGIN"))
+                    && !((QueryEventData) event.getData()).getSql().startsWith("#")) {
                 BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreaseCreateCount(1);
             }
             BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreaseCreateCount(client.statDmlCount(event));
@@ -924,6 +930,7 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
 
         // Get the current GtidSet from MySQL so we can get a filtered/merged GtidSet based off of the last Debezium checkpoint.
         String availableServerGtidStr = connection.knownGtidSet();
+        String startGtidSet = "";
         if (isGtidModeEnabled) {
             // The server is using GTIDs, so enable the handler ...
             eventHandlers.put(EventType.GTID, (event) -> handleGtidEvent(effectiveOffsetContext, event));
@@ -943,9 +950,7 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
                 client.setGtidSet(filteredGtidSetStr);
                 effectiveOffsetContext.setCompletedGtidSet(filteredGtidSetStr);
                 gtidSet = new com.github.shyiko.mysql.binlog.GtidSet(filteredGtidSetStr);
-                if (connectorConfig.isCommitProcess()) {
-                    statCommit(filteredGtidSetStr);
-                }
+                startGtidSet = filteredGtidSetStr;
             }
             else {
                 // We've not yet seen any GTIDs, so that means we have to start reading the binlog from the beginning ...
@@ -958,6 +963,9 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
             // The server is not using GTIDs, so start reading the binlog based upon where we last left off ...
             client.setBinlogFilename(effectiveOffsetContext.getSource().binlogFilename());
             client.setBinlogPosition(effectiveOffsetContext.getSource().binlogPosition());
+        }
+        if (connectorConfig.isCommitProcess()) {
+            statCommit(startGtidSet);
         }
 
         // We may be restarting in the middle of a transaction, so see how far into the transaction we have already processed...

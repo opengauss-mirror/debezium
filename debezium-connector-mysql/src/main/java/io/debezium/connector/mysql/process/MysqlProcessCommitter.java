@@ -63,11 +63,11 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
         this.isParallelBasedTransaction = connectorConfig.shouldProvideTransactionMetadata();
         if (isParallelBasedTransaction) {
             this.sourceProcessInfo = BaseSourceProcessInfo.TRANSACTION_SOURCE_PROCESS_INFO;
+            initOriginGtidSet(originGtidSet.split(","));
         }
         else {
             this.sourceProcessInfo = BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO;
         }
-        initOriginGtidSet(originGtidSet.split(","));
         executeOutPutThread(connectorConfig.createCountInfoPath() + File.separator);
     }
 
