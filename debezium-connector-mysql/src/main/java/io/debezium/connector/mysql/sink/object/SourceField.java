@@ -91,6 +91,9 @@ public class SourceField implements Cloneable {
         this.sequenceNumber = source.getInt64(SourceField.SEQUENCE_NUMBER);
         this.file = source.getString(SourceField.FILE);
         this.position = source.getInt64(SourceField.POSITION);
+        if (gtid == null) {
+            this.gtid = this.file + ":" + this.position;
+        }
     }
 
     /**

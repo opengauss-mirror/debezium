@@ -369,7 +369,7 @@ public class WorkThread extends Thread {
         Long kafkaOffset = sinkRecordObject.getKafkaOffset();
         tableBpObject.setBeginOffset(kafkaOffset);
         tableBpObject.setTimeStamp(LocalDateTime.now().toString());
-        if (!sourceField.getGtid().isEmpty()) {
+        if (sourceField.getGtid() != null && !sourceField.getGtid().isEmpty()) {
             tableBpObject.setGtid(sinkRecordObject.getSourceField().getGtid());
         }
         breakPointRecord.storeRecord(tableBpObject, isTransaction);
