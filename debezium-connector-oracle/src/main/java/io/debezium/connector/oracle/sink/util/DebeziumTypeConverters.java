@@ -46,6 +46,13 @@ public class DebeziumTypeConverters {
             // Lob
             put(Types.BLOB, "BLOB");
             put(Types.CLOB, "CLOB");
+
+            // long raw
+            put(Types.LONGVARBINARY, "BLOB");
+            // long
+            put(Types.LONGVARCHAR, "TEXT");
+            // raw
+            put(Types.VARBINARY, "BLOB");
         }
     };
 
