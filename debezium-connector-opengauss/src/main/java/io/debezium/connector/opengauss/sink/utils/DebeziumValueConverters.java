@@ -82,6 +82,10 @@ public final class DebeziumValueConverters {
             put("\"varbinary\"", (columnName, value) -> convertBinary(columnName, value));
             put("time without time zone", (columnName, value) -> convertTime(columnName, value));
             put("real", ((columnName, value) -> convertNumberType(columnName, value)));
+            put("DATE", ((columnName, value) -> convertOracleDate(columnName, value)));
+            put("TIMESTAMP(6)", ((columnName, value) -> convertOracleTimeStamp(columnName, value)));
+            put("BLOB", ((columnName, value) -> convertOracleBlob(columnName, value)));
+            put("RAW", ((columnName, value) -> convertOracleRaw(columnName, value)));
         }
     };
 
@@ -100,6 +104,49 @@ public final class DebeziumValueConverters {
         }
         Object object = value.get(columnName);
         return object == null ? null : addingSingleQuotation(object.toString());
+    }
+
+    private static String convertOracleRaw(String columnName, Struct valueStruct) {
+        byte[] bytes = valueStruct.getBytes(columnName);
+        if (bytes != null) {
+            String hexString = new String(bytes, StandardCharsets.UTF_8);
+            return "hextoraw(" + addingSingleQuotation(hexString) + ")";
+        }
+        return null;
+    }
+
+    private static String convertOracleBlob(String columnName, Struct valueStruct) {
+        byte[] bytes = valueStruct.getBytes(columnName);
+        if (bytes != null) {
+            String hexString = new String(bytes, StandardCharsets.UTF_8);
+            return "rawtohex(" + addingSingleQuotation(hexString) + ")";
+        }
+        return null;
+    }
+    private static String convertOracleDate(String columnName, Struct valueStruct) {
+        Field field = valueStruct.schema().field(columnName);
+        String schemaName = field.schema().name();
+        Object object = valueStruct.get(columnName);
+        if (object == null) {
+            return null;
+        }
+        Instant instant = convertDbzDateTime(object, schemaName);
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+                .withZone(ZoneId.of("Asia/Shanghai"));
+        return "DATE " + addingSingleQuotation(dateTimeFormatter.format(instant));
+    }
+
+    private static String convertOracleTimeStamp(String columnName, Struct valueStruct) {
+        Field field = valueStruct.schema().field(columnName);
+        String schemaName = field.schema().name();
+        Object object = valueStruct.get(columnName);
+        if (object == null) {
+            return null;
+        }
+        Instant instant = convertDbzDateTime(object, schemaName);
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS")
+                .withZone(ZoneOffset.UTC);
+        return "TIMESTAMP " + addingSingleQuotation(dateTimeFormatter.format(instant));
     }
 
     private static String convertNumberType(String columnName, Struct valueStruct) {

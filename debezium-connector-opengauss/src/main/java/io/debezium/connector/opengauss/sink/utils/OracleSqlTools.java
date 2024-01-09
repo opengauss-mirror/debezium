@@ -41,6 +41,8 @@ public class OracleSqlTools extends SqlTools {
     @Override
     public TableMetaData getTableMetaData(String schemaName, String tableName) {
         List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
+        List<String> primaryKeys = getPrimaryKeyValue(schemaName.toUpperCase(Locale.ROOT),
+                tableName.toUpperCase(Locale.ROOT));
         String sql = String.format(Locale.ENGLISH, "select column_name, data_type from "
                 + "ALL_TAB_COLUMNS where owner = '%s' and table_name = '%s'"
                 + " order by column_id",
@@ -48,15 +50,40 @@ public class OracleSqlTools extends SqlTools {
         TableMetaData tableMetaData = null;
         try (Statement statement = connection.createStatement();
              ResultSet rs = statement.executeQuery(sql)) {
-            while (rs.next()) {
-                columnMetaDataList.add(new ColumnMetaData(rs.getString("column_name").toLowerCase(Locale.ROOT),
-                        rs.getString("data_type")));
-            }
-            tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
+                while (rs.next()) {
+                    String columnName = rs.getString("column_name");
+                    boolean isPrimaryKey = !primaryKeys.isEmpty() && primaryKeys.contains(columnName);
+                    columnMetaDataList.add(new ColumnMetaData(rs.getString("column_name").toLowerCase(Locale.ROOT),
+                            rs.getString("data_type"), isPrimaryKey));
+                }
+                tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
         } catch (SQLException exp) {
             LOGGER.error("SQL exception occurred, the sql statement is " + sql, exp);
         }
         return tableMetaData;
+    }
+
+    /**
+     * Get oracle primary key
+     *
+     * @param schemaName the schema name
+     * @param tableName the table name
+     * @return List<String> the primary key
+     */
+    public List<String> getPrimaryKeyValue(String schemaName, String tableName) {
+        String sql = String.format(Locale.ENGLISH, "SELECT COLUMN_NAME "
+                + "FROM all_constraints c "
+                + "JOIN all_cons_columns cc ON c.constraint_name = cc.constraint_name "
+                + "WHERE c.table_name = '%s' AND c.constraint_type = 'P' AND c.owner = '%s'", tableName, schemaName);
+        List<String> primaryKeys = new ArrayList<>();
+        try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
+            while (rs.next()) {
+                primaryKeys.add(rs.getString("COLUMN_NAME"));
+            }
+        } catch (SQLException e) {
+            LOGGER.error("SQL exception occurred in sql tools", e);
+        }
+        return primaryKeys;
     }
 
     @Override
@@ -203,14 +230,21 @@ public class OracleSqlTools extends SqlTools {
 
     @Override
     public List<String> getForeignTableList(String tableFullName) {
-        String sql = String.format(Locale.ENGLISH, "select TABLE_NAME from all_cons_columns"
-                        + "  where table_name='%s' and owner='%s'",
-                tableFullName.split("\\.")[1], tableFullName.split("\\.")[0]);
+        if (tableFullName.split("\\.").length < 2) {
+            return null;
+        }
+        String sql = String.format(Locale.ENGLISH,
+                "SELECT a.owner AS schema, a.table_name AS table_name FROM dba_constraints a,dba_constraints b "
+                        + "WHERE a.constraint_type = 'R' AND b.constraint_type = 'P' "
+                        + "AND a.r_constraint_name = b.constraint_name  "
+                        + "AND b.table_name = '%s' AND b.owner = '%s'",
+                tableFullName.split("\\.")[1].toUpperCase(Locale.ROOT),
+                tableFullName.split("\\.")[0].toUpperCase(Locale.ROOT));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql);
              ResultSet resultSet = preparedStatement.executeQuery();) {
             List<String> tableList = new ArrayList<>();
             while (resultSet.next()) {
-                tableList.add(tableFullName.split("\\.")[0] + "." + resultSet.getString("TABLE_NAME"));
+                tableList.add(resultSet.getString("SCHEMA") + "." + resultSet.getString("TABLE_NAME"));
             }
             return tableList;
         } catch (SQLException e) {

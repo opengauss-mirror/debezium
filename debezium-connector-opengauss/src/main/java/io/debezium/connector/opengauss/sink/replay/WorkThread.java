@@ -135,6 +135,7 @@ public class WorkThread extends Thread {
                     updateConnectionAndExecuteSql(sql, sinkRecordObject);
                     continue;
                 }
+                LOGGER.info(sql);
                 statement.executeUpdate(sql);
                 successCount++;
                 threadSinkRecordObject = sinkRecordObject;
