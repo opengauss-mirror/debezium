@@ -325,10 +325,6 @@ public class KafkaClient {
         refreshTopic(client, consumerProperties, topicName);
         produceAndSend(producerProperties, topicName, String.valueOf(sourceConnectorConfig.getConnectorConfigList()));
         client.close();
-        if (LOGGER.isInfoEnabled()) {
-            LOGGER.info("Send source config successfully, the result is:" + System.lineSeparator()
-                    + sourceConnectorConfig.getConnectorConfigList());
-        }
     }
 
     /**
@@ -384,8 +380,19 @@ public class KafkaClient {
 
     private void produceAndSend(Properties producerProperties, String topic, String value) {
         Producer<String, String> configProducer = new KafkaProducer<>(producerProperties);
-        configProducer.send(new ProducerRecord<>(topic, String.valueOf(value)));
+        Future<RecordMetadata> future = configProducer.send(new ProducerRecord<>(topic, String.valueOf(value)));
         configProducer.flush();
+        try {
+            future.get();
+            if (LOGGER.isInfoEnabled()) {
+                LOGGER.info("Send source config successfully, the result is:" + System.lineSeparator()
+                        + value);
+            }
+        } catch (InterruptedException exp) {
+            LOGGER.warn("receive interrupted exception when send config record.");
+        } catch (ExecutionException exp) {
+            LOGGER.warn("receive execution exception when send config record.");
+        }
         configProducer.close();
     }
 
