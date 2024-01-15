@@ -122,6 +122,8 @@ public class BreakPointRecord {
     private boolean isGetBp;
     private Long breakpointEndOffset = UNLIMITED_VALUE;
     private KafkaConsumer<String, String> bpRecordConsumer;
+    private KafkaConsumer<String, String> breakpointConsumer;
+    private KafkaConsumer<String, String> preDelConsumer;
 
     /**
      * configure the breakpoint properties
@@ -174,7 +176,9 @@ public class BreakPointRecord {
      */
     public boolean isExists(Collection<SinkRecord> records) {
         if (client.isTopicExist() && breakpointEndOffset.equals(UNLIMITED_VALUE)) {
-            KafkaConsumer<String, String> breakpointConsumer = client.getConsumer();
+            if (Objects.isNull(breakpointConsumer)) {
+                breakpointConsumer = client.getConsumer();
+            }
             long lastProcessedOffset = UNLIMITED_VALUE;
             Long endOffset = null;
             int recoveryAttempts = 0;
@@ -488,15 +492,17 @@ public class BreakPointRecord {
      * @return Long the real breakpoint offset
      */
     public Long preDeleteOffset(Long committedOffset) {
-        KafkaConsumer<String, String> getDeleteOffsetConsumer = client.getPreDeleteConsumer();
+        if (Objects.isNull(preDelConsumer)) {
+            preDelConsumer = client.getPreDeleteConsumer();
+        }
         boolean isTransaction = false;
         Long preDeleteOffset = null;
         long lastProcessedOffset = UNLIMITED_VALUE;
         Long endOffset = null;
         // find can delete offset
         do {
-            endOffset = getEndOffsetOfDbBreakPointTopic(endOffset, getDeleteOffsetConsumer);
-            ConsumerRecords<String, String> breakpointRecords = getDeleteOffsetConsumer.poll(Duration.ofSeconds(1));
+            endOffset = getEndOffsetOfDbBreakPointTopic(endOffset, preDelConsumer);
+            ConsumerRecords<String, String> breakpointRecords = preDelConsumer.poll(Duration.ofSeconds(1));
             ConsumerRecord<String, String> firstRecord = breakpointRecords.iterator().next();
             if (firstRecord.key().contains("-")) {
                 isTransaction = true;
