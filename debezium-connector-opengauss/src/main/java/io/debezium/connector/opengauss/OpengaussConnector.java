@@ -102,12 +102,22 @@ public class OpengaussConnector extends RelationalBaseSourceConnector {
                     hostnameValue.addErrorMessage(errorMessage);
                 }
                 // check user for LOGIN and REPLICATION roles
-                if(!connection.queryAndMap(
-                        "SELECT r.rolcanlogin AS rolcanlogin, r.rolreplication AS rolreplication FROM pg_roles r WHERE r.rolname = current_user",
-                        connection.singleResultMapper(rs -> rs.getBoolean("rolcanlogin") && rs.getBoolean("rolreplication"),
+                if (!connection.queryAndMap(
+                        "SELECT r.rolsystemadmin AS rolsystemadmin, r.rolcanlogin AS rolcanlogin,"
+                                + " r.rolreplication AS rolreplication FROM pg_roles r WHERE r.rolname = current_user",
+                        connection.singleResultMapper(rs ->
+                                        getSingleBooleanValue(rs.getString("rolsystemadmin"))
+                                        || (getSingleBooleanValue(rs.getString("rolcanlogin"))
+                                        && getSingleBooleanValue(rs.getString("rolreplication"))),
                                 "could not fetch roles"))) {
-                    final String errorMessage = "Postgres roles LOGIN and REPLICATION are not assigned to user: " + connection.username();
+                    final String errorMessage = "Postgres roles LOGIN and REPLICATION are not assigned to user: "
+                            + connection.username();
                     LOGGER.error(errorMessage);
+                } else {
+                    if (LOGGER.isInfoEnabled()) {
+                        LOGGER.info("Privileges are met, postgres roles LOGIN and REPLICATION are assigned to user {}",
+                                connection.username());
+                    }
                 }
             }
             catch (SQLException e) {
@@ -121,5 +131,15 @@ public class OpengaussConnector extends RelationalBaseSourceConnector {
     @Override
     protected Map<String, ConfigValue> validateAllFields(Configuration config) {
         return config.validate(OpengaussConnectorConfig.ALL_FIELDS);
+    }
+
+    /**
+     * Get single boolean value
+     *
+     * @param value the value
+     * @return boolean true or false
+     */
+    public static boolean getSingleBooleanValue(String value) {
+        return value.equals("t") || value.equals("1");
     }
 }
