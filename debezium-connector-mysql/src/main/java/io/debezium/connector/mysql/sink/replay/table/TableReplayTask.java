@@ -223,6 +223,7 @@ public class TableReplayTask extends ReplayTask {
             if (value == null) {
                 // sink record of delete will bring a null record,the record offset add to sqlKafkaOffsets
                 breakPointRecord.getReplayedOffset().offer(sinkRecord.kafkaOffset());
+                addedQueueMap.put(sinkRecord.kafkaOffset(), "");
                 continue;
             }
             parseStructValue(sinkRecord, value);
