@@ -389,11 +389,16 @@ public class MySqlSnapshotChangeEventSource extends RelationalSnapshotChangeEven
             if (firstPhase && delayedSchemaSnapshotTables.contains(tableId)) {
                 continue;
             }
-            connection.query("SHOW CREATE TABLE " + quote(tableId), rs -> {
-                if (rs.next()) {
-                    addSchemaEvent(snapshotContext, tableId.catalog(), rs.getString(2));
-                }
-            });
+            try {
+                connection.query("SHOW CREATE TABLE " + quote(tableId), rs -> {
+                    if (rs.next()) {
+                        addSchemaEvent(snapshotContext, tableId.catalog(), rs.getString(2));
+                    }
+                });
+            } catch (SQLException exp) {
+                LOGGER.warn("Show create table {} failed, the exception message is {}",
+                        quote(tableId), exp.getMessage());
+            }
         }
     }
 
