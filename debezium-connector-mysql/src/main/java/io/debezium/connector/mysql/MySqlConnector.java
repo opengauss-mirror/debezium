@@ -22,6 +22,7 @@ import io.debezium.config.Configuration;
 import io.debezium.connector.common.RelationalBaseSourceConnector;
 import io.debezium.connector.mysql.MySqlConnection.MySqlConnectionConfiguration;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
+import org.slf4j.bridge.SLF4JBridgeHandler;
 
 /**
  * A Kafka Connect source connector that creates tasks that read the MySQL binary log and generate the corresponding
@@ -53,6 +54,8 @@ public class MySqlConnector extends RelationalBaseSourceConnector {
 
     @Override
     public void start(Map<String, String> props) {
+        SLF4JBridgeHandler.removeHandlersForRootLogger();
+        SLF4JBridgeHandler.install();
         this.properties = Collections.unmodifiableMap(new HashMap<>(props));
     }
 
