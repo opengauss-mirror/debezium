@@ -16,6 +16,7 @@ public class ColumnMetaData {
     private String columnName;
     private String columnType;
     private Integer scale;
+    private int length = 0;
     private boolean isPrimaryColumn;
 
     /**
@@ -74,6 +75,20 @@ public class ColumnMetaData {
      */
     public Integer getScale() {
         return scale;
+    }
+
+    /**
+     * Sets length
+     */
+    public void setLength(int length) {
+        this.length = length;
+    }
+
+    /**
+     * Gets length
+     */
+    public int getLength() {
+        return this.length;
     }
 
     /**

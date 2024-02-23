@@ -54,9 +54,9 @@ public class SqlTools {
 
     private TableMetaData getTableMetaData(String schemaName, String tableName, long timeMillis) {
         List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
-        String sql = String.format(Locale.ENGLISH, "select column_name, data_type, numeric_scale from " +
-                "information_schema.columns where table_schema = '%s' and table_name = '%s'" +
-                " order by ordinal_position;",
+        String sql = String.format(Locale.ENGLISH, "select column_name, data_type, numeric_scale, "
+                        + "character_maximum_length from information_schema.columns where table_schema = '%s' "
+                        + "and table_name = '%s' order by ordinal_position;",
                 schemaName, tableName);
         TableMetaData tableMetaData = null;
         try (Statement statement = connection.createStatement();
@@ -65,6 +65,9 @@ public class SqlTools {
                 ColumnMetaData columnMetaData = new ColumnMetaData(rs.getString("column_name"),
                         rs.getString("data_type"), rs.getString("numeric_scale") == null ? -1
                                 : rs.getInt("numeric_scale"));
+                if (rs.getString("character_maximum_length") != null) {
+                    columnMetaData.setLength(rs.getInt("character_maximum_length"));
+                }
                 columnMetaDataList.add(columnMetaData);
             }
             for (int i = 0; i < columnMetaDataList.size(); i++) {

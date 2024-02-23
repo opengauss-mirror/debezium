@@ -38,6 +38,7 @@ import mil.nga.sf.wkt.GeometryWriter;
  **/
 public class DebeziumValueConverters {
     private static final char ESCAPE_CHARACTER = 'E';
+    private static final char BIT_CHARACTER = 'b';
     private static final String SINGLE_QUOTE = "'";
     private static final String HEX_PREFIX = "\\x";
     private static final String POLYGON_PREFIX = "POLYGON ";
@@ -78,7 +79,6 @@ public class DebeziumValueConverters {
             put("timestamp without time zone", (columnName, value) -> convertTimestamp(columnName, value));
             put("timestamp with time zone", (columnName, value) -> convertTimestamp(columnName, value));
             put("year", (columnName, value) -> convertInteger(columnName, value));
-            put("bit", ((columnName, value) -> convertBit(columnName, value)));
             put("enum", (columnName, value) -> convertChar(columnName, value));
             put("set", (columnName, value) -> convertChar(columnName, value));
             put("json", (columnName, value) -> convertChar(columnName, value));
@@ -102,6 +102,9 @@ public class DebeziumValueConverters {
         if ("numeric".equals(columnType)) {
             Integer scale = columnMetaData.getScale();
             return convertNumeric(columnName, value, scale);
+        }
+        if ("bit".equals(columnType)) {
+            return convertBit(columnName, value, columnMetaData.getLength());
         }
         return convertChar(columnName, value);
     }
@@ -387,16 +390,24 @@ public class DebeziumValueConverters {
         return null;
     }
 
-    private static String convertBit(String columnName, Struct value) {
-        byte[] bytes = value.getBytes(columnName);
-        return bytes == null ? null : convertBitString(bytes);
+    private static String convertBit(String columnName, Struct value, int length) {
+        // debezium mysql connector basic type mapping
+        // https://debezium.io/documentation/reference/1.8/connectors/mysql.html#mysql-data-types
+        // bit(1) -> boolean; bit(>1) -> bytes
+        if (length == 1) {
+            return value.getBoolean(columnName) ? "1" : "0";
+        } else {
+            byte[] bytes = value.getBytes(columnName);
+            return bytes == null ? null : convertBitString(bytes, length);
+        }
     }
 
-    private static String convertBitString(byte[] bytes) {
+    private static String convertBitString(byte[] bytes, int length) {
         StringBuilder sb = new StringBuilder();
-        for (byte aByte : bytes) {
-            sb.append(Integer.toBinaryString((aByte & 0xFF) + 0x100).substring(1));
+        for (int i = bytes.length - 1; i >= 0; i--) {
+            sb.append(Integer.toBinaryString((bytes[i] & 0xFF) + 0x100).substring(1));
         }
-        return addingSingleQuotation(sb.toString());
+        int len = sb.length();
+        return BIT_CHARACTER + addingSingleQuotation(sb.substring(len - length));
     }
 }
