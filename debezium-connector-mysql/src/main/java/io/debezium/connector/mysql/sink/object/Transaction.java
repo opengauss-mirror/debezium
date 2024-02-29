@@ -157,7 +157,7 @@ public class Transaction implements Cloneable {
      * @return String the exception message
      */
     public String getExpMessage() {
-        return expMessage.replaceAll(System.lineSeparator(), " ");
+        return expMessage.replaceAll(System.lineSeparator(), "; ");
     }
 
     /**
