@@ -368,12 +368,9 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
         // For pgoutput specifically, the publication must be created prior to the slot.
         initPublication();
 
-        try (Statement stmt = pgConnection().createStatement()) {
-            String createCommand = String.format(
-                    "CREATE_REPLICATION_SLOT \"%s\" %s LOGICAL %s",
-                    slotName,
-                    tempPart,
-                    plugin.getPostgresPluginName());
+        try (Statement stmt = connection.createStatement()) {
+            String createCommand = String.format("SELECT * FROM pg_create_logical_replication_slot('%s', '%s');",
+                    slotName, plugin.getPostgresPluginName());
             LOGGER.info("Creating replication slot with command {}", createCommand);
             stmt.execute(createCommand);
             // when we are in Postgres 9.4+, we can parse the slot creation info,
