@@ -327,7 +327,7 @@ public class WorkThread extends Thread {
                     + sinkRecordObject.getSourceField()
                     + System.lineSeparator()
                     + "-- "
-                    + exp.getMessage()
+                    + exp.getMessage().replaceAll(System.lineSeparator(), "; ")
                     + System.lineSeparator()
                     + sql + System.lineSeparator());
             LOGGER.error("SQL exception occurred in struct date {}", sinkRecordObject.getSourceField());

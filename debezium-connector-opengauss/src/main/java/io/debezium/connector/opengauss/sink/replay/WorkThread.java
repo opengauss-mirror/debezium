@@ -399,7 +399,7 @@ public class WorkThread extends Thread {
                 + data
                 + System.lineSeparator()
                 + "-- "
-                + exp.getMessage()
+                + exp.getMessage().replaceAll(System.lineSeparator(), "; ")
                 + System.lineSeparator()
                 + sql
                 + System.lineSeparator());
