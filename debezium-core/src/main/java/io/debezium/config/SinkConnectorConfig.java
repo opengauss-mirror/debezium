@@ -94,7 +94,7 @@ public class SinkConnectorConfig extends AbstractConfig {
     /**
      * breakpoint attempts
      */
-    public static final String BP_ATTEMPTS = "record.breakpoint.kafka.recovery.attempts";
+    public static final String BP_ATTEMPTS = "record.breakpoint.kafka.attempts";
 
     /**
      * breakpoint kafka server
