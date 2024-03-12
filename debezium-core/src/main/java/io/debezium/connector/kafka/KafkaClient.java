@@ -333,19 +333,20 @@ public class KafkaClient {
      * @return String the source config list
      */
     public String readSourceConfig() {
-        while ("".equals(readConfig())) {
+        String result = readConfig();
+        while ("".equals(result)) {
             try {
                 LOGGER.info("Wait for source config ...");
                 Thread.sleep(1000);
             } catch (InterruptedException e) {
                 LOGGER.error("Interrupted exception occurred", e);
             }
+            result = readConfig();
         }
-        String config = readConfig();
         if (LOGGER.isInfoEnabled()) {
-            LOGGER.info("Read source config successfully, the result is:" + System.lineSeparator() + config);
+            LOGGER.info("Read source config successfully, the result is:" + System.lineSeparator() + result);
         }
-        return config;
+        return result;
     }
 
     private String readConfig() {

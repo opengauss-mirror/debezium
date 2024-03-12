@@ -140,6 +140,6 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
     @Override
     protected void initDefaultConfigMap() {
         super.initDefaultConfigMap();
-        configMap.put(PARALLEL_BASED_TRANSACTION, "true");
+        configMap.put(PARALLEL_BASED_TRANSACTION, "false");
     }
 }
