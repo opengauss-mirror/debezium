@@ -51,7 +51,6 @@ public class FullDataConverters {
             put("float", (columnName, value, after) -> objectConvertNumberType(columnName, value, after));
             put("tinyblob", (columnName, value, after) -> objectConvertBlob(columnName, value, after));
             put("mediumblob", (columnName, value, after) -> objectConvertBlob(columnName, value, after));
-//            put("blob", (columnName, value, after) -> objectConvertBlob(columnName, value, after));
             put("longblob", (columnName, value, after) -> objectConvertBlob(columnName, value, after));
             put("datetime", (columnName, value, after) -> objectConvertDatetimeAndTimestamp(columnName, value, after));
             put("timestamp", (columnName, value, after) -> objectConvertDatetimeAndTimestamp(columnName, value, after));
@@ -60,7 +59,6 @@ public class FullDataConverters {
             put("binary", (columnName, value, after) -> objectConvertBinary(columnName, value, after));
             put("varbinary", (columnName, value, after) -> objectConvertBinary(columnName, value, after));
             put("bit", (columnName, value, after) -> objectConvertBit(columnName, value, after));
-//            put("set", (columnName, value, after) -> objectConvertSet(columnName, value, after));
             put("point", (columnName, value, after) -> objectConvertPoint(columnName, value, after));
             put("geometry", (columnName, value, after) -> objectConvertPoint(columnName, value, after));
             put("linestring", (columnName, value, after) -> objectConvertLinestring(columnName, value, after));
@@ -142,19 +140,32 @@ public class FullDataConverters {
         return addingSingleQuotation(dateTimeFormatter.format(instant));
     }
 
+    private static long getNanoOfTime(String schemaName, Object object) {
+        switch (schemaName) {
+            case "io.debezium.time.MicroTime":
+                return Long.parseLong(object.toString()) * TimeUnit.MICROSECONDS.toNanos(1);
+            case "io.debezium.time.Time":
+                return Long.parseLong(object.toString()) * 1000000;
+            default:
+                return 0;
+        }
+    }
+
     private static String objectConvertTime(String columnName, Object value, Struct valueStruct) {
         Field field = valueStruct.schema().field(columnName);
         String schemaName = field.schema().name();
         if (value == null){
             return "";
         }
-        if ("io.debezium.time.MicroTime".equals(schemaName)) {
-            long originMicro = Long.parseLong(value.toString()) * TimeUnit.MICROSECONDS.toNanos(1);
-            if (originMicro >= NANOSECOND_OF_DAY) {
-                return addingSingleQuotation(handleInvalidTime(originMicro));
+        if ("io.debezium.time.MicroTime".equals(schemaName) || "io.debezium.time.Time".equals(schemaName)) {
+            long originNano = getNanoOfTime(schemaName, value);
+
+            if (originNano >= NANOSECOND_OF_DAY) {
+                return addingSingleQuotation(handleInvalidTime(originNano));
             }
-            if (originMicro < 0) {
-                return addingSingleQuotation("-" + handleNegativeTime(-originMicro));
+
+            if (originNano < 0) {
+                return addingSingleQuotation("-" + handleNegativeTime(-originNano));
             }
         }
         Instant instant = convertDbzDateTime(value, schemaName);
