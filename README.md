@@ -376,11 +376,11 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
 #### 下载依赖
 
 - [kafka](https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/)
-（以kafka_2.13-3.6.0为例）
+（以kafka_2.13-3.6.1为例）
   ```
-  wget -c https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/3.6.0/kafka_2.13-3.6.0.tgz
+  wget -c https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/3.6.1/kafka_2.13-3.6.1.tgz  
   
-  tar -zxf kafka_2.13-3.6.0.tgz
+  tar -zxf kafka_2.13-3.6.1.tgz 
   ```
 
 - [confluent community](https://packages.confluent.io/archive/5.5/confluent-community-5.5.1-2.12.zip)
@@ -406,21 +406,21 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
 - zookeeper
 
   ```
-  配置文件位置：/kafka_2.13-3.6.0/config/zookeeper.properties
+  配置文件位置：/kafka_2.13-3.6.1/config/zookeeper.properties
   ```
   zookeeper的默认端口号为2181，对应参数clientPort=2181。
   
   若端口冲突，需要修改端口号，则同步修改以下文件对应参数：
   ```
-  kafka_2.13-3.6.0/config/zookeeper.properties------clientPort=2181
-  kafka_2.13-3.6.0/config/server.properties------zookeeper.connect=localhost:2181
+  kafka_2.13-3.6.1/config/zookeeper.properties------clientPort=2181
+  kafka_2.13-3.6.1/config/server.properties------zookeeper.connect=localhost:2181
   confluent-5.5.1/etc/schema-registry/schema-registry.properties------kafkastore.connection.url=localhost:2181
   ```
 
 - kafka
 
   ```
-  配置文件位置：/kafka_2.13-3.6.0/config/server.properties
+  配置文件位置：/kafka_2.13-3.6.1/config/server.properties
   ```
 
   注意topic的分区数必须为1，因此需设置参数num.partitions=1，该参数默认值即为1，因此无需单独修改该参数。
@@ -429,7 +429,7 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
 
   若端口冲突，需要修改端口号，则同步修改以下文件对应参数：
   ```
-  kafka_2.13-3.6.0/config/server.properties------listeners=PLAINTEXT://:9092
+  kafka_2.13-3.6.1/config/server.properties------listeners=PLAINTEXT://:9092
   confluent-5.5.1/etc/schema-registry/schema-registry.properties------kafkastore.bootstrap.servers=PLAINTEXT://localhost:9092
   confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties------bootstrap.servers=localhost:9092
   confluent-5.5.1/etc/kafka/mysql-source.properties------database.history.kafka.bootstrap.servers=127.0.0.1:9092
@@ -491,14 +491,14 @@ gtid_mode=on #若未开启该参数，则sink端按照事务顺序串行回放�
 （1）启动zookeeper
 
 ```
-cd kafka_2.13-3.6.0
+cd kafka_2.13-3.6.1
 ./bin/zookeeper-server-start.sh ./config/zookeeper.properties
 ```
 
 （2）启动kafka
 
 ```
-cd kafka_2.13-3.6.0
+cd kafka_2.13-3.6.1
 ./bin/kafka-server-start.sh ./config/server.properties
 ```
 
@@ -536,14 +536,14 @@ cd confluent-5.5.1
 （1）查看topic
 
 ```
-cd kafka_2.13-3.6.0
+cd kafka_2.13-3.6.1
 ./bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list
 ```
 
 （2）查看topic的信息
 
 ```
-cd kafka_2.13-3.6.0
+cd kafka_2.13-3.6.1
 ./bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --describe --topic topic_name
 ```
 
@@ -875,11 +875,11 @@ wal_level=logical
 #### 下载依赖
 
 - [kafka](https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/)
-  （以kafka_2.13-3.6.0为例）
+  （以kafka_2.13-3.6.1为例）
   ```
-  wget -c https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/3.6.0/kafka_2.13-3.6.0.tgz
+  wget -c https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/3.6.1/kafka_2.13-3.6.1.tgz
   
-  tar -zxf kafka_2.13-3.6.0.tgz
+  tar -zxf kafka_2.13-3.6.1.tgz
   ```
 
 - [confluent community](https://packages.confluent.io/archive/5.5/confluent-community-5.5.1-2.12.zip)
@@ -903,13 +903,13 @@ wal_level=logical
 - zookeeper
 
   ```
-  配置文件位置：/kafka_2.13-3.6.0/config/zookeeper.properties
+  配置文件位置：/kafka_2.13-3.6.1/config/zookeeper.properties
   ```
 
 - kafka
 
   ```
-  配置文件位置：/kafka_2.13-3.6.0/config/server.properties
+  配置文件位置：/kafka_2.13-3.6.1/config/server.properties
   ```
 
 - schema-registry
@@ -955,14 +955,14 @@ wal_level=logical
 （1）启动zookeeper
 
 ```
-cd kafka_2.13-3.6.0
+cd kafka_2.13-3.6.1
 ./bin/zookeeper-server-start.sh ./config/zookeeper.properties
 ```
 
 （2）启动kafka
 
 ```
-cd kafka_2.13-3.6.0
+cd kafka_2.13-3.6.1
 ./bin/kafka-server-start.sh ./config/server.properties
 ```
 
@@ -994,7 +994,7 @@ cd confluent-5.5.1
 （1）查看topic
 
 ```
-cd kafka_2.13-3.6.0
+cd kafka_2.13-3.6.1
 ./bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list
 ```
 
@@ -1082,7 +1082,7 @@ connector.client.config.override.policy=All
 
   若通过confluent启动kafka，`confluent-5.5.1/etc/kafka/server.properties`文件中增加下述参数；
 
-  若通过kafka安装包启动kafka，`kafka_2.13-3.6.0/config/server.properties`文件中增加下述参数：
+  若通过kafka安装包启动kafka，`kafka_2.13-3.6.1/config/server.properties`文件中增加下述参数：
 
   ```
   message.max.bytes=3145728
