@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.github.shyiko.mysql.binlog.event.deserialization.json.JsonStringFormatter;
 import org.apache.kafka.connect.data.Decimal;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
@@ -384,7 +385,9 @@ public class MySqlValueConverters extends JdbcValueConverters {
                 }
                 else {
                     try {
-                        r.deliver(JsonBinary.parseAsString((byte[]) data));
+                        MysqlJsonStringFormatter handler = new MysqlJsonStringFormatter();
+                        JsonBinary.parse((byte[]) data, handler);
+                        r.deliver(handler.getString());
                     }
                     catch (IOException e) {
                         parsingErrorHandler.error("Failed to parse and read a JSON value on '" + column + "' value " + Arrays.toString((byte[]) data), e);
@@ -879,5 +882,35 @@ public class MySqlValueConverters extends JdbcValueConverters {
 
     public static void defaultParsingErrorHandler(String message, Exception exception) {
         throw new DebeziumException(message, exception);
+    }
+
+    static class MysqlJsonStringFormatter extends JsonStringFormatter {
+        @Override
+        public void name(String name) {
+            StringBuilder sb = getSuperField();
+            sb.append('"');
+            super.appendString(name);
+            sb.append("\": ");
+        }
+
+        @Override
+        public void nextEntry() {
+            StringBuilder sb = getSuperField();
+            sb.append(", ");
+        }
+
+        private StringBuilder getSuperField() {
+            Class parentClass = this.getClass().getSuperclass();
+            StringBuilder sb;
+            try {
+                java.lang.reflect.Field field = parentClass.getDeclaredField("sb");
+                field.setAccessible(true);
+                sb = (StringBuilder) field.get(this);
+                return sb;
+            } catch (NoSuchFieldException | IllegalAccessException e) {
+                LOGGER.error("An exception occurred when the subclass obtained the private properties of the parent class through reflection.");
+            }
+            return new StringBuilder();
+        }
     }
 }
