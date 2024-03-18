@@ -40,10 +40,23 @@ public class OracleProcessCommitter extends BaseProcessCommitter {
     /**
      * Constructor
      *
+     * @param processFilePath processFilePath
+     * @param prefix prefix
+     * @param commitTimeInterval commitTimeInterval
+     * @param fileSizeLimit fileSizeLimit
+     */
+    public OracleProcessCommitter(String processFilePath, String prefix, int commitTimeInterval, int fileSizeLimit) {
+        super(processFilePath, prefix, commitTimeInterval, fileSizeLimit);
+    }
+
+    /**
+     * Constructor
+     *
      * @param connectorConfig OracleConnectorConfig the connectorConfig
      */
     public OracleProcessCommitter(OracleConnectorConfig connectorConfig) {
-        super(connectorConfig, FORWARD_SOURCE_PROCESS_PREFIX);
+        this(connectorConfig.filePath(), FORWARD_SOURCE_PROCESS_PREFIX,
+                connectorConfig.commitTimeInterval(), connectorConfig.fileSizeLimit());
         this.fileFullPath = initFileFullPath(file + File.separator + FORWARD_SOURCE_PROCESS_PREFIX);
         this.currentFile = new File(fileFullPath);
         this.isAppendWrite = connectorConfig.appendWrite();
@@ -64,7 +77,8 @@ public class OracleProcessCommitter extends BaseProcessCommitter {
      * @param connectorConfig OracleSinkConnectorConfig the connectorConfig
      */
     public OracleProcessCommitter(OracleSinkConnectorConfig connectorConfig) {
-        super(connectorConfig, FORWARD_SINK_PROCESS_PREFIX);
+        this(connectorConfig.getSinkProcessFilePath(), FORWARD_SINK_PROCESS_PREFIX,
+                connectorConfig.getCommitTimeInterval(), connectorConfig.getFileSizeLimit());
         this.fileFullPath = initFileFullPath(file + File.separator + FORWARD_SINK_PROCESS_PREFIX);
         this.currentFile = new File(fileFullPath);
         this.isAppendWrite = connectorConfig.isAppend();

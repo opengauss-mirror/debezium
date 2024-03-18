@@ -47,13 +47,26 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
     /**
      * Constructor
      *
+     * @param processFilePath processFilePath
+     * @param prefix prefix
+     * @param commitTimeInterval commitTimeInterval
+     * @param fileSizeLimit fileSizeLimit
+     */
+    public MysqlProcessCommitter(String processFilePath, String prefix, int commitTimeInterval, int fileSizeLimit) {
+        super(processFilePath, prefix, commitTimeInterval, fileSizeLimit);
+    }
+
+    /**
+     * Constructor
+     *
      * @param connectorConfig MySqlConnectorConfig the mySqlConnectorConfig
      * @param originGtidSet String the origin gtid set
      * @param connection MySqlConnection the connection
      */
     public MysqlProcessCommitter(MySqlConnectorConfig connectorConfig, String originGtidSet,
                                  MySqlConnection connection) {
-        super(connectorConfig, FORWARD_SOURCE_PROCESS_PREFIX);
+        this(connectorConfig.filePath(), FORWARD_SOURCE_PROCESS_PREFIX,
+                connectorConfig.commitTimeInterval(), connectorConfig.fileSizeLimit());
         this.fileFullPath = initFileFullPath(file + File.separator + FORWARD_SOURCE_PROCESS_PREFIX);
         this.currentFile = new File(fileFullPath);
         this.isAppendWrite = connectorConfig.appendWrite();
@@ -94,7 +107,8 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
      * @param connectorConfig MySqlSinkConnectorConfig the connectorConfig
      */
     public MysqlProcessCommitter(MySqlSinkConnectorConfig connectorConfig) {
-        super(connectorConfig, FORWARD_SINK_PROCESS_PREFIX);
+        this(connectorConfig.getSinkProcessFilePath(), FORWARD_SINK_PROCESS_PREFIX,
+                connectorConfig.getCommitTimeInterval(), connectorConfig.getFileSizeLimit());
         this.fileFullPath = initFileFullPath(file + File.separator + FORWARD_SINK_PROCESS_PREFIX);
         this.currentFile = new File(fileFullPath);
         this.isAppendWrite = connectorConfig.isAppend();

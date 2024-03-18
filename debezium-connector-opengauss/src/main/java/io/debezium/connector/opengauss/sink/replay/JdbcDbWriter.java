@@ -67,6 +67,8 @@ public class JdbcDbWriter {
     private static final String INSERT = "c";
     private static final String UPDATE = "u";
     private static final String DELETE = "d";
+    private static final String TRUNCATE = "t";
+    private static final String PATH = "p";
     private static final int TASK_GRACEFUL_SHUTDOWN_TIME = 5;
     private static final int BREAKPOINT_REPEAT_COUNT_LIMIT = 3000;
 
@@ -83,9 +85,7 @@ public class JdbcDbWriter {
     private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(4, 4, 100,
             TimeUnit.SECONDS, new LinkedBlockingQueue<>(4));
     private final ScheduledExecutorService fullProgressReportService = Executors
-            .newSingleThreadScheduledExecutor((r) -> {
-                return new Thread(r, "fullProgressReportThread");
-            });
+            .newSingleThreadScheduledExecutor((r) -> new Thread(r, "fullProgressReportThread"));
     private final DateTimeFormatter ofPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
     private BlockingQueue<SinkRecord> sinkQueue = new LinkedBlockingQueue<>();
     private Map<String, Integer> runnableMap = new HashMap<>();
@@ -253,8 +253,10 @@ public class JdbcDbWriter {
                 breakPointRecord.getReplayedOffset().add(sinkRecord.kafkaOffset());
                 continue;
             }
-            OgSinkProcessInfo.SINK_PROCESS_INFO.autoIncreaseExtractCount();
             DmlOperation dmlOperation = new DmlOperation(value);
+            if (!TRUNCATE.equals(dmlOperation.getOperation()) && !PATH.equals(dmlOperation.getOperation())) {
+                OgSinkProcessInfo.SINK_PROCESS_INFO.autoIncreaseExtractCount();
+            }
             SourceField sourceField = new SourceField(value);
             Long lsn = sourceField.getLsn();
             Long kafkaOffset = sinkRecord.kafkaOffset();
@@ -270,8 +272,6 @@ public class JdbcDbWriter {
             if (schemaMappingMap.get(schemaName) == null) {
                 LOGGER.warn("Not specified schema [{}] mapping library relation.", schemaName);
                 sqlErrCount++;
-                long replayedCount = OgSinkProcessInfo.SINK_PROCESS_INFO.getReplayedCount();
-                OgSinkProcessInfo.SINK_PROCESS_INFO.setReplayedCount(++replayedCount);
                 String path = dmlOperation.getPath();
                 if (!"".equals(path) && config.isDelCsv) {
                     if (!new File(path).delete()) {
@@ -579,18 +579,41 @@ public class JdbcDbWriter {
         return -1;
     }
 
+    private int[] fullCollect() {
+        int success = 0;
+        int fail = 0;
+        for (WorkThread workThread : threadList) {
+            success += workThread.getFullSuccessCount();
+            fail += workThread.getFullFailCount();
+        }
+        return new int[]{success, fail, success + fail};
+    }
+
     private void statTask() {
         threadPool.execute(() -> {
             int before = getSuccessAndFailCount()[2];
+            int fullBefore = 0;
+            if (fullCollect()[2] > 0 && before == 0) {
+                fullBefore = fullCollect()[2];
+            }
             while (true) {
                 try {
                     Thread.sleep(1000);
                     if (LOGGER.isInfoEnabled()) {
-                        LOGGER.info("have replayed {} data, and current time is {}, and current "
-                                        + "speed is {}", getSuccessAndFailCount()[2],
-                                ofPattern.format(LocalDateTime.now()),
-                                getSuccessAndFailCount()[2] - before);
+                        // Full migration progress logs
+                        if (fullCollect()[2] > 0 && getSuccessAndFailCount()[2] == 0) {
+                            LOGGER.info("full migration have replayed {} data, and current time is {}, and current "
+                                            + "speed is {}", fullCollect()[2],
+                                    ofPattern.format(LocalDateTime.now()),
+                                    fullCollect()[2] - fullBefore);
+                        } else { // Incremental migration progress logs
+                            LOGGER.info("incremental migration have replayed {} data, and current time is {}, "
+                                            + "and current speed is {}", getSuccessAndFailCount()[2],
+                                    ofPattern.format(LocalDateTime.now()),
+                                    getSuccessAndFailCount()[2] - before);
+                        }
                     }
+                    fullBefore = fullCollect()[2];
                     before = getSuccessAndFailCount()[2];
                 } catch (InterruptedException exp) {
                     LOGGER.warn("Interrupted exception occurred", exp);
