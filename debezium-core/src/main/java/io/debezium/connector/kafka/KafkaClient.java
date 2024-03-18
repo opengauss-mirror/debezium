@@ -19,6 +19,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import com.google.common.base.Strings;
 import io.debezium.config.Configuration;
 import io.debezium.config.SinkConnectorConfig;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
@@ -29,7 +30,6 @@ import org.apache.kafka.clients.admin.Config;
 import org.apache.kafka.clients.admin.KafkaAdminClient;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
@@ -324,6 +324,15 @@ public class KafkaClient {
         Properties consumerProperties = getConsumerProperties(bootstrapServer);
         refreshTopic(client, consumerProperties, topicName);
         produceAndSend(producerProperties, topicName, String.valueOf(sourceConnectorConfig.getConnectorConfigList()));
+        String message = readConfig();
+        if (Strings.isNullOrEmpty(message)) {
+            sendConfigToKafka();
+        } else {
+            if (LOGGER.isInfoEnabled()) {
+                LOGGER.info("Send source config successfully, the result is:" + System.lineSeparator()
+                        + message);
+            }
+        }
         client.close();
     }
 
@@ -334,7 +343,7 @@ public class KafkaClient {
      */
     public String readSourceConfig() {
         String result = readConfig();
-        while ("".equals(result)) {
+        while (Strings.isNullOrEmpty(result)) {
             try {
                 LOGGER.info("Wait for source config ...");
                 Thread.sleep(1000);
@@ -361,22 +370,18 @@ public class KafkaClient {
         // earliest: pull from the first piece of data
         // latest: pull the latest data
         consumerProperties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-
         KafkaConsumer<String, String> configConsumer = new KafkaConsumer<>(consumerProperties);
         configConsumer.subscribe(Collections.singleton(topicName));
-        ConsumerRecords<String, String> records = configConsumer.poll(Duration.ofMillis(100));
-        if (records != null && !records.isEmpty()) {
-            int index = 1;
-            for (ConsumerRecord<String, String> record : records) {
-                if (index == records.count()) {
-                    return record.value();
-                }
-                index++;
-            }
+        ConsumerRecords<String, String> records = configConsumer.poll(Duration.ofMillis(1000));
+        String value = "";
+        if (!records.isEmpty()) {
+            value = records.iterator().next().value();
         }
-        configConsumer.commitAsync();
-        configConsumer.close();
-        return "";
+        if(!Strings.isNullOrEmpty(value)){
+            configConsumer.commitAsync();
+            configConsumer.close();
+        }
+        return value;
     }
 
     private void produceAndSend(Properties producerProperties, String topic, String value) {
@@ -385,10 +390,6 @@ public class KafkaClient {
         configProducer.flush();
         try {
             future.get();
-            if (LOGGER.isInfoEnabled()) {
-                LOGGER.info("Send source config successfully, the result is:" + System.lineSeparator()
-                        + value);
-            }
         } catch (InterruptedException exp) {
             LOGGER.warn("receive interrupted exception when send config record.");
         } catch (ExecutionException exp) {
