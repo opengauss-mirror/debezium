@@ -601,7 +601,8 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
             tableList.add(tableInfo);
         }
         if (tableList.size() == ogFullSourceProcessInfo.getTotal()) {
-            OgProcessCommitter ogProcessCommitter = new OgProcessCommitter(connectorConfig, OgProcessCommitter.REVERSE_FULL_PROCESS_SUFFIX);
+            OgProcessCommitter ogProcessCommitter = new OgProcessCommitter(connectorConfig,
+                    OgProcessCommitter.REVERSE_FULL_PROCESS_SUFFIX);
             ogProcessCommitter.commitSourceTableProcessInfo(ogFullSourceProcessInfo);
         }
     }

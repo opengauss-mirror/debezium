@@ -532,7 +532,9 @@ public class SinkConnectorConfig extends AbstractConfig {
             if (isNumberValid(PROCESS_FILE_TIME_LIMIT, processFileTimeLimit)) {
                 processFileTimeLimit = Integer.parseInt(getString(PROCESS_FILE_TIME_LIMIT));
             }
-            this.createCountInfoPath = configMap.get(CREATE_COUNT_INFO_PATH);
+            if (!Strings.isNullOrEmpty(configMap.get(CREATE_COUNT_INFO_PATH))) {
+                this.createCountInfoPath = configMap.get(CREATE_COUNT_INFO_PATH);
+            }
         }
         if (isStringValid(BP_TOPIC, bpTopic)) {
             bpTopic = getString(BP_TOPIC);

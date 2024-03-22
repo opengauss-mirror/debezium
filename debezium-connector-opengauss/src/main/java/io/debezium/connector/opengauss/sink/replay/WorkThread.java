@@ -9,6 +9,7 @@ import com.mysql.cj.jdbc.ClientPreparedStatement;
 import com.mysql.cj.jdbc.exceptions.CommunicationsException;
 import io.debezium.connector.breakpoint.BreakPointObject;
 import io.debezium.connector.breakpoint.BreakPointRecord;
+import io.debezium.connector.opengauss.process.OgSinkProcessInfo;
 import io.debezium.connector.opengauss.sink.object.ColumnMetaData;
 import io.debezium.connector.opengauss.sink.object.SourceField;
 import io.debezium.connector.opengauss.sink.object.SinkRecordObject;
@@ -76,7 +77,9 @@ public class WorkThread extends Thread {
     private BreakPointRecord breakPointRecord;
     private PriorityBlockingQueue<Long> replayedOffsets;
     private int successCount;
+    private int fullSuccessCount;
     private int failCount;
+    private int fullFailCount;
     private Connection connection;
     private Statement statement;
     private SinkRecordObject threadSinkRecordObject = null;
@@ -197,7 +200,7 @@ public class WorkThread extends Thread {
         }
         switch (operation) {
             case TRUNCATE:
-                sql = String.format(Locale.ROOT, "truncate table %s", tableFullName);
+                processFullPrefix(tableMetaData, sinkRecordObject);
                 break;
             case PATH:
                 processFullData(dmlOperation, tableFullName, tableMetaData, sinkRecordObject);
@@ -224,6 +227,34 @@ public class WorkThread extends Thread {
      */
     public void setClearFile(boolean isDelCsv) {
         isClearFile = isDelCsv;
+    }
+
+    private void processFullPrefix(TableMetaData tableMetaData, SinkRecordObject sinkRecordObject) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("truncate table ")
+                .append(sqlTools.getTableFullName(tableMetaData)).append(";");
+        try {
+            statement.executeUpdate(sb.toString());
+            fullSuccessCount++;
+            savedBreakPointInfo(sinkRecordObject, true);
+        } catch (CommunicationsException exp) {
+            try {
+                connection = createConnection();
+                statement = connection.createStatement();
+                statement.executeUpdate(sb.toString());
+                savedBreakPointInfo(sinkRecordObject, true);
+                fullSuccessCount++;
+            } catch (SQLException sqlException) {
+                fullFailCount++;
+                if (!connectionInfo.checkConnectionStatus(connection)) {
+                    return;
+                }
+                printSqlException(sinkRecordObject.getSourceField().toString(), sqlException, sb.toString());
+            }
+        } catch (SQLException sqlException) {
+            fullFailCount++;
+            printSqlException(sinkRecordObject.getSourceField().toString(), sqlException, sb.toString());
+        }
     }
 
     private void processFullData(DmlOperation dmlOperation, String tableFullName, TableMetaData tableMetaData,
@@ -285,7 +316,7 @@ public class WorkThread extends Thread {
             clientPreparedStatement.setLocalInfileInputStream(inputStream);
             clientPreparedStatement.executeUpdate(sql);
             connection.commit();
-            successCount++;
+            fullSuccessCount++;
             processRecordMap.put(tableName, count + list.size());
             replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
             savedBreakPointInfo(sinkRecordObject, true);
@@ -300,7 +331,7 @@ public class WorkThread extends Thread {
             if (!connectionInfo.checkConnectionStatus(connection)) {
                 return;
             }
-            failCount++;
+            fullFailCount++;
             printSqlException(path, e, sql);
         } finally {
             try {
@@ -321,7 +352,7 @@ public class WorkThread extends Thread {
                 clientPreparedStatement = preparedStatement.unwrap(ClientPreparedStatement.class);
                 clientPreparedStatement.setLocalInfileInputStream(ins);
                 clientPreparedStatement.executeUpdate();
-                successCount++;
+                fullSuccessCount++;
             }
             replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
             savedBreakPointInfo(sinkRecordObject, false);
@@ -365,6 +396,15 @@ public class WorkThread extends Thread {
      */
     public int getSuccessCount() {
         return this.successCount;
+    }
+
+    /**
+     * get full success count
+     *
+     * @return count of replayed successfully
+     */
+    public int getFullSuccessCount() {
+        return this.fullSuccessCount;
     }
 
     /**
@@ -415,6 +455,15 @@ public class WorkThread extends Thread {
      */
     public int getFailCount() {
         return failCount;
+    }
+
+    /**
+     * get full fail count
+     *
+     * @return int the fail count
+     */
+    public int getFullFailCount() {
+        return fullFailCount;
     }
 
     /**

@@ -68,29 +68,17 @@ public abstract class BaseProcessCommitter {
     /**
      * Constructor
      *
-     * @param sourceConnectorConfig RelationalDatabaseConnectorConfig the sourceConnectorConfig
-     * @param prefix String the prefix of file name
+     * @param processFilePath processFilePath
+     * @param prefix prefix
+     * @param commitTimeInterval commitTimeInterval
+     * @param fileSizeLimit fileSizeLimit
      */
-    public BaseProcessCommitter(RelationalDatabaseConnectorConfig sourceConnectorConfig, String prefix) {
-        this.processFilePath = sourceConnectorConfig.filePath();
-        this.file = initFile(processFilePath);
+    public BaseProcessCommitter(String processFilePath, String prefix, int commitTimeInterval, int fileSizeLimit) {
+        this.processFilePath = processFilePath;
+        this.file = initFile(this.processFilePath);
         this.filePrefix = prefix;
-        this.commitTimeInterval = sourceConnectorConfig.commitTimeInterval();
-        this.fileSizeLimit = sourceConnectorConfig.fileSizeLimit();
-    }
-
-    /**
-     * Constructor
-     *
-     * @param sinkConnectorConfig SinkConnectorConfig the sinkConnectorConfig
-     * @param prefix String the prefix
-     */
-    public BaseProcessCommitter(SinkConnectorConfig sinkConnectorConfig, String prefix) {
-        this.processFilePath = sinkConnectorConfig.getSinkProcessFilePath();
-        this.file = initFile(processFilePath);
-        this.filePrefix = prefix;
-        this.commitTimeInterval = sinkConnectorConfig.getCommitTimeInterval();
-        this.fileSizeLimit = sinkConnectorConfig.getFileSizeLimit();
+        this.commitTimeInterval = commitTimeInterval;
+        this.fileSizeLimit = fileSizeLimit;
     }
 
     /**

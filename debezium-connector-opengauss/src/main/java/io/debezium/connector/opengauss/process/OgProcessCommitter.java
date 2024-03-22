@@ -49,10 +49,23 @@ public class OgProcessCommitter extends BaseProcessCommitter {
     /**
      * Constructor
      *
+     * @param processFilePath processFilePath
+     * @param prefix prefix
+     * @param commitTimeInterval commitTimeInterval
+     * @param fileSizeLimit fileSizeLimit
+     */
+    public OgProcessCommitter(String processFilePath, String prefix, int commitTimeInterval, int fileSizeLimit) {
+        super(processFilePath, prefix, commitTimeInterval, fileSizeLimit);
+    }
+
+    /**
+     * Constructor
+     *
      * @param connectorConfig OpengaussConnectorConfig the connectorConfig
      */
     public OgProcessCommitter(OpengaussConnectorConfig connectorConfig) {
-        super(connectorConfig, REVERSE_SOURCE_PROCESS_PREFIX);
+        this(connectorConfig.filePath(), REVERSE_SOURCE_PROCESS_PREFIX,
+                connectorConfig.commitTimeInterval(), connectorConfig.fileSizeLimit());
         this.fileFullPath = initFileFullPath(file + File.separator + REVERSE_SOURCE_PROCESS_PREFIX);
         this.currentFile = new File(fileFullPath);
         this.isAppendWrite = connectorConfig.appendWrite();
@@ -67,7 +80,8 @@ public class OgProcessCommitter extends BaseProcessCommitter {
      * @param connectorConfig OpengaussSinkConnectorConfig the connectorConfig
      */
     public OgProcessCommitter(OpengaussSinkConnectorConfig connectorConfig) {
-        super(connectorConfig, REVERSE_SINK_PROCESS_PREFIX);
+        this(connectorConfig.getSinkProcessFilePath(), REVERSE_SOURCE_PROCESS_PREFIX,
+                connectorConfig.getCommitTimeInterval(), connectorConfig.getFileSizeLimit());
         this.fileFullPath = initFileFullPath(file + File.separator + REVERSE_SINK_PROCESS_PREFIX);
         this.currentFile = new File(fileFullPath);
         this.isAppendWrite = connectorConfig.isAppend();
@@ -83,9 +97,10 @@ public class OgProcessCommitter extends BaseProcessCommitter {
      * @param suffix file suffix
      */
     public OgProcessCommitter(OpengaussConnectorConfig connectorConfig, String suffix) {
-        super(connectorConfig, REVERSE_SOURCE_PROCESS_PREFIX);
-        this.fileFullPath = new File(connectorConfig.createCountInfoPath())
-                + File.separator + REVERSE_SOURCE_PROCESS_PREFIX + suffix;
+        this(connectorConfig.filePath(), REVERSE_SOURCE_PROCESS_PREFIX,
+                connectorConfig.commitTimeInterval(), connectorConfig.fileSizeLimit());
+        this.fileFullPath = new File(connectorConfig.createCountInfoPath()) + File.separator
+                + REVERSE_SOURCE_PROCESS_PREFIX + suffix;
         this.currentFile = new File(fileFullPath);
     }
 
@@ -96,7 +111,8 @@ public class OgProcessCommitter extends BaseProcessCommitter {
      * @param suffix file suffix
      */
     public OgProcessCommitter(OpengaussSinkConnectorConfig connectorConfig, String suffix) {
-        super(connectorConfig, REVERSE_SINK_PROCESS_PREFIX);
+        this(connectorConfig.getSinkProcessFilePath(), REVERSE_SOURCE_PROCESS_PREFIX,
+                connectorConfig.getCommitTimeInterval(), connectorConfig.getFileSizeLimit());
         this.fileFullPath = file + File.separator + REVERSE_SINK_PROCESS_PREFIX + suffix;
         this.currentFile = new File(fileFullPath);
         this.sharePath = connectorConfig.getCreateCountInfoPath();
@@ -196,7 +212,7 @@ public class OgProcessCommitter extends BaseProcessCommitter {
     }
 
     private String getSourceFullFilePath() {
-        File file = new File(sharePath);
+        File file = new File(this.sharePath);
         return file + File.separator + REVERSE_SOURCE_PROCESS_PREFIX + REVERSE_FULL_PROCESS_SUFFIX;
     }
 
