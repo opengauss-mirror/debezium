@@ -90,7 +90,8 @@ public class OpengaussSchema extends RelationalDatabaseSchema {
         List<String> schemaList = connection.queryAndMap("SELECT pn.oid AS schema_oid, iss.catalog_name, "
                 + "iss.schema_owner,iss.schema_name FROM information_schema.schemata iss "
                 + "INNER JOIN pg_namespace pn ON pn.nspname = iss.schema_name "
-                + "where iss.schema_name = 'public' or pn.oid > 16384;", rs -> {
+                + "where iss.schema_name = 'public' or "
+                + "(pn.oid > 16384 and pn.nspname != 'performance_schema' and pn.nspname != 'dolphin_catalog')", rs -> {
             List<String> schemas = new ArrayList<>();
             while (rs.next()) {
                 schemas.add(rs.getString("schema_name"));
@@ -121,8 +122,9 @@ public class OpengaussSchema extends RelationalDatabaseSchema {
                 LOGGER.info("REPLICA IDENTITY for '{}' is changed to  FULL, UPDATE AND DELETE events will contain the previous values of all the columns", tableId);
             }
         }
-        catch (SQLException e) {
-            LOGGER.warn("Cannot determine REPLICA IDENTITY info for '{}'", tableId);
+        catch (SQLException exp) {
+            LOGGER.warn("Cannot determine REPLICA IDENTITY info for '{}', exp message is {}",
+                    tableId, exp.getMessage());
         }
     }
 

@@ -14,9 +14,17 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 import org.apache.kafka.connect.errors.ConnectException;
 import org.postgresql.core.BaseConnection;
@@ -162,6 +170,75 @@ public class OpengaussConnection extends JdbcConnection {
             }
         });
         return ServerInfo.ReplicaIdentity.parseFromDB(replIdentity.toString());
+    }
+
+    @Override
+    protected Set<String> querySystemSchema() throws SQLException {
+        // query system schemas based pg_namespace oid < 16384
+        // and two extra schema dolphin_catalog and performance_schema.
+        HashSet<String> systemSchemaSet = new HashSet<>();
+        String sql = "select nspname from pg_namespace where oid < 16384 and nspname != 'public';";
+        query(sql, rs -> {
+            while(rs.next()) {
+                systemSchemaSet.add(rs.getString("nspname"));
+            }
+        });
+        systemSchemaSet.add("dolphin_catalog");
+        systemSchemaSet.add("performance_schema");
+        return systemSchemaSet;
+    }
+
+    @Override
+    protected void readTableColumnMetadata(Tables tables, DatabaseMetaData metadata, Map<TableId,
+            List<Column>> columnsByTable) throws SQLException {
+        List<String> schemaList = columnsByTable.keySet().stream().map(TableId::schema).
+                distinct().collect(Collectors.toList());
+        HashMap<String, List<String>> tablePkMap = getTablePkMap(schemaList);
+        // Read the metadata for the primary keys ...
+        for (Map.Entry<TableId, List<Column>> tableEntry : columnsByTable.entrySet()) {
+            // First get the primary key information, which must be done for *each* table ...
+            String fullName = String.format("{%s}.{%s}", tableEntry.getKey().schema(), tableEntry.getKey().table());
+            List<String> pkColumnNames = tablePkMap.getOrDefault(fullName, Collections.emptyList());
+
+            // Then define the table ...
+            List<Column> columns = tableEntry.getValue();
+            Collections.sort(columns);
+            String defaultCharsetName = null; // JDBC does not expose character sets
+            tables.overwriteTable(tableEntry.getKey(),
+                    columns,
+                    pkColumnNames,
+                    defaultCharsetName);
+        }
+        LOGGER.warn("finish query get table column other meta data");
+    }
+
+    private HashMap<String, List<String>> getTablePkMap(List<String> schemaList) throws SQLException {
+        LOGGER.warn("schema is {}", schemaList);
+        String sql = "select c.relname tableName,ns.nspname schemaName,ns.oid,a.attname columnName from pg_class c " +
+                "left join pg_namespace ns on c.relnamespace=ns.oid left join pg_attribute a on c.oid=a.attrelid " +
+                "and a.attnum>0 and not a.attisdropped inner join pg_constraint cs on a.attrelid=cs.conrelid " +
+                "and a.attnum=any(cs.conkey) where ns.nspname= ? and (cs.contype='p' or cs.contype='u');";
+        LOGGER.warn(sql);
+        HashMap<String, List<String>> tablePkMap = new HashMap<>();
+        for (String schema: schemaList) {
+            prepareQuery(sql, stmt -> stmt.setString(1, schema), rs -> {
+                while (rs.next()) {
+                    String schemaName = rs.getString("schemaName");
+                    String tableName = rs.getString("tableName");
+                    String tableFullName = String.format("{%s}.{%s}", schemaName, tableName);
+                    String columnName = rs.getString("columnName");
+                    if (tablePkMap.containsKey(tableFullName)) {
+                        tablePkMap.get(tableFullName).add(columnName);
+                    }
+                    else {
+                        ArrayList<String> list = new ArrayList<>();
+                        list.add(columnName);
+                        tablePkMap.put(tableFullName, list);
+                    }
+                }
+            });
+        }
+        return tablePkMap;
     }
 
     /**
@@ -471,13 +548,7 @@ public class OpengaussConnection extends JdbcConnection {
         builder.with("assumeMinServerVersion", "9.4");
     }
 
-    private static void validateServerVersion(Statement statement) throws SQLException {
-        DatabaseMetaData metaData = statement.getConnection().getMetaData();
-        int majorVersion = metaData.getDatabaseMajorVersion();
-        int minorVersion = metaData.getDatabaseMinorVersion();
-//        if (majorVersion < 9 || (majorVersion == 9 && minorVersion < 4)) {
-//            throw new SQLException("Cannot connect to a version of Postgres lower than 9.4");
-//        }
+    private static void validateServerVersion(Statement statement) {
     }
 
     @Override

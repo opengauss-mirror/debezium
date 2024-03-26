@@ -39,6 +39,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import org.apache.kafka.connect.errors.ConnectException;
+import org.opengauss.jdbc.PgConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -907,6 +908,7 @@ public class JdbcConnection implements AutoCloseable {
 
     public synchronized Connection connection(boolean executeOnConnect) throws SQLException {
         if (!isConnected()) {
+            LOGGER.info("Create a new JDBC connection");
             conn = factory.connect(JdbcConfiguration.adapt(config));
             if (!isConnected()) {
                 throw new SQLException("Unable to obtain a JDBC connection");
@@ -1196,12 +1198,17 @@ public class JdbcConnection implements AutoCloseable {
         final Set<TableId> viewIds = new HashSet<>();
         final Set<TableId> tableIds = new HashSet<>();
 
+        Set<String> systemSchemaSet = querySystemSchema();
+        LOGGER.warn("System schemas are {}, we ignore them.", systemSchemaSet);
         int totalTables = 0;
         try (final ResultSet rs = metadata.getTables(databaseCatalog, schemaNamePattern, null,
                 new String[]{ "VIEW", "MATERIALIZED VIEW", "TABLE" })) {
             while (rs.next()) {
                 final String catalogName = resolveCatalogName(rs.getString(1));
                 final String schemaName = rs.getString(2);
+                if (systemSchemaSet.contains(schemaName)) {
+                    continue;
+                }
                 final String tableName = rs.getString(3);
                 final String tableType = rs.getString(4);
                 if ("TABLE".equals(tableType)) {
@@ -1233,6 +1240,26 @@ public class JdbcConnection implements AutoCloseable {
             }
         }
 
+        readTableColumnMetadata(tables, metadata, columnsByTable);
+
+        if (removeTablesNotFoundInJdbc) {
+            // Remove any definitions for tables that were not found in the database metadata ...
+            tableIdsBefore.removeAll(columnsByTable.keySet());
+            tableIdsBefore.forEach(tables::removeTable);
+        }
+    }
+
+    /**
+     * Query system schema
+     *
+     * @return Set<String> system schema set
+     */
+    protected Set<String> querySystemSchema() throws SQLException {
+        return new HashSet<>();
+    }
+
+    protected void readTableColumnMetadata(Tables tables, DatabaseMetaData metadata, Map<TableId,
+            List<Column>> columnsByTable) throws SQLException {
         // Read the metadata for the primary keys ...
         for (Entry<TableId, List<Column>> tableEntry : columnsByTable.entrySet()) {
             // First get the primary key information, which must be done for *each* table ...
@@ -1262,14 +1289,8 @@ public class JdbcConnection implements AutoCloseable {
                     checkColumns,
                     tableIndexes,
                     defaultCharsetName);
-
         }
-
-        if (removeTablesNotFoundInJdbc) {
-            // Remove any definitions for tables that were not found in the database metadata ...
-            tableIdsBefore.removeAll(columnsByTable.keySet());
-            tableIdsBefore.forEach(tables::removeTable);
-        }
+        LOGGER.warn("finish query get table column other meta data");
     }
 
     protected Set<String> readTableIndex(DatabaseMetaData metadata, TableId key) throws SQLException {
