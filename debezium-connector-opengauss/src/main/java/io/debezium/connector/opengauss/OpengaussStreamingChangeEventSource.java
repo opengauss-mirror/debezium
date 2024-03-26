@@ -129,6 +129,8 @@ public class OpengaussStreamingChangeEventSource implements StreamingChangeEvent
             final WalPositionLocator walPosition;
             final Lsn lsn;
 
+            replicationConnection.reconnect();
+
             if (hasStartLsnStoredInContext) {
                 // start streaming from the last recorded position in the offset
                 lsn = offsetContext.lastCompletelyProcessedLsn() != null ? offsetContext.lastCompletelyProcessedLsn() : offsetContext.lsn();
