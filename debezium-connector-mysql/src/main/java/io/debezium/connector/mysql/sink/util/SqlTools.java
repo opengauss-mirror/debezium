@@ -115,12 +115,19 @@ public class SqlTools {
      * @return List<String> the table name list rely on the old table
      */
     public List<String> getForeignTableList(String tableFullName) {
+        // For ddl scene which can not parse tableName, such as drop view, tableName = ""
+        String [] name = tableFullName.split("\\.");
+        String schemaName = name[0];
+        String tableName = "";
+        if (name.length == 2) {
+            tableName = name[1];
+        }
         String sql = String.format(Locale.ENGLISH, "select c.relname, ns.nspname from pg_class c left join"
                 + " pg_namespace ns on c.relnamespace=ns.oid left join pg_constraint cons on c.oid=cons.conrelid"
                 + " left join pg_class oc on cons.confrelid=oc.oid"
                 + " left join  pg_namespace ons on oc.relnamespace=ons.oid"
                 + " where oc.relname='%s' and ons.nspname='%s';",
-                tableFullName.split("\\.")[1], tableFullName.split("\\.")[0]);
+                tableName, schemaName);
         try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
             List<String> tableList = new ArrayList<>();
             while (rs.next()) {
