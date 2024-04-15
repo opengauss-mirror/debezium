@@ -1254,7 +1254,7 @@ public class JdbcConnection implements AutoCloseable {
      *
      * @return Set<String> system schema set
      */
-    protected Set<String> querySystemSchema() throws SQLException {
+    public Set<String> querySystemSchema() throws SQLException {
         return new HashSet<>();
     }
 

@@ -51,6 +51,7 @@ import java.sql.Types;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -151,6 +152,17 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
             setSnapshotTransactionIsolationLevel();
         }
         schema.refresh(jdbcConnection, false);
+    }
+
+    protected Set<TableId> filterSystemSchemaTable(Set<TableId> tableIds) throws SQLException {
+        Set<TableId> table = new HashSet<>();
+        Set<String> systemSchemaSet = jdbcConnection.querySystemSchema();
+        for (TableId tableId : tableIds) {
+            if (!systemSchemaSet.contains(tableId.schema())) {
+                table.add(tableId);
+            }
+        }
+        return table;
     }
 
     @Override
