@@ -188,11 +188,12 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
 
     private void determineCapturedTables(RelationalSnapshotContext<P, O> ctx) throws Exception {
         Set<TableId> allTableIds = determineDataCollectionsToBeSnapshotted(getAllTableIds(ctx)).collect(Collectors.toSet());
+        Set<TableId> allTableIdsExcludeSystemSchema = filterSystemSchemaTable(allTableIds);
 
         Set<TableId> capturedTables = new HashSet<>();
         Set<TableId> capturedSchemaTables = new HashSet<>();
 
-        for (TableId tableId : allTableIds) {
+        for (TableId tableId : allTableIdsExcludeSystemSchema) {
             if (connectorConfig.getTableFilters().eligibleDataCollectionFilter().isIncluded(tableId)) {
                 LOGGER.trace("Adding table {} to the list of capture schema tables", tableId);
                 capturedSchemaTables.add(tableId);

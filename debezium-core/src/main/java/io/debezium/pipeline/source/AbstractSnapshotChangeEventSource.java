@@ -5,12 +5,14 @@
  */
 package io.debezium.pipeline.source;
 
+import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import io.debezium.relational.TableId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -95,6 +97,10 @@ public abstract class AbstractSnapshotChangeEventSource<P extends Partition, O e
                 snapshotProgressListener.snapshotAborted();
             }
         }
+    }
+
+    protected Set<TableId> filterSystemSchemaTable(Set<TableId> tableIds) throws SQLException {
+        return tableIds;
     }
 
     protected <T extends DataCollectionId> Stream<T> determineDataCollectionsToBeSnapshotted(final Collection<T> allDataCollections) {

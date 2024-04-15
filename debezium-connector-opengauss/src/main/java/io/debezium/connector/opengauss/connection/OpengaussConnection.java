@@ -173,7 +173,7 @@ public class OpengaussConnection extends JdbcConnection {
     }
 
     @Override
-    protected Set<String> querySystemSchema() throws SQLException {
+    public Set<String> querySystemSchema() throws SQLException {
         // query system schemas based pg_namespace oid < 16384
         // and two extra schema dolphin_catalog and performance_schema.
         HashSet<String> systemSchemaSet = new HashSet<>();
