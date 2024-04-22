@@ -6,10 +6,7 @@
 
 package io.debezium.connector.opengauss;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.Statement;
+import java.sql.*;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -1398,7 +1395,14 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
         String sourceURL = "jdbc:postgresql://" + hostname() + ":" + port() + "/" +config.databaseName();
         Connection connection = null;
         try {
-            connection = DriverManager.getConnection(sourceURL, user(), password());
+            try {
+                connection = DriverManager.getConnection(sourceURL, user(), password());
+            } catch (SQLException e) {
+                LOGGER.warn("Attempt to set up a connection using the HA port");
+                int port = port() + 1;
+                sourceURL = "jdbc:postgresql://" + hostname() + ":" + port + "/" +config.databaseName();
+                connection = DriverManager.getConnection(sourceURL, user(), password());
+            }
             Statement statement = connection.createStatement();
             statement.execute("set session_timeout = 0");
             ResultSet rs = statement.executeQuery("select version()");
