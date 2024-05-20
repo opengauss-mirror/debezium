@@ -1145,7 +1145,7 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
         return getConfig().getString(HOSTNAME);
     }
 
-    protected int port() {
+    public int port() {
         return getConfig().getInteger(PORT);
     }
 
@@ -1395,14 +1395,7 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
         String sourceURL = "jdbc:postgresql://" + hostname() + ":" + port() + "/" +config.databaseName();
         Connection connection = null;
         try {
-            try {
-                connection = DriverManager.getConnection(sourceURL, user(), password());
-            } catch (SQLException e) {
-                LOGGER.warn("Attempt to set up a connection using the HA port");
-                int port = port() + 1;
-                sourceURL = "jdbc:postgresql://" + hostname() + ":" + port + "/" +config.databaseName();
-                connection = DriverManager.getConnection(sourceURL, user(), password());
-            }
+            connection = DriverManager.getConnection(sourceURL, user(), password());
             Statement statement = connection.createStatement();
             statement.execute("set session_timeout = 0");
             ResultSet rs = statement.executeQuery("select version()");

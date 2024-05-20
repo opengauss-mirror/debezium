@@ -384,16 +384,18 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
     }
 
     protected BaseConnection pgConnection() throws SQLException {
-        try {
-            return (BaseConnection) connection(false);
-        } catch (SQLException e) {
-            LOGGER.warn("Attempt to set up a connection using the HA port");
-            JdbcConfiguration config = super.config();
-            int port = config.getInteger(JdbcConfiguration.PORT);
+        return (BaseConnection) repConnection();
+    }
+
+    public Connection repConnection() throws SQLException {
+        LOGGER.warn("Attempt to set up a connection using the HA port");
+        JdbcConfiguration config = super.config();
+        int port = config.getInteger(JdbcConfiguration.PORT);
+        if (port == originalConfig.port()) {
             Configuration buildConfig = config.edit().with("port", port + 1).build();
             super.setConfig(buildConfig);
-            return (BaseConnection) connection(false);
         }
+        return connection(false);
     }
 
     private SlotCreationResult parseSlotCreation(ResultSet rs) {
@@ -657,8 +659,19 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
     @Override
     public void reconnect() throws SQLException {
         close(false);
-        // Don't re-execute initial commands on reconnection
-        connection(false);
+        //If the enable_thread_pool is on,use HA Port,otherwise,use normal Port.
+        Statement statement = originalConfig.getConnection(originalConfig).createStatement();
+        ResultSet rs = statement.executeQuery("show enable_thread_pool");
+        String enable_thread_pool = "";
+        while(rs.next()) {
+            enable_thread_pool = rs.getString("enable_thread_pool");
+        }
+        if (enable_thread_pool.equals("on")) {
+            repConnection();
+        } else {
+            // Don't re-execute initial commands on reconnection
+            connection(false);
+        }
     }
 
     protected static void defaultSettings(Configuration.Builder builder) {
