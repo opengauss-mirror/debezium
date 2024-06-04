@@ -12,6 +12,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.github.shyiko.mysql.binlog.BinaryLogClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,6 +44,7 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
     private long createCount;
     private String[] gtidSet;
     private boolean isParallelBasedTransaction;
+    private BinaryLogClient client;
 
     /**
      * Constructor
@@ -64,9 +66,10 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
      * @param connection MySqlConnection the connection
      */
     public MysqlProcessCommitter(MySqlConnectorConfig connectorConfig, String originGtidSet,
-                                 MySqlConnection connection) {
+                                 MySqlConnection connection, BinaryLogClient client) {
         this(connectorConfig.filePath(), FORWARD_SOURCE_PROCESS_PREFIX,
                 connectorConfig.commitTimeInterval(), connectorConfig.fileSizeLimit());
+        this.client = client;
         this.fileFullPath = initFileFullPath(file + File.separator + FORWARD_SOURCE_PROCESS_PREFIX);
         this.currentFile = new File(fileFullPath);
         this.isAppendWrite = connectorConfig.appendWrite();
@@ -145,6 +148,7 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
             processInfo.setTimestamp();
             return processInfo.toString();
         }
+        sourceProcessInfo.setCreateCount((long)client.getDmlParseCount() + client.getDdlParseCount());
         sourceProcessInfo.setRest();
         sourceProcessInfo.setTimestamp();
         return sourceProcessInfo.toString();
