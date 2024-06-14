@@ -30,6 +30,7 @@ import java.util.Locale;
  */
 public class MysqlSqlTools extends SqlTools {
     private static final Logger LOGGER = LoggerFactory.getLogger(MysqlSqlTools.class);
+    private ConnectionInfo connectionInfo;
     private Connection connection;
     private boolean isConnection;
     private List<String> binaryTypes = Arrays.asList("tinyblob", "mediumblob", "longblob", "binary", "varbinary");
@@ -39,9 +40,28 @@ public class MysqlSqlTools extends SqlTools {
      *
      * @return Connection the connection
      */
-    public MysqlSqlTools(Connection connection) {
-        this.connection = connection;
+    public MysqlSqlTools(ConnectionInfo databaseConnection) {
+        this.connectionInfo = databaseConnection;
+        this.connection = databaseConnection.createMysqlConnection();
         this.isConnection = true;
+    }
+
+    /**
+     * reconnect(refreshConnection)
+     *
+     * connection is normal,return connection,if not,reconnect.
+     */
+    public Connection refreshConnection() {
+        try {
+            int timeout = 1;
+            if (connection.isValid(timeout)) {
+                return connection;
+            }
+        } catch (SQLException e) {
+            LOGGER.warn(e.getMessage());
+        }
+        connection = connectionInfo.createMysqlConnection();
+        return connection;
     }
 
     /**
@@ -58,7 +78,7 @@ public class MysqlSqlTools extends SqlTools {
                         " order by ordinal_position;",
                 schemaName, tableName);
         TableMetaData tableMetaData = null;
-        try (Statement statement = connection.createStatement();
+        try (Statement statement = refreshConnection().createStatement();
              ResultSet rs = statement.executeQuery(sql)) {
             while (rs.next()) {
                 columnMetaDataList.add(new ColumnMetaData(rs.getString("column_name"),
@@ -89,7 +109,7 @@ public class MysqlSqlTools extends SqlTools {
         String sql = String.format(Locale.ENGLISH, "select TABLE_NAME, TABLE_SCHEMA from INFORMATION_SCHEMA"
                 + ".KEY_COLUMN_USAGE where REFERENCED_TABLE_NAME='%s' and TABLE_SCHEMA='%s'", tableFullName
                 .split("\\.")[1], tableFullName.split("\\.")[0]);
-        try (PreparedStatement preparedStatement = connection.prepareStatement(sql);
+        try (PreparedStatement preparedStatement = refreshConnection().prepareStatement(sql);
              ResultSet resultSet = preparedStatement.executeQuery();) {
             List<String> tableList = new ArrayList<>();
             while (resultSet.next()) {
@@ -338,7 +358,7 @@ public class MysqlSqlTools extends SqlTools {
      */
     public boolean isExistSql(String sql) {
         boolean isExistSql = false;
-        try (Statement statement = connection.createStatement();
+        try (Statement statement = refreshConnection().createStatement();
              ResultSet rs = statement.executeQuery(sql)) {
             if (rs.next()) {
                 isExistSql = true;

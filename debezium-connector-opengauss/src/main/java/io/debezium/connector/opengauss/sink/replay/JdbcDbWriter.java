@@ -117,7 +117,7 @@ public class JdbcDbWriter {
         initRecordBreakpoint(config);
         databaseConnection = new ConnectionInfo(config);
         if ("mysql".equals(config.databaseType.toLowerCase(Locale.ROOT))) {
-            sqlTools = new MysqlSqlTools(databaseConnection.createMysqlConnection());
+            sqlTools = new MysqlSqlTools(databaseConnection);
         } else if ("oracle".equals(config.databaseType.toLowerCase(Locale.ROOT))) {
             sqlTools = new OracleSqlTools(databaseConnection.createOracleConnection());
         } else {
