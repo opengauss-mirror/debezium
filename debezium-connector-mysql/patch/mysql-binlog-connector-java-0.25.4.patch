@@ -1,13 +1,12 @@
-From 97e35b5e50f6c3bcd7cf36513e4cd76ee1164dd0 Mon Sep 17 00:00:00 2001
-From: mmoogg <zyw2573@163.com>
-Date: Fri, 24 Nov 2023 14:08:26 +0800
+From e02a92ea6bd0d02fb113aa620bb0e9035ca9031d Mon Sep 17 00:00:00 2001
+From: KeKe <wangxingmiao@huawei.com>
+Date: Mon, 3 Jun 2024 16:36:02 +0800
 Subject: [PATCH] parallel parse binlog events & flow control & mariadb adapt
 
-Signed-off-by: douxin <xdou1995@163.com>
 ---
  pom.xml                                       |   2 +-
- .../shyiko/mysql/binlog/BinaryLogClient.java  | 310 +++++++++++++++++-
- 2 files changed, 310 insertions(+), 2 deletions(-)
+ .../shyiko/mysql/binlog/BinaryLogClient.java  | 318 +++++++++++++++++-
+ 2 files changed, 318 insertions(+), 2 deletions(-)
 
 diff --git a/pom.xml b/pom.xml
 index 5920031..bccbeec 100644
@@ -23,7 +22,7 @@ index 5920031..bccbeec 100644
      <name>mysql-binlog-connector-java</name>
      <description>MySQL Binary Log connector</description>
 diff --git a/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java b/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java
-index d8b8299..403e190 100644
+index d8b8299..31a93b4 100644
 --- a/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java
 +++ b/src/main/java/com/github/shyiko/mysql/binlog/BinaryLogClient.java
 @@ -15,6 +15,7 @@
@@ -98,7 +97,22 @@ index d8b8299..403e190 100644
      /**
       * Alias for BinaryLogClient("localhost", 3306, &lt;no schema&gt; = null, username, password).
       * @see BinaryLogClient#BinaryLogClient(String, int, String, String, String)
-@@ -501,6 +527,14 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
+@@ -320,6 +346,14 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
+         }
+     }
+ 
++    public int getDmlParseCount() {
++        return dmlParseCount;
++    }
++
++    public int getDdlParseCount() {
++        return ddlParseCount;
++    }
++
+     /**
+      * @param gtidSet GTID set (can be an empty string).
+      * <p>NOTE #1: Any value but null will switch BinaryLogClient into a GTID mode (this will also set binlogFilename
+@@ -501,6 +535,14 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
          this.threadFactory = threadFactory;
      }
  
@@ -113,7 +127,7 @@ index d8b8299..403e190 100644
      /**
       * Connect to the replication stream. Note that this method blocks until disconnected.
       * @throws AuthenticationException if authentication fails
-@@ -596,7 +630,11 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
+@@ -596,7 +638,11 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
                      ensureEventDataDeserializer(EventType.QUERY, QueryEventDataDeserializer.class);
                  }
              }
@@ -126,7 +140,7 @@ index d8b8299..403e190 100644
          } finally {
              connectLock.unlock();
              if (notifyWhenDisconnected) {
-@@ -991,6 +1029,276 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
+@@ -991,6 +1037,276 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
          }
      }
  
@@ -404,5 +418,5 @@ index d8b8299..403e190 100644
          byte[] result = inputStream.read(packetLength);
          int chunkLength;
 -- 
-2.41.0
+2.44.0.windows.1
 

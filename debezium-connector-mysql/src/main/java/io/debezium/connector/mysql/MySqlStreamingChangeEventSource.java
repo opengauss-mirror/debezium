@@ -235,7 +235,6 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
                 try {
                     // Delegate to the superclass ...
                     Event event = super.nextEvent(inputStream);
-                    statCreateCount(event);
 
                     // We have to record the most recent TableMapEventData for each table number for our custom deserializers ...
                     if (event.getHeader().getEventType() == EventType.TABLE_MAP) {
@@ -813,17 +812,6 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
         BaseSourceProcessInfo.statProcessCount(BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO, count, dataCount - count);
     }
 
-    private void statCreateCount(Event event) {
-        if (!connectorConfig.shouldProvideTransactionMetadata() && event.getData() != null) {
-            if (event.getData() instanceof QueryEventData
-                    && !(((QueryEventData) event.getData()).getSql().equalsIgnoreCase("BEGIN"))
-                    && !((QueryEventData) event.getData()).getSql().startsWith("#")) {
-                BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreaseCreateCount(1);
-            }
-            BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreaseCreateCount(client.statDmlCount(event));
-        }
-    }
-
     /**
      * Handle a {@link EventType#VIEW_CHANGE} event.
      *
@@ -1299,7 +1287,7 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
     private void statCommit(String filteredGtidSetStr) {
         threadPool.execute(() -> {
             final MysqlProcessCommitter processCommitter = new MysqlProcessCommitter(connectorConfig,
-                    filteredGtidSetStr, connection);
+                    filteredGtidSetStr, connection, client);
             processCommitter.commitSourceProcessInfo();
         });
     }
