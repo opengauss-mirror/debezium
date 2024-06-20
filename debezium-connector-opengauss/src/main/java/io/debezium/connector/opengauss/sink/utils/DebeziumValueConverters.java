@@ -170,9 +170,8 @@ public final class DebeziumValueConverters {
     private static String convertBlob(String columnName, Struct valueStruct) {
         byte[] bytes = valueStruct.getBytes(columnName);
         if (bytes != null) {
-            String hexString = new String(bytes);
-            byte[] indexes = parseHexStr2bytes(hexString);
-            return addingSingleQuotation(new String(indexes));
+            String hexString = convertHexString(bytes);
+            return HEX_PREFIX + addingSingleQuotation(hexString);
         }
         return null;
     }
