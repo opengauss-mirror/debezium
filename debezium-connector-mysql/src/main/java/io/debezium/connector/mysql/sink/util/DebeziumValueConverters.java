@@ -37,7 +37,6 @@ import mil.nga.sf.wkt.GeometryWriter;
  * @date 2023/01/14
  **/
 public class DebeziumValueConverters {
-    private static final char ESCAPE_CHARACTER = 'E';
     private static final char BIT_CHARACTER = 'b';
     private static final String SINGLE_QUOTE = "'";
     private static final String HEX_PREFIX = "\\x";
@@ -238,7 +237,7 @@ public class DebeziumValueConverters {
         else {
             bytes = value.getBytes(columnName);
         }
-        return bytes == null ? null : ESCAPE_CHARACTER + convertHexString(bytes);
+        return bytes == null ? null : convertHexString(bytes);
     }
 
     private static String convertDate(String columnName, Struct value) {
