@@ -229,9 +229,12 @@ public final class GtidSet {
      * @return new gtid str
      */
     private static String modifiedMaxTransactionId(String gtid, int modifiedValue) {
+        if (gtid.split(":").length > 2) {
+            return gtid;
+        }
         int index = gtid.indexOf(":");
         String[] values = gtid.substring(index + 1).split("-");
-        if (values.length == 1 && "1".equals(values[0])) {
+        if (values.length == 1) {
             // if max transaction is 1, no modification, return the original uuid:1
             return gtid;
         }
