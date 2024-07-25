@@ -53,6 +53,21 @@ public interface JdbcConfiguration extends Configuration {
     public static final Field PORT = Field.create("port", "Port of the database");
 
     /**
+     * A field for whether the database server is a cluster. This field has default value: "false".
+     */
+    public static final Field ISCLUSTER = Field.create("iscluster", "Whether the database is a cluster", "", "false");
+
+    /**
+     * A field for the hostnames of the database server standby nodes. The hostnames are separated by commas(,). This field has no default value.
+     */
+    public static final Field STANDBY_HOSTNAMES = Field.create("standby.hostnames", "IP addresses of the database standby nodes");
+
+    /**
+     * A field for the ports of the database server standby nodes. The ports are separated by commas(,). There is no default value.
+     */
+    public static final Field STANDBY_PORTS = Field.create("standby.ports", "Ports of the database standby nodes");
+
+    /**
      * A semicolon separated list of SQL statements to be executed when the connection to database is established.
      * Typical use-case is setting of session parameters. There is no default value.
      */

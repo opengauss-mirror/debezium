@@ -76,7 +76,9 @@ public class OpengaussConnectorTask extends BaseSourceTask<OpengaussPartition, O
 
         if (connectorConfig.isCommitProcess()) {
             connectorConfig.rectifyParameter();
-            statCommit(connectorConfig);
+            if (threadPool.getActiveCount() < threadPool.getMaximumPoolSize()) {
+                statCommit(connectorConfig);
+            }
         }
 
         if (snapshotter == null) {
