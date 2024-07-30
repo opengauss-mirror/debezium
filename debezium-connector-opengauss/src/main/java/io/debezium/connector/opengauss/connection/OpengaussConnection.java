@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -69,9 +70,7 @@ public class OpengaussConnection extends JdbcConnection {
 
     private static final String URL_PATTERN = "jdbc:postgresql://${" + JdbcConfiguration.HOSTNAME + "}:${"
             + JdbcConfiguration.PORT + "}/${" + JdbcConfiguration.DATABASE + "}";
-    protected static final ConnectionFactory FACTORY = JdbcConnection.patternBasedFactory(URL_PATTERN,
-            org.postgresql.Driver.class.getName(),
-            OpengaussConnection.class.getClassLoader(), JdbcConfiguration.PORT.withDefault(OpengaussConnectorConfig.PORT.defaultValueAsString()));
+    protected static final ConnectionFactory FACTORY = getFactory();
 
     /**
      * Obtaining a replication slot may fail if there's a pending transaction. We're retrying to get a slot for 30 min.
@@ -82,6 +81,28 @@ public class OpengaussConnection extends JdbcConnection {
 
     private final TypeRegistry typeRegistry;
     private final OpengaussDefaultValueConverter defaultValueConverter;
+
+    private static ConnectionFactory getFactory() {
+        return  (config) -> {
+            String url_pattern = URL_PATTERN;
+
+            Properties properties = config.asProperties();
+            String isCluster = properties.getProperty(JdbcConfiguration.ISCLUSTER.toString());
+            String standbyHostnames = properties.getProperty(JdbcConfiguration.STANDBY_HOSTNAMES.toString());
+            String standbyPorts = properties.getProperty(JdbcConfiguration.STANDBY_PORTS.toString());
+
+            if (OpengaussConnectorConfig.isOpengaussClusterAvailable(isCluster, standbyHostnames, standbyPorts)) {
+                url_pattern = "jdbc:postgresql://${" + JdbcConfiguration.HOSTNAME + "}:${" + JdbcConfiguration.PORT + "}"
+                        + OpengaussConnectorConfig.getUrlFragment(standbyHostnames, standbyPorts)
+                        + "/${" + JdbcConfiguration.DATABASE + "}?targetServerType=master";
+            }
+
+            return JdbcConnection.patternBasedFactory(url_pattern, org.postgresql.Driver.class.getName(),
+                            OpengaussConnection.class.getClassLoader(),
+                            JdbcConfiguration.PORT.withDefault(OpengaussConnectorConfig.PORT.defaultValueAsString()))
+                    .connect(config);
+        };
+    }
 
     /**
      * Creates a Postgres connection using the supplied configuration.

@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import com.mysql.cj.util.StringUtils;
 import io.debezium.DebeziumException;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigDef.Importance;
@@ -665,11 +666,39 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
 
     protected static final String DATABASE_CONFIG_PREFIX = "database.";
     protected static final int DEFAULT_PORT = 5_432;
+    protected static final String DEFAULT_ISCLUSTER = "false";
     protected static final int DEFAULT_SNAPSHOT_FETCH_SIZE = 10_240;
     protected static final int DEFAULT_MAX_RETRIES = 6;
 
     public static final Field PORT = RelationalDatabaseConnectorConfig.PORT
             .withDefault(DEFAULT_PORT);
+
+    public static final Field ISCLUSTER = Field.create(DATABASE_CONFIG_PREFIX + "iscluster")
+            .withDisplayName("Iscluster")
+            .withType(Type.STRING)
+            .withWidth(Width.SHORT)
+            .withDefault(DEFAULT_ISCLUSTER)
+            .withImportance(Importance.HIGH)
+            .withDescription("A field for whether the database server is a cluster. "
+                    + "This field has default value: \"false\".");
+
+    public static final Field STANDBY_HOSTNAMES = Field.create(DATABASE_CONFIG_PREFIX + "standby.hostnames")
+            .withDisplayName("Standby Hostnames")
+            .withType(Type.STRING)
+            .withWidth(Width.LONG)
+            .withDefault("")
+            .withImportance(Importance.MEDIUM)
+            .withDescription("A field for the hostnames of the database server standby nodes. "
+                    + "The hostnames are separated by commas(,).");
+
+    public static final Field STANDBY_PORTS = Field.create(DATABASE_CONFIG_PREFIX + "standby.ports")
+            .withDisplayName("Standby Ports")
+            .withType(Type.STRING)
+            .withWidth(Width.MEDIUM)
+            .withDefault("")
+            .withImportance(Importance.MEDIUM)
+            .withDescription("A field for the ports of the database server standby nodes. "
+                    + "The ports are separated by commas(,).");
 
     public static final Field PLUGIN_NAME = Field.create("plugin.name")
             .withDisplayName("Plugin")
@@ -1149,6 +1178,18 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
         return getConfig().getInteger(PORT);
     }
 
+    public String iscluster() {
+        return getConfig().getString(ISCLUSTER);
+    }
+
+    public String standbyHostnames() {
+        return getConfig().getString(STANDBY_HOSTNAMES);
+    }
+
+    public String standbyPorts() {
+        return getConfig().getString(STANDBY_PORTS);
+    }
+
     private String user() {
         return getConfig().getString(USER);
     }
@@ -1277,6 +1318,9 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
             .type(
                     HOSTNAME,
                     PORT,
+                    ISCLUSTER,
+                    STANDBY_HOSTNAMES,
+                    STANDBY_PORTS,
                     USER,
                     PASSWORD,
                     DATABASE_NAME,
@@ -1392,7 +1436,12 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
     }
 
     public Connection getConnection(OpengaussConnectorConfig config) {
-        String sourceURL = "jdbc:postgresql://" + hostname() + ":" + port() + "/" +config.databaseName();
+        String sourceURL = "jdbc:postgresql://" + hostname() + ":" + port() + "/" + config.databaseName();
+        if (isOpengaussClusterAvailable(iscluster(), standbyHostnames(), standbyPorts())) {
+            sourceURL = "jdbc:postgresql://" + hostname() + ":" + port() + getUrlFragment(standbyHostnames(), standbyPorts())
+                    + "/" + config.databaseName() + "?targetServerType=master";
+        }
+
         Connection connection = null;
         try {
             connection = DriverManager.getConnection(sourceURL, user(), password());
@@ -1457,5 +1506,48 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
         public boolean isIncluded(TableId t) {
             return !SYSTEM_SCHEMAS.contains(t.schema().toLowerCase());
         }
+    }
+
+    public static boolean isOpengaussClusterAvailable(String isCluster, String standbyHostnames, String standbyPorts) {
+        if (!isOpengaussCluster(isCluster)) {
+            return false;
+        }
+        return isStandbyInformationAvailable(standbyHostnames, standbyPorts);
+    }
+
+    private static boolean isOpengaussCluster(String isCluster) {
+        if (isCluster == null || isCluster.equals("false")) {
+            return false;
+        }
+        if (isCluster.equals("true")) {
+            return true;
+        }
+        LOGGER.warn("Invalid \"" + ISCLUSTER + "\": {}", isCluster);
+        return false;
+    }
+
+    private static boolean isStandbyInformationAvailable(String standbyHosts, String standbyPorts) {
+        if (StringUtils.isNullOrEmpty(standbyHosts) || StringUtils.isNullOrEmpty(standbyPorts)) {
+            LOGGER.warn("The \"" + STANDBY_HOSTNAMES + "\" or \"" + STANDBY_PORTS + "\" is empty.");
+            return false;
+        }
+        if (standbyHosts.split(",").length != standbyPorts.split(",").length) {
+            LOGGER.warn("The number of hostname in \"" + STANDBY_HOSTNAMES + "\" "
+                    + "does not match the number of port in \"" + STANDBY_PORTS + "\".");
+            return false;
+        }
+        return true;
+    }
+
+    public static String getUrlFragment(String standbyHostnames, String standbyPorts) {
+        String[] hostnames = standbyHostnames.split(",");
+        String[] ports = standbyPorts.split(",");
+
+        StringBuilder resultBuilder = new StringBuilder();
+        for (int i = 0; i < hostnames.length; i++) {
+            resultBuilder.append(",").append(hostnames[i]).append(":").append(ports[i]);
+        }
+
+        return resultBuilder.toString();
     }
 }
