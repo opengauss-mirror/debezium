@@ -10,7 +10,6 @@ import static io.debezium.util.NumberConversions.BYTE_ZERO;
 import static io.debezium.util.NumberConversions.SHORT_FALSE;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.CharBuffer;
@@ -28,7 +27,6 @@ import java.time.temporal.TemporalAdjuster;
 import java.util.Base64;
 import java.util.Base64.Encoder;
 import java.util.BitSet;
-import java.util.NoSuchElementException;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.kafka.connect.data.Field;
@@ -71,8 +69,6 @@ import io.debezium.util.NumberConversions;
  */
 @Immutable
 public class JdbcValueConverters implements ValueConverterProvider {
-
-    private static final int FLOAT_SCALE = 5;
 
     public enum DecimalMode {
         PRECISE,
@@ -946,14 +942,6 @@ public class JdbcValueConverters implements ValueConverterProvider {
     protected Object convertFloat(Column column, Field fieldDefn, Object data) {
         if (data == null) {
             return data;
-        }
-        try {
-            column.scale().get();
-        }
-        catch (NoSuchElementException e) {
-            BigDecimal decimal = new BigDecimal(String.valueOf(data));
-            BigDecimal result = decimal.setScale(FLOAT_SCALE, RoundingMode.HALF_UP);
-            return convertDouble(column, fieldDefn, Double.valueOf(result.toString()));
         }
         return convertDouble(column, fieldDefn, data);
     }
