@@ -7,6 +7,7 @@
 package io.debezium.connector.opengauss;
 
 import java.nio.charset.Charset;
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.List;
@@ -70,6 +71,7 @@ public class OpengaussConnectorTask extends BaseSourceTask<OpengaussPartition, O
     @Override
     public ChangeEventSourceCoordinator<OpengaussPartition, OpengaussOffsetContext> start(Configuration config) {
         final OpengaussConnectorConfig connectorConfig = new OpengaussConnectorConfig(config);
+        testReconnectOpenGauss(connectorConfig);
         final TopicSelector<TableId> topicSelector = OpengaussTopicSelector.create(connectorConfig);
         final Snapshotter snapshotter = connectorConfig.getSnapshotter();
         final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
@@ -241,6 +243,33 @@ public class OpengaussConnectorTask extends BaseSourceTask<OpengaussPartition, O
         finally {
             previousContext.restore();
         }
+    }
+
+    private void testReconnectOpenGauss(OpengaussConnectorConfig connectorConfig) {
+        int reconnectionNumber = connectorConfig.reconnectionNumber();
+        int reconnectionTimeInterval = connectorConfig.reconnectionTimeInterval();
+
+        while (reconnectionNumber > 0) {
+            try (Connection connection = connectorConfig.testConnection()) {
+                if (connection != null) {
+                    LOGGER.info("Database connection successful after {} attempts.",
+                            connectorConfig.reconnectionNumber() - reconnectionNumber + 1);
+                    return;
+                }
+            } catch (SQLException e) {
+                LOGGER.info("The database connection is abnormal. Wait for the database to recover. Error: {}",
+                        e.getMessage());
+            }
+
+            try {
+                Thread.sleep(reconnectionTimeInterval);
+            } catch (InterruptedException ex) {
+                LOGGER.error("Thread sleep failed. Error: {}", ex.getMessage());
+            }
+
+            reconnectionNumber--;
+        }
+        LOGGER.warn("Could not establish a connection after all attempts.");
     }
 
     public ReplicationConnection createReplicationConnection(OpengaussTaskContext taskContext, boolean doSnapshot, int maxRetries, Duration retryDelay)
