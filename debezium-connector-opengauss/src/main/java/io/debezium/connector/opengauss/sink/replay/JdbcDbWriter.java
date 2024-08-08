@@ -70,7 +70,6 @@ public class JdbcDbWriter {
     private static final String TRUNCATE = "t";
     private static final String PATH = "p";
     private static final int TASK_GRACEFUL_SHUTDOWN_TIME = 5;
-    private static final int BREAKPOINT_REPEAT_COUNT_LIMIT = 3000;
 
     private int threadCount;
     private int runCount;
@@ -295,7 +294,7 @@ public class JdbcDbWriter {
     }
 
     private boolean filterByDb(SinkRecord sinkRecord, Long lsn, Long kafkaOffset) {
-        if (isBpCondition && filterCount < BREAKPOINT_REPEAT_COUNT_LIMIT) {
+        if (isBpCondition && filterCount < config.getBreakpointRepeatCountLimit()) {
             filterCount++;
             if (isSkipRecord(sinkRecord)) {
                 LOGGER.info("The sinkRecord is already replay, "

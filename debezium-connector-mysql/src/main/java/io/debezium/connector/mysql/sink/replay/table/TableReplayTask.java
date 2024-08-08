@@ -55,7 +55,6 @@ public class TableReplayTask extends ReplayTask {
     private static final String UPDATE = "u";
     private static final String DELETE = "d";
     private static final int TASK_GRACEFUL_SHUTDOWN_TIME = 5;
-    private static final int BREAKPOINT_REPEAT_COUNT_LIMIT = 3000;
 
     private int threadCount;
     private int runCount;
@@ -336,7 +335,7 @@ public class TableReplayTask extends ReplayTask {
     }
 
     private boolean filterByDb(SinkRecord sinkRecord, String gtid, long kafkaOffset) {
-        if (isBpCondition && filterCount < BREAKPOINT_REPEAT_COUNT_LIMIT) {
+        if (isBpCondition && filterCount < config.getBreakpointRepeatCountLimit()) {
             filterCount++;
             if (isSkipRecord(sinkRecord)) {
                 LOGGER.info("The sinkRecord is already replay,"

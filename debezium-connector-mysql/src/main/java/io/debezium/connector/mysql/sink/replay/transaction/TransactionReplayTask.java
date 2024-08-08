@@ -161,7 +161,7 @@ public class TransactionReplayTask extends ReplayTask {
                     sqlTools, feedBackQueue);
         }
         transactionDispatcher.initProcessCommitter(config.getFailSqlPath(), config.getFileSizeLimit());
-        transactionDispatcher.initBreakPointRecord(breakPointRecord);
+        transactionDispatcher.initBreakPointRecord(breakPointRecord, config.getBreakpointRepeatCountLimit());
     }
 
     private void initFlowControl(MySqlSinkConnectorConfig config) {
