@@ -1144,6 +1144,28 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
             .withImportance(Importance.MEDIUM)
             .withDescription("full data export file size");
 
+    /**
+     * number of reconnection attempts when the database is abnormal
+     */
+    public static final Field RECONNECTION_NUMBER = Field.create("reconnection.number")
+            .withDisplayName("Reconnection Number")
+            .withType(Type.INT)
+            .withWidth(Width.SHORT)
+            .withDefault(12)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("Number of reconnection attempts when the database is abnormal.");
+
+    /**
+     * the interval between each attempt to reconnect when the database is abnormal
+     */
+    public static final Field RECONNECTION_TIME_INTERVAL = Field.create("reconnection.time.interval")
+            .withDisplayName("Reconnection Time Interval")
+            .withType(Type.INT)
+            .withWidth(Width.MEDIUM)
+            .withDefault(5000)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("The interval between each attempt to reconnect when the database is abnormal.");
+
     private final TruncateHandlingMode truncateHandlingMode;
     private final LogicalDecodingMessageFilter logicalDecodingMessageFilter;
     private final HStoreHandlingMode hStoreHandlingMode;
@@ -1251,6 +1273,24 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
         return Duration.ofMillis(getConfig().getLong(OpengaussConnectorConfig.STATUS_UPDATE_INTERVAL_MS));
     }
 
+    /**
+     * get reconnection number
+     *
+     * @return int
+     */
+    public int reconnectionNumber() {
+        return getConfig().getInteger(RECONNECTION_NUMBER);
+    }
+
+    /**
+     * get reconnection time interval
+     *
+     * @return int
+     */
+    public int reconnectionTimeInterval() {
+        return getConfig().getInteger(RECONNECTION_TIME_INTERVAL);
+    }
+
     public TruncateHandlingMode truncateHandlingMode() {
         return truncateHandlingMode;
     }
@@ -1346,7 +1386,9 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
                     XMIN_FETCH_INTERVAL,
                     EXPORT_CSV_PATH,
                     EXPORT_FILE_SIZE,
-                    EXPORT_CSV_PATH_SIZE)
+                    EXPORT_CSV_PATH_SIZE,
+                    RECONNECTION_NUMBER,
+                    RECONNECTION_TIME_INTERVAL)
             .events(
                     INCLUDE_UNKNOWN_DATATYPES,
                     TOASTED_VALUE_PLACEHOLDER)
@@ -1460,6 +1502,22 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
             LOGGER.error("Create openGauss connection failed.", exp);
         }
         return connection;
+    }
+
+    /**
+     * test connect openGauss
+     *
+     * @return Connection
+     * @throws SQLException get connection exception
+     */
+    public Connection testConnection() throws SQLException {
+        String sourceURL = "jdbc:postgresql://" + hostname() + ":" + port() + "/" + databaseName();
+        if (isOpengaussClusterAvailable(iscluster(), standbyHostnames(), standbyPorts())) {
+            sourceURL = "jdbc:postgresql://" + hostname() + ":" + port()
+                    + getUrlFragment(standbyHostnames(), standbyPorts())
+                    + "/" + databaseName() + "?targetServerType=master";
+        }
+        return DriverManager.getConnection(sourceURL, user(), password());
     }
 
     /**
