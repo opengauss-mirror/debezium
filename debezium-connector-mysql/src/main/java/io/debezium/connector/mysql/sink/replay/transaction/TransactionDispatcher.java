@@ -42,7 +42,6 @@ public class TransactionDispatcher {
     public static final int MAX_THREAD_COUNT = 30;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TransactionDispatcher.class);
-    private static final int BREAKPOINT_REPEAT_COUNT_LIMIT = 3000;
 
     private int threadCount;
     private int count = 0;
@@ -62,6 +61,7 @@ public class TransactionDispatcher {
     private boolean isStop = false;
     private boolean isBpCondition = false;
     private int filterCount = 0;
+    private int breakpointRepeatCountLimit;
 
     /**
      * Constructor
@@ -103,8 +103,9 @@ public class TransactionDispatcher {
      *
      * @param breakPointRecord the breakpoint record
      */
-    public void initBreakPointRecord(BreakPointRecord breakPointRecord) {
+    public void initBreakPointRecord(BreakPointRecord breakPointRecord, int breakpointRepeatCountLimit) {
         this.breakPointRecord = breakPointRecord;
+        this.breakpointRepeatCountLimit = breakpointRepeatCountLimit;
     }
 
     /**
@@ -208,7 +209,7 @@ public class TransactionDispatcher {
 
     private Transaction filterByDb(Transaction txn) {
         Transaction transaction = txn;
-        if (isBpCondition && filterCount < BREAKPOINT_REPEAT_COUNT_LIMIT) {
+        if (isBpCondition && filterCount < breakpointRepeatCountLimit) {
             filterCount++;
             if (isSkipTxn(txn)) {
                 LOGGER.info("The txn is already replay, "

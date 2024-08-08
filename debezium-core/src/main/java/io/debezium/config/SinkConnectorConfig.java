@@ -127,6 +127,11 @@ public class SinkConnectorConfig extends AbstractConfig {
     public static final String CLOSE_FLOW_CONTROL_THRESHOLD = "close.flow.control.threshold";
 
     /**
+     * Breakpoint repeat data count limit
+     */
+    public static final String BREAKPOINT_REPEAT_COUNT_LIMIT = "record.breakpoint.repeat.count.limit";
+
+    /**
      * CONFIG_DEF
      */
     public static final ConfigDef CONFIG_DEF = new ConfigDef()
@@ -157,7 +162,9 @@ public class SinkConnectorConfig extends AbstractConfig {
             .define(OPEN_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.8, ConfigDef.Importance.HIGH,
                     "open flow control threshold")
             .define(CLOSE_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.7, ConfigDef.Importance.HIGH,
-                    "close flow control threshold");
+                    "close flow control threshold")
+            .define(BREAKPOINT_REPEAT_COUNT_LIMIT, ConfigDef.Type.INT, 50000, ConfigDef.Importance.HIGH,
+                    "Breakpoint repeat data count limit");
     private static final Logger LOGGER = LoggerFactory.getLogger(SinkConnectorConfig.class);
 
     /**
@@ -198,6 +205,7 @@ public class SinkConnectorConfig extends AbstractConfig {
     private int processFileTimeLimit = 168;
     private boolean isAppendWrite = false;
     private int fileSizeLimit = 10;
+    private int breakpointRepeatCountLimit = 50000;
 
     /**
      * breakpoint config
@@ -222,6 +230,7 @@ public class SinkConnectorConfig extends AbstractConfig {
         this.maxQueueSize = getInt(QUEUE_SIZE_LIMIT);
         this.openFlowControlThreshold = getDouble(OPEN_FLOW_CONTROL_THRESHOLD);
         this.closeFlowControlThreshold = getDouble(CLOSE_FLOW_CONTROL_THRESHOLD);
+        this.breakpointRepeatCountLimit = getInt(BREAKPOINT_REPEAT_COUNT_LIMIT);
         initCouplingConfig();
         rectifyParameter();
     }
@@ -561,5 +570,14 @@ public class SinkConnectorConfig extends AbstractConfig {
      */
     protected void initDefaultConfigMap() {
         configMap.put(CREATE_COUNT_INFO_PATH, getCurrentPluginPath());
+    }
+
+    /**
+     * Get breakpoint repeat count limit
+     *
+     * @return int the breakpoint repeat count limit
+     */
+    public int getBreakpointRepeatCountLimit() {
+        return breakpointRepeatCountLimit;
     }
 }
