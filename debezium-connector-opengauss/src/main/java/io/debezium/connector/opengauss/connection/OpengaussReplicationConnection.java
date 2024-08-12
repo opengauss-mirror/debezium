@@ -644,6 +644,9 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
         catch (Throwable e) {
             LOGGER.error("Unexpected error while closing Postgres connection", e);
         }
+
+        originalConfig.restoreToOriginalWalSenderTimeout();
+
         if (dropSlotOnClose && dropSlot) {
             // we're dropping the replication slot via a regular - i.e. not a replication - connection
             try (OpengaussConnection connection = new OpengaussConnection(originalConfig.getJdbcConfig())) {
