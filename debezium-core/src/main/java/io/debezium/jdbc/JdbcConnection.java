@@ -39,7 +39,6 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import org.apache.kafka.connect.errors.ConnectException;
-import org.opengauss.jdbc.PgConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

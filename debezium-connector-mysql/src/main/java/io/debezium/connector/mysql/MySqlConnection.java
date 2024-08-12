@@ -9,6 +9,7 @@ package io.debezium.connector.mysql;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -91,6 +92,16 @@ public class MySqlConnection extends JdbcConnection {
             setSystemProperty("javax.net.ssl.trustStorePassword", MySqlConnectorConfig.SSL_TRUSTSTORE_PASSWORD, false);
         }
         return super.connection(executeOnConnect);
+    }
+
+    @Override
+    public void setSessionParameter() {
+        Connection conn = getConnection();
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("SET SESSION wait_timeout = " + connectionConfig.waitTimeout());
+        } catch (SQLException exp) {
+            LOGGER.error("SQL Exception occurred when set session parameter.");
+        }
     }
 
     @Override
@@ -586,6 +597,15 @@ public class MySqlConnection extends JdbcConnection {
 
         public int port() {
             return config.getInteger(MySqlConnectorConfig.PORT);
+        }
+
+        /**
+         * MySQL wait_timeout
+         *
+         * @return int the wait_timeout
+         */
+        public int waitTimeout() {
+            return config.getInteger(MySqlConnectorConfig.WAIT_TIMEOUT_SECOND);
         }
 
         public SecureConnectionMode sslMode() {
