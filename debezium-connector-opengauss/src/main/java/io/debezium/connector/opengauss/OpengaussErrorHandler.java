@@ -35,6 +35,7 @@ public class OpengaussErrorHandler extends ErrorHandler {
         tmp.add("Database connection failed when reading from copy");
         tmp.add("FATAL: terminating connection due to administrator command");
         tmp.add("An I/O error occurred while sending to the backend");
+        tmp.add("An I/O error occured while sending to the backend");
 
         RETRIABLE_EXCEPTION_MESSSAGES = Collections.unmodifiableSet(tmp);
     }
