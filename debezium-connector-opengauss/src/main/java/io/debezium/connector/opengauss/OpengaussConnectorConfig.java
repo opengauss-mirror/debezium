@@ -1115,6 +1115,7 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
             .withDisplayName("wal sender timeout")
             .withType(Type.INT)
             .withImportance(Importance.MEDIUM)
+            .withDefault(6000)
             .withDescription("wal sender timeout");
 
     /**
@@ -1172,6 +1173,10 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
     private final IntervalHandlingMode intervalHandlingMode;
     private final SnapshotMode snapshotMode;
     private final SchemaRefreshMode schemaRefreshMode;
+
+    private String originalWalSenderTimeout = null;
+
+    private String originalWalReceiverTimeout = null;
 
     public OpengaussConnectorConfig(Configuration config) {
         super(
@@ -1235,10 +1240,7 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
     public String xlogLocation() {return getConfig().getString(XLOG_LOCATION);}
 
     private Integer walSenderTimeout() {
-        if (getConfig().hasKey(WAL_SENDER_TIMEOUT.name())) {
-            return getConfig().getInteger(WAL_SENDER_TIMEOUT);
-        }
-        return null;
+        return getConfig().getInteger(WAL_SENDER_TIMEOUT);
     }
 
     protected boolean dropSlotOnStop() {
@@ -1487,21 +1489,63 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
         Connection connection = null;
         try {
             connection = DriverManager.getConnection(sourceURL, user(), password());
-            Statement statement = connection.createStatement();
-            statement.execute("set session_timeout = 0");
-            ResultSet rs = statement.executeQuery("select version()");
-            String version = null;
-            while (rs.next()) {
-               version = rs.getString(1).split(" ")[1];
-            }
-            assert version != null;
-            if (version.startsWith("3.0.")) {
-                statement.execute("alter system set wal_sender_timeout = " + (walSenderTimeout() == null ? 12000 : walSenderTimeout()));
-            }
+            alertWalSenderTimeOut(connection);
         } catch(Exception exp) {
             LOGGER.error("Create openGauss connection failed.", exp);
         }
         return connection;
+    }
+
+    private void alertWalSenderTimeOut(Connection connection) {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("set session_timeout = 0");
+
+            if (originalWalSenderTimeout == null) {
+                ResultSet resultSet = statement.executeQuery("show wal_sender_timeout;");
+                if (resultSet.next()) {
+                    originalWalSenderTimeout = resultSet.getString(1);
+                    LOGGER.info("Original wal_sender_timeout = {}.", originalWalSenderTimeout);
+                }
+
+                resultSet = statement.executeQuery("show wal_receiver_timeout;");
+                if (resultSet.next()) {
+                    originalWalReceiverTimeout = resultSet.getString(1);
+                    LOGGER.info("Original wal_sender_timeout = {}.", originalWalReceiverTimeout);
+                }
+                resultSet.close();
+            }
+
+            int walSenderTimeout = walSenderTimeout();
+            if (parseOriginWalSenderTimeout(originalWalSenderTimeout) < walSenderTimeout) {
+                statement.execute("alter system set wal_sender_timeout to '" + walSenderTimeout + "';");
+            }
+            if (parseOriginWalSenderTimeout(originalWalReceiverTimeout) < walSenderTimeout) {
+                statement.execute("alter system set wal_receiver_timeout to '" + walSenderTimeout + "';");
+            }
+        } catch (SQLException e) {
+            LOGGER.error("GUC parameter: wal_sender_timeout, setting failed. ", e);
+        }
+    }
+
+    private int parseOriginWalSenderTimeout(String timeout) {
+        if (timeout.endsWith("ms")) {
+            return Integer.parseInt(timeout.substring(0, timeout.length() - 2));
+        }
+
+        int sToMs = 1000;
+        int minToMs = 60000;
+        int hourToMs = 3600000;
+        if (timeout.endsWith("s")) {
+            return Integer.parseInt(timeout.substring(0, timeout.length() - 1)) * sToMs;
+        }
+        if (timeout.endsWith("min")) {
+            return Integer.parseInt(timeout.substring(0, timeout.length() - 3)) * minToMs;
+        }
+        if (timeout.endsWith("h")) {
+            return Integer.parseInt(timeout.substring(0, timeout.length() - 1)) * hourToMs;
+        }
+
+        return 6000;
     }
 
     /**
@@ -1607,5 +1651,22 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
         }
 
         return resultBuilder.toString();
+    }
+
+    /**
+     * restore to origin wal_sender_timeout
+     */
+    public void restoreToOriginalWalSenderTimeout() {
+        if (originalWalSenderTimeout == null) {
+            return;
+        }
+
+        try (Connection connection = getConnection(this);
+             Statement statement = connection.createStatement()) {
+            statement.execute("alter system set wal_sender_timeout to '" + originalWalSenderTimeout + "';");
+            statement.execute("alter system set wal_receiver_timeout to '" + originalWalReceiverTimeout + "';");
+        } catch (SQLException exp) {
+            LOGGER.error("Restore to original wal_sender_timeout failed.", exp);
+        }
     }
 }
