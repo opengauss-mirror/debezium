@@ -806,6 +806,19 @@ public class MySqlConnectorConfig extends HistorizedRelationalDatabaseConnectorC
             .withDefault(30 * 1000)
             .withValidation(Field::isPositiveInteger);
 
+    /**
+     * MySQL session variable wait_timeout
+     */
+    public static final Field WAIT_TIMEOUT_SECOND = Field.create("wait.timeout.second")
+            .withDisplayName("Wait Timeout (second)")
+            .withType(Type.INT)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("MySQL session variables wait_timeout")
+            .withDefault(28800)
+            .withValidation(Field::isPositiveInteger);
+
+
+
     public static final Field KEEP_ALIVE = Field.create("connect.keep.alive")
             .withDisplayName("Keep connection alive (true/false)")
             .withType(Type.BOOLEAN)
@@ -1015,7 +1028,8 @@ public class MySqlConnectorConfig extends HistorizedRelationalDatabaseConnectorC
                     SNAPSHOT_OFFSET_BINLOG_FILENAME,
                     SNAPSHOT_OFFSET_BINLOG_POSITION,
                     SNAPSHOT_OFFSET_GTID_SET,
-                    PARALLEL_PARSE_EVENT)
+                    PARALLEL_PARSE_EVENT,
+                    WAIT_TIMEOUT_SECOND)
             .connector(
                     CONNECTION_TIMEOUT_MS,
                     KEEP_ALIVE,

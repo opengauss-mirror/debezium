@@ -150,27 +150,28 @@ topics=mysql_server_topic
 
 (5) 新增配置参数说明
 
-| 参数                              | 类型      | 参数说明                                                                                                                                                          |
-|---------------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 参数                             | 类型      | 参数说明                                                                                                                                                          |
+|--------------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | snapshot.offset.binlog.filename | String  | 自定义配置快照点的binlog文件名                                                                                                                                            |
 | snapshot.offset.binlog.position | String  | 自定义配置快照点的binlog位置                                                                                                                                             |
-| snapshot.offset.gtid.set        | String  | 自定义配置快照点的Executed_Gtid_Set，需注意最大事务号需减1                                                                                                                        |
-| parallel.parse.event            | boolean | 是否启用并行解析event能力，默认为true，表示启用并行解析能力                                                                                                                            |
-| commit.process.while.running    | boolean | 是否开启迁移进度上报功能，默认为false，表示不开启该功能                                                                                                                                |
-| source.process.file.path        | String  | 迁移进度文件输出路径，默认在迁移插件同一目录下，在迁移进度上报功能开启后起作用                                                                                                                       |
-| commit.time.interval            | int     | 迁移进度上报的时间间隔，默认值为1，单位：秒，在迁移进度上报功能开启后起作用                                                                                                                        |
-| create.count.info.path          | String  | 源端binlog日志的事务号输出路径，默认在迁移插件同一目录下，必须与sink端的该路径保持一致，用于和sink端交互获取总体同步时延                                                                                           |
-| process.file.count.limit        | int     | 同一目录下文件数目限制，超过该数目工具会按时间从早到晚删除多余进度文件，默认为10                                                                                                                     |
-| process.file.time.limit         | int     | 进度文件保存时间，超过该时间后工具会删除对应的进度文件，默认为168，单位：小时                                                                                                                      |
-| append.write                    | boolean | 进度文件写入方式，true表示追加写入，false表示覆盖写入，默认值为false                                                                                                                     |
-| file.size.limit                 | int     | 文件大小限制，超过该限制值工具会另启新文件写入，默认为10，单位：兆                                                                                                                            |
-| min.start.memory                | String  | 自定义配置debezium最小启动内存，通过脚本生效，默认为256M                                                                                                                            |
-| max.start.memory                | String  | 自定义配置debezium最大启动内存，通过脚本生效，默认为2G                                                                                                                              |
-| queue.size.limit                | int     | source端抽取binlog事件存储队列的最大长度，int类型，默认值为1000000                                                                                                                  |
-| open.flow.control.threshold     | double  | 流量控制参数，double类型，默认值为0.8，当存储binlog事件的某一队列长度>最大长度queue.size.limit*该门限值时，将启用流量控制，暂停抽取binlog事件                                                                    |
-| close.flow.control.threshold    | double  | 流量控制参数，double类型，默认值为0.7，当存储binlog事件的各个队列长度<最大长度queue.size.limit*该门限值时，将关闭流量控制，继续抽取binlog事件                                                                    |
-| kafka.bootstrap.server          | String  | 自定义记录source端与sink端关联参数的Kafka启动服务器地址，可根据实际情况修改，默认值为localhost:9092                                                                                              |
-| provide.transaction.metadata          | boolean | debezium原生参数，指定连接器是否用事务形式封装binlog事件，当配置为true时，增量数据以事务传递，回放方式为按事务并行回放，当配置为false时，增量数据以单条更新事件传递，回放方式为按表并行回放，默认值为false；注意：该配置项每次修改过后首次启动时，须等source端启动成功后再启动sink端 |
+| snapshot.offset.gtid.set       | String  | 自定义配置快照点的Executed_Gtid_Set，需注意最大事务号需减1                                                                                                                        |
+| parallel.parse.event           | boolean | 是否启用并行解析event能力，默认为true，表示启用并行解析能力                                                                                                                            |
+| commit.process.while.running   | boolean | 是否开启迁移进度上报功能，默认为false，表示不开启该功能                                                                                                                                |
+| source.process.file.path       | String  | 迁移进度文件输出路径，默认在迁移插件同一目录下，在迁移进度上报功能开启后起作用                                                                                                                       |
+| commit.time.interval           | int     | 迁移进度上报的时间间隔，默认值为1，单位：秒，在迁移进度上报功能开启后起作用                                                                                                                        |
+| create.count.info.path         | String  | 源端binlog日志的事务号输出路径，默认在迁移插件同一目录下，必须与sink端的该路径保持一致，用于和sink端交互获取总体同步时延                                                                                           |
+| process.file.count.limit       | int     | 同一目录下文件数目限制，超过该数目工具会按时间从早到晚删除多余进度文件，默认为10                                                                                                                     |
+| process.file.time.limit        | int     | 进度文件保存时间，超过该时间后工具会删除对应的进度文件，默认为168，单位：小时                                                                                                                      |
+| append.write                   | boolean | 进度文件写入方式，true表示追加写入，false表示覆盖写入，默认值为false                                                                                                                     |
+| file.size.limit                | int     | 文件大小限制，超过该限制值工具会另启新文件写入，默认为10，单位：兆                                                                                                                            |
+| min.start.memory               | String  | 自定义配置debezium最小启动内存，通过脚本生效，默认为256M                                                                                                                            |
+| max.start.memory               | String  | 自定义配置debezium最大启动内存，通过脚本生效，默认为2G                                                                                                                              |
+| queue.size.limit               | int     | source端抽取binlog事件存储队列的最大长度，int类型，默认值为1000000                                                                                                                  |
+| open.flow.control.threshold    | double  | 流量控制参数，double类型，默认值为0.8，当存储binlog事件的某一队列长度>最大长度queue.size.limit*该门限值时，将启用流量控制，暂停抽取binlog事件                                                                    |
+| close.flow.control.threshold   | double  | 流量控制参数，double类型，默认值为0.7，当存储binlog事件的各个队列长度<最大长度queue.size.limit*该门限值时，将关闭流量控制，继续抽取binlog事件                                                                    |
+| kafka.bootstrap.server         | String  | 自定义记录source端与sink端关联参数的Kafka启动服务器地址，可根据实际情况修改，默认值为localhost:9092                                                                                              |
+| provide.transaction.metadata         | boolean | debezium原生参数，指定连接器是否用事务形式封装binlog事件，当配置为true时，增量数据以事务传递，回放方式为按事务并行回放，当配置为false时，增量数据以单条更新事件传递，回放方式为按表并行回放，默认值为false；注意：该配置项每次修改过后首次启动时，须等source端启动成功后再启动sink端 |
+| wait.timeout.second          | int     | 自定义JDBC连接在被服务器自动关闭之前等待活动的秒数。如果客户端在这段时间内没有向服务器发送任何请求，服务器将关闭该连接，默认值：28800，单位：秒
 
 
 
