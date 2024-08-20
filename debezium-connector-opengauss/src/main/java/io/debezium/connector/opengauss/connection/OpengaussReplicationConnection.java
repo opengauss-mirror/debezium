@@ -9,6 +9,7 @@ package io.debezium.connector.opengauss.connection;
 import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
 import io.debezium.connector.opengauss.OpengaussConnectorConfig;
+import io.debezium.connector.opengauss.OpengaussErrorHandler;
 import io.debezium.connector.opengauss.OpengaussSchema;
 import io.debezium.connector.opengauss.TypeRegistry;
 import io.debezium.connector.opengauss.spi.SlotCreationResult;
@@ -646,6 +647,13 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
         }
 
         originalConfig.restoreToOriginalWalSenderTimeout();
+
+        if (OpengaussErrorHandler.isCanRetry()) {
+            OpengaussErrorHandler.setCanRetry(false);
+            LOGGER.info("Closing replication connection before attempting to reconnect."
+                    + " Skipped deleting the logical replication slot.");
+            return;
+        }
 
         if (dropSlotOnClose && dropSlot) {
             // we're dropping the replication slot via a regular - i.e. not a replication - connection
