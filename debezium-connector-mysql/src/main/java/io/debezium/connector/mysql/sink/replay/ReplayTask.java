@@ -37,6 +37,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Description: Base task class
@@ -112,6 +113,11 @@ public class ReplayTask {
      * Adds queue map
      */
     protected Map<Long, String> addedQueueMap = new ConcurrentHashMap<>();
+
+    /**
+     * Is database connection alive
+     */
+    protected volatile AtomicBoolean isConnectionAlive = new AtomicBoolean(true);
     private final HashMap<String, String> tableSnapshotHashmap = new HashMap<>();
 
     /**
@@ -452,5 +458,14 @@ public class ReplayTask {
                 schemaMappingMap.put(schema[0].trim(), schema[1].trim());
             }
         }
+    }
+
+    /**
+     * Get connection status
+     *
+     * @return AtomicBoolean the connection status
+     */
+    public AtomicBoolean getConnectionStatus() {
+        return isConnectionAlive;
     }
 }

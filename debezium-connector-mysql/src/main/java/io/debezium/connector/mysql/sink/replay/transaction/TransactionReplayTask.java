@@ -137,8 +137,7 @@ public class TransactionReplayTask extends ReplayTask {
     }
 
     private void initOpenGaussConnection(MySqlSinkConnectorConfig config) {
-        openGaussConnection = new ConnectionInfo(config.openGaussUrl, config.openGaussUsername,
-                config.openGaussPassword);
+        openGaussConnection = new ConnectionInfo(config, isConnectionAlive);
     }
 
     private void initTransactionQueueList(int num) {

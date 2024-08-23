@@ -93,6 +93,7 @@ public class JdbcDbWriter {
     private Map<Long, Long> addedQueueMap = new ConcurrentHashMap<>();
     private volatile AtomicBoolean isSinkQueueBlock = new AtomicBoolean(false);
     private volatile AtomicBoolean isWorkQueueBlock = new AtomicBoolean(false);
+    private volatile AtomicBoolean isConnectionAlive = new AtomicBoolean(true);
 
     private int maxQueueSize;
     private double openFlowControlThreshold;
@@ -114,7 +115,7 @@ public class JdbcDbWriter {
         this.config = config;
         initSchemaMappingMap(config.schemaMappings);
         initRecordBreakpoint(config);
-        databaseConnection = new ConnectionInfo(config);
+        databaseConnection = new ConnectionInfo(config, isConnectionAlive);
         if ("mysql".equals(config.databaseType.toLowerCase(Locale.ROOT))) {
             sqlTools = new MysqlSqlTools(databaseConnection);
         } else if ("oracle".equals(config.databaseType.toLowerCase(Locale.ROOT))) {
@@ -555,6 +556,15 @@ public class JdbcDbWriter {
         return this.isSinkQueueBlock.get();
     }
 
+    /**
+     * Is database connection alive
+     *
+     * @return true if database connection is alive
+     */
+    public boolean isConnectionAlive() {
+        return isConnectionAlive.get();
+    }
+
     private int[] getSuccessAndFailCount() {
         int successCount = 0;
         int failCount = sqlErrCount;
@@ -734,5 +744,14 @@ public class JdbcDbWriter {
 
     private void wirteFullToFile() {
         ogSinkFullCommiter.commitSinkTableProcessInfo(ogFullSinkProcessInfo);
+    }
+
+    /**
+     * Get connection status
+     *
+     * @return AtomicBoolean the connection status
+     */
+    public AtomicBoolean getConnectionStatus() {
+        return isConnectionAlive;
     }
 }

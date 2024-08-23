@@ -132,6 +132,16 @@ public class SinkConnectorConfig extends AbstractConfig {
     public static final String BREAKPOINT_REPEAT_COUNT_LIMIT = "record.breakpoint.repeat.count.limit";
 
     /**
+     * Connection wait timeout second
+     */
+    public static final String WAIT_TIMEOUT_SECOND = "wait.timeout.second";
+
+    /**
+     * max poll interval microseconds
+     */
+    public static final String MAX_POLL_INTERVAL_MS = "consumer.override.max.poll.interval.ms";
+
+    /**
      * CONFIG_DEF
      */
     public static final ConfigDef CONFIG_DEF = new ConfigDef()
@@ -164,7 +174,11 @@ public class SinkConnectorConfig extends AbstractConfig {
             .define(CLOSE_FLOW_CONTROL_THRESHOLD, ConfigDef.Type.DOUBLE, 0.7, ConfigDef.Importance.HIGH,
                     "close flow control threshold")
             .define(BREAKPOINT_REPEAT_COUNT_LIMIT, ConfigDef.Type.INT, 50000, ConfigDef.Importance.HIGH,
-                    "Breakpoint repeat data count limit");
+                    "Breakpoint repeat data count limit")
+            .define(WAIT_TIMEOUT_SECOND, ConfigDef.Type.LONG, 28800, ConfigDef.Importance.HIGH,
+                    "connection wait timeout second")
+            .define(MAX_POLL_INTERVAL_MS, ConfigDef.Type.INT, 300000, ConfigDef.Importance.MEDIUM,
+                    "Maximum delay between invocations of poll() when using consumer group management.");
     private static final Logger LOGGER = LoggerFactory.getLogger(SinkConnectorConfig.class);
 
     /**
@@ -206,6 +220,8 @@ public class SinkConnectorConfig extends AbstractConfig {
     private boolean isAppendWrite = false;
     private int fileSizeLimit = 10;
     private int breakpointRepeatCountLimit = 50000;
+    private long waitTimeoutSecond = 28800L;
+    private int maxConsumerInterval = 300000;
 
     /**
      * breakpoint config
@@ -231,6 +247,8 @@ public class SinkConnectorConfig extends AbstractConfig {
         this.openFlowControlThreshold = getDouble(OPEN_FLOW_CONTROL_THRESHOLD);
         this.closeFlowControlThreshold = getDouble(CLOSE_FLOW_CONTROL_THRESHOLD);
         this.breakpointRepeatCountLimit = getInt(BREAKPOINT_REPEAT_COUNT_LIMIT);
+        this.waitTimeoutSecond = getLong(WAIT_TIMEOUT_SECOND);
+        this.maxConsumerInterval = getInt(MAX_POLL_INTERVAL_MS);
         initCouplingConfig();
         rectifyParameter();
     }
@@ -579,5 +597,23 @@ public class SinkConnectorConfig extends AbstractConfig {
      */
     public int getBreakpointRepeatCountLimit() {
         return breakpointRepeatCountLimit;
+    }
+
+    /**
+     * Get wait timeout second
+     *
+     * @return long the wait timeout second
+     */
+    public long getWaitTimeoutSecond() {
+        return waitTimeoutSecond;
+    }
+
+    /**
+     * Get max consumer interval microseconds
+     *
+     * @return int the max consumer interval microseconds
+     */
+    public int getMaxConsumerInterval() {
+        return maxConsumerInterval;
     }
 }

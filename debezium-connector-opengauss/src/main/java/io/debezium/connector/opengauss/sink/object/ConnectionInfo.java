@@ -6,6 +6,7 @@
 package io.debezium.connector.opengauss.sink.object;
 
 import io.debezium.connector.opengauss.sink.task.OpengaussSinkConnectorConfig;
+import io.debezium.util.MigrationProcessController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,6 +14,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Description: ConnectionInfo class
@@ -37,25 +39,34 @@ public class ConnectionInfo {
      */
     public static final String MYSQL_JDBC_DRIVER = "com.mysql.cj.jdbc.Driver";
 
+    private static final int DEFAULT_RECONNECT_INTERVAL = 5;
+
     private Integer port;
     private final String username;
     private final String password;
     private final String ip;
+    private final AtomicBoolean isConnectionAlive;
     private String databaseType = "mysql";
     private String database;
+    private long waitTimeoutSecond;
+    private int reconnectInterval;
 
     /**
      * Constructor
      *
-     * @param OpengaussSinkConnectorConfig the config
+     * @param config OpengaussSinkConnectorConfig the config
+     * @param isConnectionAlive AtomicBoolean the isConnectionAlive
      */
-    public ConnectionInfo(OpengaussSinkConnectorConfig config) {
+    public ConnectionInfo(OpengaussSinkConnectorConfig config, AtomicBoolean isConnectionAlive) {
         this.username = config.databaseUsername;
         this.password = config.databasePassword;
         this.ip = config.databaseIp;
         this.port = config.databasePort;
         this.database = config.databaseName;
         this.databaseType = config.databaseType;
+        this.waitTimeoutSecond = config.getWaitTimeoutSecond();
+        this.reconnectInterval = waitTimeoutSecond > DEFAULT_RECONNECT_INTERVAL ? DEFAULT_RECONNECT_INTERVAL : 1;
+        this.isConnectionAlive = isConnectionAlive;
     }
 
     public String getDatabaseType() {
@@ -85,17 +96,36 @@ public class ConnectionInfo {
      *
      * @return Connection the connection
      */
-    public Connection createMysqlConnection(){
+    public Connection createMysqlConnection() {
         String dbUrl = "jdbc:mysql://" + ip + ":" + port + "/mysql?useSSL=false&allowPublicKeyRetrieval=true&"
                 + "rewriteBatchedStatements=true&allowLoadLocalInfile=true&serverTimezone=UTC";
-        Connection connection = null;
-        try {
-            Class.forName(MYSQL_JDBC_DRIVER);
-            connection = DriverManager.getConnection(dbUrl, username, password);
-        } catch (ClassNotFoundException | SQLException exp) {
-            exp.printStackTrace();
+        Connection connection;
+        long reconnectCount = 0L;
+        long totalReconnectCount = waitTimeoutSecond % reconnectInterval == 0 ? waitTimeoutSecond / reconnectInterval
+                : waitTimeoutSecond / reconnectInterval + 1;
+        while (true) {
+            try {
+                Class.forName(MYSQL_JDBC_DRIVER);
+                connection = DriverManager.getConnection(dbUrl, username, password);
+                isConnectionAlive.set(true);
+                LOGGER.info("Connected to sink database successfully.");
+                return connection;
+            } catch (ClassNotFoundException | SQLException exp) {
+                isConnectionAlive.set(false);
+                reconnectCount++;
+                if (waitTimeoutSecond > 0) {
+                    if (reconnectInterval * reconnectCount >= waitTimeoutSecond) {
+                        break;
+                    }
+                    LOGGER.warn("The target database occurred an exception, {} th reconnect, will try up to {} times.",
+                            reconnectCount, totalReconnectCount);
+                } else {
+                    LOGGER.warn("The target database occurred an exception, {} th reconnect.", reconnectCount);
+                }
+                MigrationProcessController.sleep(reconnectInterval * 1000L);
+            }
         }
-        return connection;
+        throw new RuntimeException("Could not reconnect due to sink database shutdown service.");
     }
 
     /**
