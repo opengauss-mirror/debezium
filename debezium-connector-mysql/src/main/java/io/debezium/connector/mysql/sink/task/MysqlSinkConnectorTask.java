@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import io.debezium.util.MigrationProcessController;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -34,6 +35,7 @@ public class MysqlSinkConnectorTask extends SinkTask {
     private static final Logger LOGGER = LoggerFactory.getLogger(MysqlSinkConnectorTask.class);
     private static final int COMMIT_RETRY_TIMES = 5;
 
+    private final MigrationProcessController controller = new MigrationProcessController();
     private MySqlSinkConnectorConfig config;
     private ReplayTask jdbcDbWriter;
     private int count = 0;
@@ -48,10 +50,10 @@ public class MysqlSinkConnectorTask extends SinkTask {
     @Override
     public void start(Map<String, String> props) {
         config = new MySqlSinkConnectorConfig(props);
+        controller.initParameter(config);
         if (config.isParallelBasedTransaction) {
             jdbcDbWriter = new TransactionReplayTask(config);
-        }
-        else {
+        } else {
             jdbcDbWriter = new TableReplayTask(config);
         }
         jdbcDbWriter.createWorkThreads();
@@ -59,6 +61,7 @@ public class MysqlSinkConnectorTask extends SinkTask {
 
     @Override
     public void put(Collection<SinkRecord> records) {
+        controller.waitConnectionAlive(jdbcDbWriter.getConnectionStatus());
         while (jdbcDbWriter.isBlock()) {
             count++;
             if (count >= 300) {
@@ -66,12 +69,7 @@ public class MysqlSinkConnectorTask extends SinkTask {
                 LOGGER.warn("have wait 15s, so skip the loop");
                 break;
             }
-            try {
-                Thread.sleep(50);
-            }
-            catch (InterruptedException exp) {
-                LOGGER.warn("Receive interrupted exception while put records from kafka.", exp.getMessage());
-            }
+            MigrationProcessController.sleep(50);
         }
         count = 0;
         if (records == null || records.isEmpty()) {
@@ -102,7 +100,7 @@ public class MysqlSinkConnectorTask extends SinkTask {
             }
             if (commitRetryTimes == COMMIT_RETRY_TIMES) {
                 LOGGER.warn("commit the same offset [{}] times, maybe occur kafka exception and clear buffer, "
-                            + "currentOffsets is {}", COMMIT_RETRY_TIMES, currentOffsets);
+                        + "currentOffsets is {}", COMMIT_RETRY_TIMES, currentOffsets);
                 jdbcDbWriter.clearReplayedOffset(currentOffset);
                 this.flush(preCommitOffsets);
                 return currentOffsets;
@@ -111,8 +109,7 @@ public class MysqlSinkConnectorTask extends SinkTask {
             Set<TopicPartition> topicPartitions = currentOffsets.keySet();
             TopicPartition topicPartition = topicPartitions.iterator().next();
             preCommitOffsets.put(topicPartition, replayedOffset);
-        }
-        else {
+        } else {
             preCommitOffsets = currentOffsets;
         }
         LOGGER.warn("currentOffsets is {},preCommitOffsets is {}", currentOffsets, preCommitOffsets);

@@ -57,6 +57,16 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
     public static final String XLOG_LOCATION = "xlog.location";
 
     /**
+     * database standby hostnames
+     */
+    public static final String DB_STANDBY_HOSTNAMES = "database.standby.hostnames";
+
+    /**
+     * database standby ports
+     */
+    public static final String DB_STANDBY_PORTS = "database.standby.ports";
+
+    /**
      * CONFIG_DEF
      */
     public static final ConfigDef CONFIG_DEF = getConfigDef()
@@ -72,7 +82,11 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
             .define(PARALLEL_REPLAY_THREAD_NUM, ConfigDef.Type.INT, 30,
                     ConfigDef.Importance.HIGH, "parallel replay thread num")
             .define(XLOG_LOCATION, ConfigDef.Type.STRING, getCurrentPluginPath(),
-                    ConfigDef.Importance.HIGH, "xlog location");
+                    ConfigDef.Importance.HIGH, "xlog location")
+            .define(DB_STANDBY_HOSTNAMES, ConfigDef.Type.STRING, "", ConfigDef.Importance.MEDIUM,
+                    "database standby hostnames")
+            .define(DB_STANDBY_PORTS, ConfigDef.Type.STRING, "", ConfigDef.Importance.MEDIUM,
+                    "database standby ports");
 
     /**
      * openGauss driver
@@ -109,6 +123,9 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
      */
     public final boolean isParallelBasedTransaction;
 
+    private String dbStandbyHostnames;
+    private String dbStandbyPorts;
+
     /**
      * Constructor
      *
@@ -124,6 +141,8 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
         this.parallelReplayThreadNum = getInt(PARALLEL_REPLAY_THREAD_NUM);
         this.xlogLocation = getString(XLOG_LOCATION);
         this.isParallelBasedTransaction = Boolean.parseBoolean(configMap.get(PARALLEL_BASED_TRANSACTION));
+        this.dbStandbyHostnames = getString(DB_STANDBY_HOSTNAMES);
+        this.dbStandbyPorts = getString(DB_STANDBY_PORTS);
 
         Map<String, Object> allConfig = CONFIG_DEF.defaultValues();
         allConfig.forEach((k, v) -> {
@@ -135,6 +154,24 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
             allConfig.put(String.valueOf(k), v);
         });
         logAll(allConfig, OPENGAUSS_PASSWORD);
+    }
+
+    /**
+     * Get database standby hostname list
+     *
+     * @return String the standby cluster hostnames list
+     */
+    public String getDbStandbyHostnames() {
+        return dbStandbyHostnames;
+    }
+
+    /**
+     * Get database standby port list
+     *
+     * @return String the standby cluster port list
+     */
+    public String getDbStandbyPorts() {
+        return dbStandbyPorts;
     }
 
     @Override

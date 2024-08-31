@@ -1,6 +1,7 @@
 package io.debezium.connector.opengauss.sink.task;
 
 import io.debezium.connector.opengauss.sink.replay.JdbcDbWriter;
+import io.debezium.util.MigrationProcessController;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.sink.SinkRecord;
@@ -25,11 +26,14 @@ public class OpengaussSinkConnectorTask extends SinkTask {
     private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussSinkConnectorTask.class);
     private static final int COMMIT_RETRY_TIMES = 5;
 
+    private final MigrationProcessController controller = new MigrationProcessController();
     private OpengaussSinkConnectorConfig config;
     private JdbcDbWriter jdbcDbWriter;
     private int count = 0;
     private int commitRetryTimes = 0;
     private long preOffset;
+    private int pollIntervalSeconds;
+
 
     @Override
     public String version() {
@@ -39,12 +43,14 @@ public class OpengaussSinkConnectorTask extends SinkTask {
     @Override
     public void start(Map<String, String> props) {
         config = new OpengaussSinkConnectorConfig(props);
+        controller.initParameter(config);
         jdbcDbWriter = new JdbcDbWriter(config);
         jdbcDbWriter.createWorkThread();
     }
 
     @Override
     public void put(Collection<SinkRecord> records) {
+        controller.waitConnectionAlive(jdbcDbWriter.getConnectionStatus());
         while (jdbcDbWriter.isSinkQueueBlock() || jdbcDbWriter.isWorkQueueBlock()) {
             count++;
             if (count >= 300) {
@@ -52,12 +58,7 @@ public class OpengaussSinkConnectorTask extends SinkTask {
                 LOGGER.warn("have wait 15s, so skip the loop");
                 break;
             }
-            try {
-                Thread.sleep(50);
-            }
-            catch (InterruptedException exp) {
-                LOGGER.warn("Receive interrupted exception while put records from kafka.", exp.getMessage());
-            }
+            MigrationProcessController.sleep(50);
         }
         count = 0;
         if (records == null || records.isEmpty()){
