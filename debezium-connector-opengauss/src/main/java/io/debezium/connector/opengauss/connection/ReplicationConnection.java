@@ -94,6 +94,13 @@ public interface ReplicationConnection extends AutoCloseable {
     public void reconnect() throws SQLException;
 
     /**
+     * close connection
+     *
+     * @param shouldDropSlot shouldDropSlot
+     */
+    void close(boolean shouldDropSlot);
+
+    /**
      * A builder for {@link ReplicationConnection}
      */
     interface Builder {
