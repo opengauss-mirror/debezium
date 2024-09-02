@@ -39,6 +39,17 @@ public class MigrationProcessController {
     }
 
     /**
+     * String is null or blank or ""
+     *
+     * @param value String the value
+     *
+     * @return true is value is null or blank or ""
+     */
+    public static boolean isNullOrBlank(String value) {
+        return Strings.isNullOrBlank(value) || "\"\"".equals(value);
+    }
+
+    /**
      * initialize controller parameters
      *
      * @param config Sink connector config
