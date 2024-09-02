@@ -13,7 +13,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.debezium.connector.mysql.sink.task.MySqlSinkConnectorConfig;
 import io.debezium.util.MigrationProcessController;
-import io.debezium.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -93,8 +92,8 @@ public class ConnectionInfo {
     }
 
     private void constructUrl(MySqlSinkConnectorConfig config) {
-        if (Strings.isNullOrBlank(config.getDbStandbyHostnames())
-                || Strings.isNullOrBlank(config.getDbStandbyPorts())) {
+        if (MigrationProcessController.isNullOrBlank(config.getDbStandbyHostnames())
+                || MigrationProcessController.isNullOrBlank(config.getDbStandbyPorts())) {
             this.url = config.openGaussUrl;
         } else {
             String originUrl = config.openGaussUrl;
