@@ -626,10 +626,11 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
 
     @Override
     public synchronized void close() {
-        close(true);
+        close(false);
     }
 
-    public synchronized void close(boolean dropSlot) {
+    @Override
+    public synchronized void close(boolean shouldDropSlot) {
         try {
             LOGGER.debug("Closing message decoder");
             messageDecoder.close();
@@ -649,16 +650,16 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
         originalConfig.restoreToOriginalWalSenderTimeout();
 
         if (OpengaussErrorHandler.isCanRetry()) {
-            OpengaussErrorHandler.setCanRetry(false);
             LOGGER.info("Closing replication connection before attempting to reconnect."
                     + " Skipped deleting the logical replication slot.");
             return;
         }
 
-        if (dropSlotOnClose && dropSlot) {
+        if (dropSlotOnClose && shouldDropSlot) {
             // we're dropping the replication slot via a regular - i.e. not a replication - connection
             try (OpengaussConnection connection = new OpengaussConnection(originalConfig.getJdbcConfig())) {
                 connection.dropReplicationSlot(slotName);
+                LOGGER.info("Drop slot successfully.");
                 connection.dropPublication(publicationName);
             }
             catch (Throwable e) {

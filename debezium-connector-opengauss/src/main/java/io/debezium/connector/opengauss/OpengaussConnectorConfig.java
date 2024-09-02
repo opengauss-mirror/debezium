@@ -1510,7 +1510,7 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
                 resultSet = statement.executeQuery("show wal_receiver_timeout;");
                 if (resultSet.next()) {
                     originalWalReceiverTimeout = resultSet.getString(1);
-                    LOGGER.info("Original wal_sender_timeout = {}.", originalWalReceiverTimeout);
+                    LOGGER.info("Original wal_receiver_timeout = {}.", originalWalReceiverTimeout);
                 }
                 resultSet.close();
             }

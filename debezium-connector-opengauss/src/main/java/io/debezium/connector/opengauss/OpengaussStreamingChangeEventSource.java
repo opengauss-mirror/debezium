@@ -112,6 +112,8 @@ public class OpengaussStreamingChangeEventSource implements StreamingChangeEvent
     @Override
     public void execute(ChangeEventSourceContext context, OpengaussPartition partition, OpengaussOffsetContext offsetContext)
             throws InterruptedException {
+        setCanRetryToFalse();
+
         if (!snapshotter.shouldStream()) {
             LOGGER.info("Streaming is not enabled in correct configuration");
             return;
@@ -207,6 +209,12 @@ public class OpengaussStreamingChangeEventSource implements StreamingChangeEvent
                 }
                 replicationStream.set(null);
             }
+        }
+    }
+
+    private void setCanRetryToFalse() {
+        if (OpengaussErrorHandler.isCanRetry()) {
+            OpengaussErrorHandler.setCanRetry(false);
         }
     }
 

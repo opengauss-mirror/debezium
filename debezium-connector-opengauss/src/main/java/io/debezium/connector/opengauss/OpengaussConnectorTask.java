@@ -319,7 +319,7 @@ public class OpengaussConnectorTask extends BaseSourceTask<OpengaussPartition, O
         // This is guard to make sure the connection is closed.
         try {
             if (replicationConnection != null) {
-                replicationConnection.close();
+                replicationConnection.close(true);
             }
         }
         catch (Exception e) {
