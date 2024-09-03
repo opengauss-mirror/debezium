@@ -394,7 +394,11 @@ public class DebeziumValueConverters {
         // https://debezium.io/documentation/reference/1.8/connectors/mysql.html#mysql-data-types
         // bit(1) -> boolean; bit(>1) -> bytes
         if (length == 1) {
-            return value.getBoolean(columnName) ? "1" : "0";
+            Boolean isTrue = value.getBoolean(columnName);
+            if (isTrue == null) {
+                return null;
+            }
+            return isTrue ? "1" : "0";
         } else {
             byte[] bytes = value.getBytes(columnName);
             return bytes == null ? null : convertBitString(bytes, length);
