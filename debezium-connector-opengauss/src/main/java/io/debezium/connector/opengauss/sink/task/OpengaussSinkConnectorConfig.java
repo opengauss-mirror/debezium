@@ -75,7 +75,9 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
             .define(DATABASE_IP, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "database ip")
             .define(DATABASE_PORT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "database port")
             .define(DATABASE_NAME, ConfigDef.Type.STRING, "mysql", ConfigDef.Importance.HIGH,
-                    "database name");
+                    "database name")
+            .define(CREATE_COUNT_INFO_PATH, ConfigDef.Type.STRING, getCurrentPluginPath(), ConfigDef.Importance.MEDIUM,
+                    "Create count info path");
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussSinkConnectorConfig.class);
 
@@ -145,5 +147,7 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
     }
 
     @Override
-    protected void initCouplingConfig() {}
+    protected void initCouplingConfig() {
+        configMap.put(CREATE_COUNT_INFO_PATH, getString(CREATE_COUNT_INFO_PATH));
+    }
 }
