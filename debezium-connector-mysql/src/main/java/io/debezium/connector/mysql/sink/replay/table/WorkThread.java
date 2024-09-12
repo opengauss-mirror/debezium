@@ -312,12 +312,14 @@ public class WorkThread extends Thread {
     private void updateConnectionAndExecuteSql(String sql, SinkRecordObject sinkRecordObject) {
         try {
             if (!connectionInfo.checkConnectionStatus(connection)) {
-                return;
+                statement.close();
+                connection.close();
+                connection = connectionInfo.createOpenGaussConnection();
+                statement = connection.createStatement();
             }
             statement.executeUpdate(sql);
             savedBreakPointInfo(sinkRecordObject);
             successCount++;
-            return;
         }
         catch (SQLException exp) {
             failCount++;

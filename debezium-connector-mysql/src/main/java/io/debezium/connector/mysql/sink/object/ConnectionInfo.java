@@ -252,7 +252,7 @@ public class ConnectionInfo {
                 return true;
             }
             else {
-                LOGGER.error("There is a connection problem with the openGauss,"
+                LOGGER.warn("There is a connection problem with the openGauss,"
                         + " check the database status or connection");
                 return false;
             }
