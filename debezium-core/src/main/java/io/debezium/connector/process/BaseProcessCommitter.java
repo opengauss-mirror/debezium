@@ -221,7 +221,7 @@ public abstract class BaseProcessCommitter {
         if (!dir.exists()) {
             return;
         }
-        File[] files = dir.listFiles();
+        File[] files = dir.listFiles((directory, name) -> name.startsWith(filePrefix));
         File redundantFile;
         while (files.length > processFileCountLimit - 1) {
             redundantFile = files[0];
@@ -231,7 +231,7 @@ public abstract class BaseProcessCommitter {
                 }
             }
             redundantFile.delete();
-            files = dir.listFiles();
+            files = dir.listFiles((directory, name) -> name.startsWith(filePrefix));
         }
 
         for (File file : files) {

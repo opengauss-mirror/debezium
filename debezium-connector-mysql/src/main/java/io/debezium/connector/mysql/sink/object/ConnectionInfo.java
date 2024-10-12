@@ -229,10 +229,10 @@ public class ConnectionInfo {
                     if (reconnectInterval * reconnectCount >= waitTimeoutSecond) {
                         break;
                     }
-                    LOGGER.warn("The target database occurred an exception, {} th reconnect, will try up to {} times.",
-                            reconnectCount, totalReconnectCount);
+                    LOGGER.warn("The target database occurred an exception: {}, {} th reconnect,"
+                            + " will try up to {} times.", exp, reconnectCount, totalReconnectCount);
                 } else {
-                    LOGGER.warn("The target database occurred an exception, {} th reconnect.", reconnectCount);
+                    LOGGER.warn("The target database occurred an exception: {}, {} th reconnect.", exp, reconnectCount);
                 }
                 MigrationProcessController.sleep(reconnectInterval * 1000L);
             }
