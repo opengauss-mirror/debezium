@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import com.mysql.cj.util.StringUtils;
-import io.debezium.DebeziumException;
+import io.debezium.connector.opengauss.connection.ogoutput.mppdbdecoding.MppdbMessageDecoder;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigDef.Importance;
 import org.apache.kafka.common.config.ConfigDef.Type;
@@ -535,6 +535,27 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
             public boolean supportsLogicalDecodingMessage() {
                 return false;
             }
+        },
+        MPPDB_DECODING("mppdb_decoding") {
+            @Override
+            public MessageDecoder messageDecoder(MessageDecoderContext config) {
+                return new MppdbMessageDecoder(config);
+            }
+
+            @Override
+            public String getPostgresPluginName() {
+                return getValue();
+            }
+
+            @Override
+            public boolean supportsTruncate() {
+                return true;
+            }
+
+            @Override
+            public boolean supportsLogicalDecodingMessage() {
+                return true;
+            }
         };
 
         private final String decoderName;
@@ -710,6 +731,7 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
                     "Supported values are '" + LogicalDecoder.DECODERBUFS.getValue()
                     + "', '" + LogicalDecoder.WAL2JSON.getValue()
                     + "', '" + LogicalDecoder.PGOUTPUT.getValue()
+                    + "', '" + LogicalDecoder.MPPDB_DECODING.getValue()
                     + "', '" + LogicalDecoder.WAL2JSON_STREAMING.getValue()
                     + "', '" + LogicalDecoder.WAL2JSON_RDS.getValue()
                     + "' and '" + LogicalDecoder.WAL2JSON_RDS_STREAMING.getValue()
@@ -1119,6 +1141,40 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
             .withDescription("wal sender timeout");
 
     /**
+     * Field representing the parallel decode number configuration.
+     *
+     * @return Field object with the configuration for parallel decode number
+     */
+    public static final Field PARALLEL_DECODE_NUM = Field.create("parallel.decode.num")
+            .withDisplayName("parallel decode num")
+            .withType(Type.INT)
+            .withImportance(Importance.MEDIUM)
+            .withDefault(15)
+            .withDescription("parallel decode num");
+
+    /**
+     * MAX_TXN_IN_MEMORY单个解码事务落盘内存阈值默认为100MB
+     *
+     * @see Field
+     */
+    public static final Field MAX_TXN_IN_MEMORY = Field.create("max.txn.in.memory")
+            .withDisplayName("max txn in memory")
+            .withType(Type.INT)
+            .withImportance(Importance.MEDIUM)
+            .withDefault(100)
+            .withDescription("max txn in memory");
+
+    /**
+     * MAX_REORDERBUFFER_IN_MEMORY正在处理的解码事务落盘内存阈值默认为50GB
+     */
+    public static final Field MAX_REORDERBUFFER_IN_MEMORY = Field.create("max.reorderbuffer.in.memory")
+            .withDisplayName("max reorderbuffer in memory")
+            .withType(Type.INT)
+            .withImportance(Importance.MEDIUM)
+            .withDefault(50)
+            .withDescription("max reorderbuffer in memory");
+
+    /**
      *  full migration write file position
      */
     public static final Field EXPORT_CSV_PATH = Field.create("export.csv.path")
@@ -1238,6 +1294,33 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
     }
 
     public String xlogLocation() {return getConfig().getString(XLOG_LOCATION);}
+
+    /**
+     * Retrieve the configuration value for the number of parallel decoders.
+     *
+     * @return String Return the configuration value for the number of parallel decoders.
+     */
+    public String parallelDecodeNum() {
+        return getConfig().getString(PARALLEL_DECODE_NUM);
+    }
+
+    /**
+     * Returns the maximum number of transactions that can be held in memory.
+     *
+     * @return String representing the maximum number of transactions in memory
+     */
+    public String maxTxnInMemory() {
+        return getConfig().getString(MAX_TXN_IN_MEMORY);
+    }
+
+    /**
+     * Returns the maximum size of the reorder buffer that can be held in memory.
+     *
+     * @return String representing the maximum size of the reorder buffer in memory
+     */
+    public String maxReorderbufferInMemory() {
+        return getConfig().getString(MAX_TXN_IN_MEMORY);
+    }
 
     private Integer walSenderTimeout() {
         return getConfig().getInteger(WAL_SENDER_TIMEOUT);
@@ -1370,6 +1453,9 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
                     SLOT_NAME,
                     XLOG_LOCATION,
                     WAL_SENDER_TIMEOUT,
+                    PARALLEL_DECODE_NUM,
+                    MAX_TXN_IN_MEMORY,
+                    MAX_REORDERBUFFER_IN_MEMORY,
                     PUBLICATION_NAME,
                     PUBLICATION_AUTOCREATE_MODE,
                     DROP_SLOT_ON_STOP,

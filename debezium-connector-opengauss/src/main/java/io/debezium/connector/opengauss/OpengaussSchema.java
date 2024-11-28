@@ -32,6 +32,8 @@ import io.debezium.relational.Tables;
 import io.debezium.schema.TopicSelector;
 import io.debezium.util.SchemaNameAdjuster;
 
+import javax.validation.constraints.NotNull;
+
 /**
  * Component that records the schema information for the {@link OpengaussConnector}. The schema information contains
  * the {@link Tables table definitions} and the Kafka Connect {@link #schemaFor(TableId) Schema}s for each table, where the
@@ -50,6 +52,7 @@ public class OpengaussSchema extends RelationalDatabaseSchema {
 
     private final Map<TableId, List<String>> tableIdToToastableColumns;
     private final Map<Integer, TableId> relationIdToTableId;
+    private final Map<String, TableId> schemaNameToTableName;
     private final boolean readToastableColumns;
 
     /**
@@ -66,6 +69,7 @@ public class OpengaussSchema extends RelationalDatabaseSchema {
         this.typeRegistry = typeRegistry;
         this.tableIdToToastableColumns = new HashMap<>();
         this.relationIdToTableId = new HashMap<>();
+        this.schemaNameToTableName = new HashMap<>();
         this.readToastableColumns = config.skipRefreshSchemaOnMissingToastableData();
     }
 
@@ -256,6 +260,19 @@ public class OpengaussSchema extends RelationalDatabaseSchema {
     }
 
     /**
+     * Applies schema changes for the specified table.
+     *
+     * @param table the table for which schema changes are to be applied
+     */
+    public void applySchemaChangesForTable(@NotNull Table table) {
+        if (isFilteredOut(table.id())) {
+            return;
+        }
+        schemaNameToTableName.put(table.id().schema() + "." + table.id().table(), table.id());
+        refresh(table);
+    }
+
+    /**
      * Resolve a {@link Table} based on a supplied table relation unique identifier.
      * <p>
      * This implementation relies on a prior call to {@link #applySchemaChangesForTable(int, Table)} to have
@@ -272,6 +289,23 @@ public class OpengaussSchema extends RelationalDatabaseSchema {
             return null;
         }
         LOGGER.debug("Relation '{}' resolved to table '{}'", relationId, tableId);
+        return tableFor(tableId);
+    }
+
+    /**
+     * Returns the Table object for the given schema name and table name.
+     *
+     * @param schemaName the name of the schema
+     * @param tableName the name of the table
+     * @return the Table object if found, otherwise null
+     */
+    public Table tableFor(String schemaName, String tableName) {
+        TableId tableId = schemaNameToTableName.get(schemaName + "." + tableName);
+        if (tableId == null) {
+            LOGGER.debug("Relation '{}' is unknown, cannot resolve to table", schemaName + "." + tableName);
+            return null;
+        }
+        LOGGER.debug("Relation '{}' resolved to table '{}'", schemaName + "." + tableName, tableId);
         return tableFor(tableId);
     }
 
