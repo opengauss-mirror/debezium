@@ -314,7 +314,7 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
         if (connectorConfig.getExportFileSize() != null && !connectorConfig.getExportFileSize().isEmpty()) {
             pageSize = initPagePartitionSize();
         }
-        EventDispatcher.SnapshotReceiver receiver = dispatcher.getSnapshotChangeEventReceiver();
+        EventDispatcher.SnapshotReceiver receiver = dispatcher.getFullSnapshotChangeEventReceiver();
         List<String> schemaList = appointSchemas();
         pushTruncateMessageForTable(snapshotContext, receiver, schemaList);
         tryStartingSnapshot(snapshotContext);
@@ -702,11 +702,9 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
         EventDispatcher.SnapshotReceiver snapshotReceiver = dataEventsParam.getSnapshotReceiver();
         String path = generateFileName(table.id().schema(), table.id().table(), subscript);
         if (wirteCsv(columnStringArr, path)) {
-            synchronized (messLock) {
-                ChangeRecordEmitter changeRecordEmitter = getFilePathRecordEmitter(snapshotContext,
-                        table.id(), new String[]{path, columnString});
-                dispatcher.dispatchSnapshotEvent(table.id(), changeRecordEmitter, snapshotReceiver);
-            }
+            ChangeRecordEmitter changeRecordEmitter = getFilePathRecordEmitter(snapshotContext,
+                    table.id(), new String[]{path, columnString});
+            dispatcher.dispatchSnapshotEvent(table.id(), changeRecordEmitter, snapshotReceiver);
         }
     }
 

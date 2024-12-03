@@ -183,6 +183,10 @@ public class EventDispatcher<T extends DataCollectionId> {
         return new IncrementalSnapshotChangeRecordReceiver(dataListener);
     }
 
+    public SnapshotReceiver getFullSnapshotChangeEventReceiver() {
+        return new FullSnapshotChangeRecordReceiver();
+    }
+
     /**
      * Dispatches one or more {@link DataChangeEvent}s. If the given data collection is included in the currently
      * captured set of collections, the given emitter will be invoked, so it can emit one or more events (in the common
@@ -477,6 +481,37 @@ public class EventDispatcher<T extends DataCollectionId> {
                 queue.enqueue(event);
                 bufferedEvent = null;
             }
+        }
+    }
+
+    private final class FullSnapshotChangeRecordReceiver implements SnapshotReceiver {
+        @Override
+        public void changeRecord(Partition partition,
+                                 DataCollectionSchema dataCollectionSchema,
+                                 Operation operation,
+                                 Object key, Struct value,
+                                 OffsetContext offsetContext,
+                                 ConnectHeaders headers)
+                throws InterruptedException {
+            Objects.requireNonNull(value, "value must not be null");
+
+            LOGGER.trace("Received change record for {} operation on key {}", operation, key);
+
+            Schema keySchema = dataCollectionSchema.keySchema();
+            String topicName = topicSelector.topicNameFor((T) dataCollectionSchema.id());
+
+            SourceRecord record = new SourceRecord(
+                    partition.getSourcePartition(),
+                    offsetContext.getOffset(),
+                    topicName, null,
+                    keySchema, key,
+                    dataCollectionSchema.getEnvelopeSchema().schema(), value,
+                    null, headers);
+            queue.enqueue(changeEventCreator.createDataChangeEvent(record));
+        }
+
+        @Override
+        public void completeSnapshot() throws InterruptedException {
         }
     }
 
