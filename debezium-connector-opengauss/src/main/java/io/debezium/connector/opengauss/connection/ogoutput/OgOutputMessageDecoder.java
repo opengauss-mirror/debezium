@@ -354,18 +354,20 @@ public class OgOutputMessageDecoder extends AbstractMessageDecoder {
         // to reflect the actual primary key state at time `t0`.
         primaryKeyColumns.retainAll(columnNames);
 
-        Table table = resolveRelationFromMetadata(new OgOutputRelationMetaData(relationId, schemaName, tableName, columns, primaryKeyColumns));
+        Table table = resolveRelationFromMetadata(new OgOutputAndMppdbRelationMetaData(relationId, schemaName,
+            tableName, columns, primaryKeyColumns));
         decoderContext.getSchema().applySchemaChangesForTable(relationId, table);
     }
 
-    private List<io.debezium.relational.Column> getTableColumnsFromDatabase(OpengaussConnection connection, DatabaseMetaData databaseMetadata, TableId tableId)
-            throws SQLException {
+    private List<io.debezium.relational.Column> getTableColumnsFromDatabase(OpengaussConnection connection,
+        DatabaseMetaData databaseMetadata, TableId tableId) throws SQLException {
         List<io.debezium.relational.Column> readColumns = new ArrayList<>();
         try {
-            try (ResultSet columnMetadata = databaseMetadata.getColumns(null, tableId.schema(), tableId.table(), null)) {
+            try (ResultSet columnMetadata = databaseMetadata.getColumns(null, tableId.schema(), tableId.table(),
+                null)) {
                 while (columnMetadata.next()) {
-                    connection.readColumnForDecoder(columnMetadata, tableId, decoderContext.getConfig().getColumnFilter())
-                            .ifPresent(readColumns::add);
+                    connection.readColumnForDecoder(columnMetadata, tableId, decoderContext.getConfig()
+                        .getColumnFilter()).ifPresent(readColumns::add);
                 }
             }
         }
@@ -643,12 +645,12 @@ public class OgOutputMessageDecoder extends AbstractMessageDecoder {
     }
 
     /**
-     * Constructs a {@link Table} based on the supplied {@link OgOutputRelationMetaData}.
+     * Constructs a {@link Table} based on the supplied {@link OgOutputAndMppdbRelationMetaData}.
      *
      * @param metadata The relation metadata collected from previous 'R' replication stream messages
      * @return table based on a prior replication relation message
      */
-    private Table resolveRelationFromMetadata(OgOutputRelationMetaData metadata) {
+    private Table resolveRelationFromMetadata(OgOutputAndMppdbRelationMetaData metadata) {
         List<io.debezium.relational.Column> columns = new ArrayList<>();
         for (ColumnMetaData columnMetadata : metadata.getColumns()) {
             ColumnEditor editor = io.debezium.relational.Column.editor()

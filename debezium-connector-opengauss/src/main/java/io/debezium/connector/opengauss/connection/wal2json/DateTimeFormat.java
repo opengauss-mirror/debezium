@@ -52,10 +52,10 @@ public interface DateTimeFormat {
         private static final Logger LOGGER = LoggerFactory.getLogger(ISODateTimeFormat.class);
 
         // This formatter is similar to standard Java's ISO_LOCAL_DATE. But this one is
-        // using 'YEAR_OF_ERA + SignStyle.NEVER' instead of 'YEAR+SignStyle.EXCEEDS_PAD'
+        // using 'YEAR + SignStyle.NEVER' instead of 'YEAR+SignStyle.EXCEEDS_PAD'
         // to support ChronoField.ERA at the end of the date string.
         private static final DateTimeFormatter NON_ISO_LOCAL_DATE = new DateTimeFormatterBuilder()
-                .appendValue(ChronoField.YEAR_OF_ERA, 4, 10, SignStyle.NEVER)
+                .appendValue(ChronoField.YEAR, 4, 10, SignStyle.NEVER)
                 .appendLiteral('-')
                 .appendValue(ChronoField.MONTH_OF_YEAR, 2)
                 .appendLiteral('-')

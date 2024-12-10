@@ -50,6 +50,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static io.debezium.connector.opengauss.OpengaussConnectorConfig.LogicalDecoder.MPPDB_DECODING;
 import static java.lang.Math.toIntExact;
 
 /**
@@ -201,7 +202,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
         }
     }
 
-    private Set<TableId> determineCapturedTables() throws Exception {
+    private Set<TableId> determineCapturedTables() throws SQLException {
         Set<TableId> allTableIds = this.connect().readTableNames(pgConnection().getCatalog(), null, null, new String[]{ "TABLE" });
 
         Set<TableId> capturedTables = new HashSet<>();
@@ -418,15 +419,23 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
         }
     }
 
+    private PGReplicationStream startReplicationStream(final Lsn startLsn) throws SQLException {
+        PGReplicationStream s;
+        if (MPPDB_DECODING.getPostgresPluginName().equals(plugin.getPostgresPluginName())) {
+            s = startMppdbReplicationStream(startLsn);
+        } else {
+            s = startPgReplicationStream(startLsn, plugin.forceRds() ? messageDecoder::optionsWithoutMetadata
+                : messageDecoder::optionsWithMetadata);
+        }
+        return s;
+    }
+
     private ReplicationStream createReplicationStream(final Lsn startLsn, WalPositionLocator walPosition) throws SQLException, InterruptedException {
         PGReplicationStream s;
 
         try {
             try {
-                s = startPgReplicationStream(startLsn,
-                        plugin.forceRds()
-                                ? messageDecoder::optionsWithoutMetadata
-                                : messageDecoder::optionsWithMetadata);
+                s = startReplicationStream(startLsn);
                 messageDecoder.setContainsMetadata(plugin.forceRds() ? false : true);
             }
             catch (PSQLException e) {
@@ -437,8 +446,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
                 if (useTemporarySlot()) {
                     initReplicationSlot();
                 }
-
-                s = startPgReplicationStream(startLsn, plugin.forceRds() ? messageDecoder::optionsWithoutMetadata : messageDecoder::optionsWithMetadata);
+                s = startReplicationStream(startLsn);
                 messageDecoder.setContainsMetadata(plugin.forceRds() ? false : true);
             }
         }
@@ -453,7 +461,11 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
                     initReplicationSlot();
                 }
 
-                s = startPgReplicationStream(startLsn, messageDecoder::optionsWithoutMetadata);
+                if (MPPDB_DECODING.getPostgresPluginName().equals(plugin.getPostgresPluginName())) {
+                    s = startMppdbReplicationStream(startLsn);
+                } else {
+                    s = startPgReplicationStream(startLsn, messageDecoder::optionsWithoutMetadata);
+                }
                 messageDecoder.setContainsMetadata(false);
             }
             else if (e.getMessage().matches("(?s)ERROR: requested WAL segment .* has already been removed.*")) {
@@ -611,6 +623,49 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
         }
         catch (Exception e) {
         }
+        stream.forceUpdateStatus();
+        return stream;
+    }
+
+    private String getWhiteList() {
+        List<String> schemaList = new ArrayList<>();
+        try (Statement stmt = connection.createStatement();
+            ResultSet rs = stmt.executeQuery("SELECT pn.oid AS schema_oid, iss.catalog_name, iss.schema_owner, "
+                + "iss.schema_name FROM information_schema.schemata iss "
+                + "INNER JOIN pg_namespace pn ON pn.nspname = iss.schema_name "
+                + "where iss.schema_name = 'public' or pn.oid > 16384;")) {
+            Set<TableId> tablesToCapture = determineCapturedTables();
+            while (rs.next()) {
+                schemaList.add(rs.getString("schema_name"));
+            }
+            Set<TableId> newTablesToCapture = tablesToCapture.stream().filter(o -> schemaList.contains(o.schema()))
+                .collect(Collectors.toSet());
+            return newTablesToCapture.stream().map(TableId::toString).collect(Collectors.joining(","));
+        } catch (SQLException e) {
+            LOGGER.error("getWhiteList is error");
+            return "";
+        }
+    }
+
+    private PGReplicationStream startMppdbReplicationStream(final Lsn lsn)
+            throws SQLException {
+        assert lsn != null;
+        PGReplicationStream stream = pgConnection()
+                .getReplicationAPI()
+                .replicationStream()
+                .logical()
+                .withSlotName(slotName)
+                .withSlotOption("include-xids", false)
+                .withSlotOption("skip-empty-xacts", true)
+                .withStartPosition(lsn.asLogSequenceNumber())
+                .withSlotOption("parallel-decode-num", originalConfig.parallelDecodeNum()) // 1~20
+                .withSlotOption("white-table-list", getWhiteList()) // schema.table
+                .withSlotOption("standby-connection", false)
+                .withSlotOption("decode-style", "b") // json、b、t
+                .withSlotOption("sending-batch", 0) // 1-batch,0-single
+                .withSlotOption("max-txn-in-memory", originalConfig.maxTxnInMemory())
+                .withSlotOption("max-reorderbuffer-in-memory", originalConfig.maxReorderbufferInMemory())
+                .start();
         stream.forceUpdateStatus();
         return stream;
     }
