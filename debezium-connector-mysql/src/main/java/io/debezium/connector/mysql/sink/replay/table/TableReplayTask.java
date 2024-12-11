@@ -499,6 +499,7 @@ public class TableReplayTask extends ReplayTask {
             }
             else {
                 freeBlock = false;
+                break;
             }
         }
         if (freeBlock && isWorkQueueBlock()) {
