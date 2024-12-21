@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import io.debezium.connector.mysql.sink.object.ColumnMetaData;
 import io.debezium.connector.mysql.sink.object.TableMetaData;
 import io.debezium.data.Envelope;
+import io.debezium.enums.ErrorCode;
 import io.debezium.util.Clock;
 
 /**
@@ -83,9 +84,9 @@ public class SqlTools {
                 }
             }
             catch (SQLException exception) {
-                LOGGER.error("Connection exception occurred");
+                LOGGER.error("{}Connection exception occurred.", ErrorCode.SQL_EXCEPTION);
             }
-            LOGGER.error("SQL exception occurred, the sql statement is " + sql);
+            LOGGER.error("{}SQL exception occurred, the sql statement is " + sql, ErrorCode.SQL_EXCEPTION);
         }
         long currentTimeMillis = Clock.system().currentTimeInMillis();
         if (columnMetaDataList.isEmpty() && (currentTimeMillis - timeMillis) < ATTEMPTS) {
@@ -136,7 +137,7 @@ public class SqlTools {
             return tableList;
         }
         catch (SQLException e) {
-            LOGGER.error("SQL exception occurred in sql tools", e);
+            LOGGER.error("{}SQL exception occurred in sql tools", ErrorCode.SQL_EXCEPTION, e);
         }
         return new ArrayList<>(0);
     }
@@ -156,7 +157,7 @@ public class SqlTools {
             }
         }
         catch (SQLException e) {
-            LOGGER.error("SQL exception occurred in sql tools", e);
+            LOGGER.error("{}SQL exception occurred in sql tools", ErrorCode.SQL_EXCEPTION, e);
         }
         return new String[0];
     }
@@ -180,7 +181,8 @@ public class SqlTools {
             }
         }
         catch (SQLException exp) {
-            LOGGER.error("SQL exception occurred in get sql compatibility and dolphin extension", exp);
+            LOGGER.error("{}SQL exception occurred in get sql compatibility and dolphin extension",
+                ErrorCode.SQL_EXCEPTION, exp);
         }
     }
 
@@ -332,7 +334,7 @@ public class SqlTools {
             }
         }
         catch (SQLException exp) {
-            LOGGER.error("Fail to get current xlog position.");
+            LOGGER.error("{}Fail to get current xlog position.", ErrorCode.SQL_EXCEPTION);
         }
         return xlogPosition;
     }
@@ -403,7 +405,7 @@ public class SqlTools {
             }
         }
         catch (SQLException exception) {
-            LOGGER.error("SQL exception occurred, the sql statement is " + sql);
+            LOGGER.error("{}SQL exception occurred, the sql statement is {}", ErrorCode.SQL_EXCEPTION, sql);
         }
         return isExistSql;
     }
@@ -426,8 +428,8 @@ public class SqlTools {
                 connection.close();
             }
             catch (SQLException exp) {
-                LOGGER.error("Unexpected error while closing the connection, the exception message is {}",
-                        exp.getMessage());
+                LOGGER.error("{}Unexpected error while closing the connection, the exception message is {}",
+                        ErrorCode.DB_CONNECTION_EXCEPTION, exp.getMessage());
             }
             finally {
                 connection = null;

@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import io.debezium.enums.ErrorCode;
 import io.debezium.relational.TableId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,7 +68,7 @@ public abstract class AbstractSnapshotChangeEventSource<P extends Partition, O e
             ctx = prepare(partition);
         }
         catch (Exception e) {
-            LOGGER.error("Failed to initialize snapshot context.", e);
+            LOGGER.error("{}Failed to initialize snapshot context.", ErrorCode.MESSAGE_HANDLE_EXCEPTION, e);
             throw new RuntimeException(e);
         }
 

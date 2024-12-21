@@ -41,6 +41,7 @@ import io.debezium.connector.opengauss.snapshot.InitialOnlySnapshotter;
 import io.debezium.connector.opengauss.snapshot.InitialSnapshotter;
 import io.debezium.connector.opengauss.snapshot.NeverSnapshotter;
 import io.debezium.connector.opengauss.spi.Snapshotter;
+import io.debezium.enums.ErrorCode;
 import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.relational.ColumnFilterMode;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
@@ -1577,7 +1578,7 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
             connection = DriverManager.getConnection(sourceURL, user(), password());
             alertWalSenderTimeOut(connection);
         } catch(Exception exp) {
-            LOGGER.error("Create openGauss connection failed.", exp);
+            LOGGER.error("{}Create openGauss connection failed.", ErrorCode.DB_CONNECTION_EXCEPTION, exp);
         }
         return connection;
     }
@@ -1609,7 +1610,7 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
                 statement.execute("alter system set wal_receiver_timeout to '" + walSenderTimeout + "';");
             }
         } catch (SQLException e) {
-            LOGGER.error("GUC parameter: wal_sender_timeout, setting failed. ", e);
+            LOGGER.error("{}GUC parameter: wal_sender_timeout, setting failed.", ErrorCode.SQL_EXCEPTION, e);
         }
     }
 
@@ -1752,7 +1753,7 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
             statement.execute("alter system set wal_sender_timeout to '" + originalWalSenderTimeout + "';");
             statement.execute("alter system set wal_receiver_timeout to '" + originalWalReceiverTimeout + "';");
         } catch (SQLException exp) {
-            LOGGER.error("Restore to original wal_sender_timeout failed.", exp);
+            LOGGER.error("{}Restore to original wal_sender_timeout failed.", ErrorCode.SQL_EXCEPTION, exp);
         }
     }
 }

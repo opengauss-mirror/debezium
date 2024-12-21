@@ -22,6 +22,7 @@ import java.util.concurrent.TimeoutException;
 import com.google.common.base.Strings;
 import io.debezium.config.Configuration;
 import io.debezium.config.SinkConnectorConfig;
+import io.debezium.enums.ErrorCode;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
 import io.debezium.util.Collect;
 import org.apache.kafka.clients.admin.AdminClient;
@@ -348,7 +349,7 @@ public class KafkaClient {
                 LOGGER.info("Wait for source config ...");
                 Thread.sleep(1000);
             } catch (InterruptedException e) {
-                LOGGER.error("Interrupted exception occurred", e);
+                LOGGER.error("{}Interrupted exception occurred", ErrorCode.THREAD_INTERRUPTED_EXCEPTION, e);
             }
             result = readConfig();
         }

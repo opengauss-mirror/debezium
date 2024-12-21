@@ -22,6 +22,7 @@ import io.debezium.connector.kafka.KafkaClient;
 import io.debezium.connector.mysql.MySqlConnection.MySqlConnectionConfiguration;
 import io.debezium.connector.mysql.MySqlConnectorConfig.BigIntUnsignedHandlingMode;
 import io.debezium.connector.mysql.MySqlConnectorConfig.SnapshotMode;
+import io.debezium.enums.ErrorCode;
 import io.debezium.heartbeat.Heartbeat;
 import io.debezium.jdbc.JdbcValueConverters.BigIntUnsignedMode;
 import io.debezium.jdbc.JdbcValueConverters.DecimalMode;
@@ -233,7 +234,7 @@ public class MySqlConnectorTask extends BaseSourceTask<MySqlPartition, MySqlOffs
             }
         }
         catch (SQLException e) {
-            LOGGER.error("Exception while closing JDBC connection", e);
+            LOGGER.error("{}Exception while closing JDBC connection", ErrorCode.SQL_EXCEPTION, e);
         }
 
         try {
@@ -242,7 +243,7 @@ public class MySqlConnectorTask extends BaseSourceTask<MySqlPartition, MySqlOffs
             }
         }
         catch (SQLException e) {
-            LOGGER.error("Exception while closing heartbeatConnection connection", e);
+            LOGGER.error("{}Exception while closing heartbeatConnection connection", ErrorCode.SQL_EXCEPTION, e);
         }
 
         if (schema != null) {

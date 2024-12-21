@@ -28,6 +28,7 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.debezium.ThreadExceptionHandler;
 import io.debezium.connector.mysql.process.MysqlProcessCommitter;
 import io.debezium.connector.mysql.process.MysqlSinkProcessInfo;
 import io.debezium.connector.mysql.sink.object.ConnectionInfo;
@@ -41,6 +42,7 @@ import io.debezium.connector.mysql.sink.replay.ReplayTask;
 import io.debezium.connector.mysql.sink.task.MySqlSinkConnectorConfig;
 import io.debezium.connector.mysql.sink.util.SqlTools;
 import io.debezium.data.Envelope;
+import io.debezium.enums.ErrorCode;
 
 /**
  * Description: JdbcDbWriter
@@ -156,7 +158,7 @@ public class TableReplayTask extends ReplayTask {
             closeConnection();
         }
         catch (InterruptedException exp) {
-            LOGGER.error("Interrupt exception");
+            LOGGER.error("{}Interrupt exception", ErrorCode.THREAD_INTERRUPTED_EXCEPTION);
         }
     }
 
@@ -167,8 +169,8 @@ public class TableReplayTask extends ReplayTask {
                     workThread.getConnection().close();
                 }
                 catch (SQLException exp) {
-                    LOGGER.error("Unexpected error while closing the connection, the exception message is {}",
-                            exp.getMessage());
+                    LOGGER.error("{}Unexpected error while closing the connection, the exception message is {}",
+                            ErrorCode.SQL_EXCEPTION, exp.getMessage());
                 }
                 finally {
                     workThread.setConnection(null);
@@ -199,6 +201,7 @@ public class TableReplayTask extends ReplayTask {
      * parse record
      */
     public void parseRecord() {
+        Thread.currentThread().setUncaughtExceptionHandler(new ThreadExceptionHandler());
         SinkRecord sinkRecord = null;
         Struct value = null;
         while (!isStop) {
@@ -206,7 +209,7 @@ public class TableReplayTask extends ReplayTask {
                 sinkRecord = sinkQueue.take();
             }
             catch (InterruptedException e) {
-                LOGGER.error("Interrupted exception occurred", e);
+                LOGGER.error("{}Interrupted exception occurred", ErrorCode.THREAD_INTERRUPTED_EXCEPTION, e);
             }
             assert sinkRecord != null;
             if (addedQueueMap.containsKey(sinkRecord.kafkaOffset())) {
@@ -250,8 +253,8 @@ public class TableReplayTask extends ReplayTask {
         }
         addedQueueMap.put(sinkRecord.kafkaOffset(), gtid);
         if (!schemaMappingMap.containsKey(schemaName)) {
-            LOGGER.error("schema mapping of source schema {} is not initialized, "
-                    + "this ddl will be ignored.", schemaName);
+            LOGGER.error("{}schema mapping of source schema {} is not initialized, "
+                    + "this ddl will be ignored.", ErrorCode.INCORRECT_CONFIGURATION, schemaName);
             noSchemaCount++;
             return;
         }

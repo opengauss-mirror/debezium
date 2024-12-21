@@ -13,6 +13,8 @@ import io.debezium.connector.mysql.sink.object.SinkRecordObject;
 import io.debezium.connector.mysql.sink.object.SourceField;
 import io.debezium.connector.mysql.sink.task.MySqlSinkConnectorConfig;
 import io.debezium.connector.mysql.sink.util.SqlTools;
+import io.debezium.enums.ErrorCode;
+
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -159,7 +161,7 @@ public class ReplayTask {
             bw.write("xlog.location=" + xlogResult);
         }
         catch (IOException exp) {
-            LOGGER.error("Fail to write xlog location {}", xlogResult);
+            LOGGER.error("{}Fail to write xlog location {}", ErrorCode.IO_EXCEPTION, xlogResult);
         }
         LOGGER.info("Online migration from mysql to openGauss has gracefully stopped and current xlog"
                 + "location in openGauss is {}", xlogResult);
@@ -344,8 +346,8 @@ public class ReplayTask {
                             SqlTools.addingQuote(SqlTools.removeBackQuote(targets[1])));
                 }
                 else {
-                    LOGGER.error("schema mapping of source schema {} is not initialized, "
-                            + "this ddl will be ignored.", oldSchema);
+                    LOGGER.error("{}schema mapping of source schema {} is not initialized, "
+                            + "this ddl will be ignored.", ErrorCode.INCORRECT_CONFIGURATION, oldSchema);
                     noSchemaCount++;
                     return "";
                 }
@@ -405,7 +407,7 @@ public class ReplayTask {
                 offset++;
             }
             catch (InterruptedException exp) {
-                LOGGER.error("Interrupted exception occurred", exp);
+                LOGGER.error("{}Interrupted exception occurred", ErrorCode.THREAD_INTERRUPTED_EXCEPTION, exp);
             }
         }
         if (endOffset.equals(INVALID_VALUE)) {

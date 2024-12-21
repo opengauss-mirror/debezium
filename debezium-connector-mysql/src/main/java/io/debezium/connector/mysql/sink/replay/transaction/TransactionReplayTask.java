@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 
 import com.mysql.cj.jdbc.AbandonedConnectionCleanupThread;
 
+import io.debezium.ThreadExceptionHandler;
 import io.debezium.connector.mysql.process.MysqlProcessCommitter;
 import io.debezium.connector.mysql.process.MysqlSinkProcessInfo;
 import io.debezium.connector.mysql.sink.object.ConnectionInfo;
@@ -43,6 +44,7 @@ import io.debezium.connector.mysql.sink.replay.ReplayTask;
 import io.debezium.connector.mysql.sink.task.MySqlSinkConnectorConfig;
 import io.debezium.connector.mysql.sink.util.SqlTools;
 import io.debezium.data.Envelope;
+import io.debezium.enums.ErrorCode;
 
 /**
  * Description: JdbcDbWriter
@@ -120,7 +122,7 @@ public class TransactionReplayTask extends ReplayTask {
             writeXlogResult();
         }
         catch (InterruptedException e) {
-            LOGGER.error("Interrupt exception");
+            LOGGER.error("{}Interrupt exception", ErrorCode.THREAD_INTERRUPTED_EXCEPTION);
         }
     }
 
@@ -209,6 +211,7 @@ public class TransactionReplayTask extends ReplayTask {
      * parse record
      */
     public void parseRecord() {
+        Thread.currentThread().setUncaughtExceptionHandler(new ThreadExceptionHandler());
         int skipNum = 0;
         Struct value;
         SinkRecord sinkRecord = null;
@@ -220,7 +223,7 @@ public class TransactionReplayTask extends ReplayTask {
                 sinkRecord = sinkQueue.take();
             }
             catch (InterruptedException e) {
-                LOGGER.error("Interrupted exception occurred", e);
+                LOGGER.error("{}Interrupted exception occurred", ErrorCode.THREAD_INTERRUPTED_EXCEPTION, e);
             }
             if (addedQueueMap.containsKey(sinkRecord != null ? sinkRecord.kafkaOffset() : -1L)) {
                 continue;
@@ -267,16 +270,16 @@ public class TransactionReplayTask extends ReplayTask {
                             constructDml(oneSinkRecordObject);
                         }
                         if (!isConnection) {
-                            LOGGER.error("There is a connection problem with the openGauss,"
-                                    + " check the database status or connection");
+                            LOGGER.error("{}There is a connection problem with the openGauss,"
+                                    + " check the database status or connection", ErrorCode.DB_CONNECTION_EXCEPTION);
                             MysqlSinkProcessInfo.SINK_PROCESS_INFO.autoIncreaseExtractCount();
                             count++;
                             transactionDispatcher.addFailTransaction();
                         }
                     }
                     catch (Exception e) {
-                        LOGGER.error("The connector caught an exception that cannot be covered,"
-                                + " the transaction constructed failed.", e);
+                        LOGGER.error("{}The connector caught an exception that cannot be covered,"
+                                + " the transaction constructed failed.", ErrorCode.UNKNOWN, e);
                         MysqlSinkProcessInfo.SINK_PROCESS_INFO.autoIncreaseExtractCount();
                         count++;
                         sqlList.clear();
@@ -368,7 +371,7 @@ public class TransactionReplayTask extends ReplayTask {
                 }
             }
             catch (InterruptedException exp) {
-                LOGGER.error("Interrupted exception occurred", exp);
+                LOGGER.error("{}Interrupted exception occurred", ErrorCode.THREAD_INTERRUPTED_EXCEPTION, exp);
             }
         }
         else if (!tableMetaDataMap.containsKey(tableFullName)) {

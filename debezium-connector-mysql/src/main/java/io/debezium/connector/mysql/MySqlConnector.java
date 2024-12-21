@@ -21,6 +21,7 @@ import io.debezium.annotation.Immutable;
 import io.debezium.config.Configuration;
 import io.debezium.connector.common.RelationalBaseSourceConnector;
 import io.debezium.connector.mysql.MySqlConnection.MySqlConnectionConfiguration;
+import io.debezium.enums.ErrorCode;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
 import org.slf4j.bridge.SLF4JBridgeHandler;
 
@@ -103,12 +104,13 @@ public class MySqlConnector extends RelationalBaseSourceConnector {
                 LOGGER.info("Successfully tested connection for {} with user '{}'", connection.connectionString(), connectionConfig.username());
             }
             catch (SQLException e) {
-                LOGGER.error("Failed testing connection for {} with user '{}'", connection.connectionString(), connectionConfig.username(), e);
+                LOGGER.error("{}Failed testing connection for {} with user '{}'", ErrorCode.SQL_EXCEPTION,
+                    connection.connectionString(), connectionConfig.username(), e);
                 hostnameValue.addErrorMessage("Unable to connect: " + e.getMessage());
             }
         }
         catch (SQLException e) {
-            LOGGER.error("Unexpected error shutting down the database connection", e);
+            LOGGER.error("{}Unexpected error shutting down the database connection", ErrorCode.SQL_EXCEPTION, e);
         }
     }
 

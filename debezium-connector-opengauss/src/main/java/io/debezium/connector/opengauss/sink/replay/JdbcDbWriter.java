@@ -5,6 +5,7 @@
  */
 package io.debezium.connector.opengauss.sink.replay;
 
+import io.debezium.ThreadExceptionHandler;
 import io.debezium.connector.breakpoint.BreakPointRecord;
 import io.debezium.connector.opengauss.process.OgFullSinkProcessInfo;
 import io.debezium.connector.opengauss.process.OgFullSourceProcessInfo;
@@ -24,6 +25,8 @@ import io.debezium.connector.opengauss.sink.utils.OpengaussSqlTools;
 import io.debezium.connector.opengauss.sink.utils.OracleSqlTools;
 import io.debezium.connector.opengauss.sink.utils.SqlTools;
 import io.debezium.data.Envelope;
+import io.debezium.enums.ErrorCode;
+
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
@@ -146,7 +149,7 @@ public class JdbcDbWriter {
             TimeUnit.SECONDS.sleep(TASK_GRACEFUL_SHUTDOWN_TIME - 1);
             closeConnection();
         } catch (InterruptedException exp) {
-            LOGGER.error("Interrupt exception");
+            LOGGER.error("{}Interrupt exception", ErrorCode.THREAD_INTERRUPTED_EXCEPTION);
         }
     }
 
@@ -156,8 +159,8 @@ public class JdbcDbWriter {
                 try {
                     workThread.getConnection().close();
                 } catch (SQLException exp) {
-                    LOGGER.error("Unexpected error while closing the connection, the exception message is {}",
-                            exp.getMessage());
+                    LOGGER.error("{}Unexpected error while closing the connection, the exception message is {}",
+                            ErrorCode.DB_CONNECTION_EXCEPTION, exp.getMessage());
                 } finally {
                     workThread.setConnection(null);
                 }
@@ -169,7 +172,8 @@ public class JdbcDbWriter {
         String[] pairs = schemaMappings.split(";");
         for (String pair : pairs) {
             if (pair == null || " ".equals(pair)) {
-                LOGGER.error("the format of schema.mappings is error:" + schemaMappings);
+                LOGGER.error("{}The format of schema.mappings is error:{}", ErrorCode.INCORRECT_CONFIGURATION,
+                    schemaMappings);
                 continue;
             }
             String[] schema = pair.split(":");
@@ -231,13 +235,14 @@ public class JdbcDbWriter {
      * parse record
      */
     public void parseRecord() {
+        Thread.currentThread().setUncaughtExceptionHandler(new ThreadExceptionHandler());
         SinkRecord sinkRecord = null;
         Struct value = null;
         while (!isStop) {
             try {
                 sinkRecord = sinkQueue.take();
             } catch (InterruptedException e) {
-                LOGGER.error("Interrupted exception occurred", e);
+                LOGGER.error("{}Interrupted exception occurred", ErrorCode.THREAD_INTERRUPTED_EXCEPTION, e);
             }
             assert sinkRecord != null;
             if (addedQueueMap.containsKey(sinkRecord.kafkaOffset())) {
@@ -375,7 +380,7 @@ public class JdbcDbWriter {
                 }
                 offset++;
             } catch (InterruptedException exp) {
-                LOGGER.error("Interrupted exception occurred", exp);
+                LOGGER.error("{}Interrupted exception occurred", ErrorCode.THREAD_INTERRUPTED_EXCEPTION, exp);
             }
         }
         if (endOffset == -1L) {
@@ -651,7 +656,8 @@ public class JdbcDbWriter {
                 try {
                     Thread.sleep(1000);
                 } catch (InterruptedException e) {
-                    LOGGER.error("Interrupted exception occurred while thread sleeping", e);
+                    LOGGER.error("{}Interrupted exception occurred while thread sleeping",
+                        ErrorCode.THREAD_INTERRUPTED_EXCEPTION, e);
                 }
             }
         });

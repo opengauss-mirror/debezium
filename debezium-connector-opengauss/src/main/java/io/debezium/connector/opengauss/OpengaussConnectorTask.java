@@ -35,6 +35,7 @@ import io.debezium.connector.opengauss.connection.ReplicationConnection;
 import io.debezium.connector.opengauss.spi.SlotCreationResult;
 import io.debezium.connector.opengauss.spi.SlotState;
 import io.debezium.connector.opengauss.spi.Snapshotter;
+import io.debezium.enums.ErrorCode;
 import io.debezium.heartbeat.Heartbeat;
 import io.debezium.pipeline.ChangeEventSourceCoordinator;
 import io.debezium.pipeline.DataChangeEvent;
@@ -264,7 +265,8 @@ public class OpengaussConnectorTask extends BaseSourceTask<OpengaussPartition, O
             try {
                 Thread.sleep(reconnectionTimeInterval);
             } catch (InterruptedException ex) {
-                LOGGER.error("Thread sleep failed. Error: {}", ex.getMessage());
+                LOGGER.error("{}Thread sleep failed. Error: {}", ErrorCode.THREAD_INTERRUPTED_EXCEPTION,
+                    ex.getMessage());
             }
 
             reconnectionNumber--;
@@ -284,7 +286,8 @@ public class OpengaussConnectorTask extends BaseSourceTask<OpengaussPartition, O
             catch (SQLException ex) {
                 retryCount++;
                 if (retryCount > maxRetries) {
-                    LOGGER.error("Too many errors connecting to server. All {} retries failed.", maxRetries);
+                    LOGGER.error("{}Too many errors connecting to server. All {} retries failed.",
+                        ErrorCode.DB_CONNECTION_EXCEPTION, maxRetries);
                     throw new ConnectException(ex);
                 }
 

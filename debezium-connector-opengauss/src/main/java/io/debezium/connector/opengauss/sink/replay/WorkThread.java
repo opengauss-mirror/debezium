@@ -7,6 +7,8 @@ package io.debezium.connector.opengauss.sink.replay;
 
 import com.mysql.cj.jdbc.ClientPreparedStatement;
 import com.mysql.cj.jdbc.exceptions.CommunicationsException;
+
+import io.debezium.ThreadExceptionHandler;
 import io.debezium.connector.breakpoint.BreakPointObject;
 import io.debezium.connector.breakpoint.BreakPointRecord;
 import io.debezium.connector.opengauss.process.OgSinkProcessInfo;
@@ -17,6 +19,8 @@ import io.debezium.connector.opengauss.sink.object.ConnectionInfo;
 import io.debezium.connector.opengauss.sink.object.DmlOperation;
 import io.debezium.connector.opengauss.sink.object.TableMetaData;
 import io.debezium.connector.opengauss.sink.utils.SqlTools;
+import io.debezium.enums.ErrorCode;
+
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
@@ -113,12 +117,13 @@ public class WorkThread extends Thread {
 
     @Override
     public void run() {
+        Thread.currentThread().setUncaughtExceptionHandler(new ThreadExceptionHandler());
         SinkRecordObject sinkRecordObject = null;
         connection = createConnection();
         try {
             statement = connection.createStatement();
         } catch (SQLException exp) {
-            LOGGER.error("SQL exception occurred in work thread", exp);
+            LOGGER.error("{}SQL exception occurred in work thread", ErrorCode.SQL_EXCEPTION, exp);
         }
         String sql = null;
         while (!isStop) {
@@ -157,8 +162,9 @@ public class WorkThread extends Thread {
                     oldTableMap.remove(schemaMappingMap.get(sinkRecordObject.getSourceField()
                             .getSchema()) + "." + sinkRecordObject.getSourceField().getTable());
                 }
-                LOGGER.error("DataException occurred because of invalid field, possible reason is tables "
-                        + "of OpenGauss and MySQL have same table name but different table structure.", exp);
+                LOGGER.error("{}DataException occurred because of invalid field, possible reason is tables "
+                        + "of OpenGauss and MySQL have same table name but different table structure.",
+                    ErrorCode.DATA_CONVERT_EXCEPTION, exp);
             }
         }
     }
@@ -194,8 +200,8 @@ public class WorkThread extends Thread {
         String sql = "";
         if (tableMetaData == null && !sqlTools.getIsConnection()) {
             isConnection = false;
-            LOGGER.error("There is a connection problem with the mysql,"
-                    + " check the database status or connection");
+            LOGGER.error("{}There is a connection problem with the mysql,"
+                    + " check the database status or connection", ErrorCode.DB_CONNECTION_EXCEPTION);
             return sql;
         }
         switch (operation) {
@@ -271,7 +277,7 @@ public class WorkThread extends Thread {
                     clientPreparedStatement = preparedStatement.unwrap(ClientPreparedStatement.class);
                 }
             } catch (SQLException e) {
-                LOGGER.error("workthread exception", e);
+                LOGGER.error("{}workthread exception", ErrorCode.SQL_EXCEPTION, e);
             }
         }
         List<String> lineList = new ArrayList<>();
@@ -281,7 +287,7 @@ public class WorkThread extends Thread {
                     .flatMap(line -> Arrays.stream(line.split(System.lineSeparator())))
                     .collect(Collectors.toList());
         } catch (IOException e) {
-            LOGGER.error("load csv file failure IO exception", e);
+            LOGGER.error("{}load csv file failure IO exception", ErrorCode.IO_EXCEPTION, e);
         }
         Struct after = dmlOperation.getAfter();
         List<ColumnMetaData> columnList = getColumnList(tableFullName, tableMetaData, columnString);
@@ -322,7 +328,7 @@ public class WorkThread extends Thread {
             savedBreakPointInfo(sinkRecordObject, true);
             clearCsvFile(path);
         } catch (CommunicationsException exp) {
-            LOGGER.error("statement closed unexpectedly.");
+            LOGGER.error("{}statement closed unexpectedly.", ErrorCode.DB_CONNECTION_EXCEPTION);
             retryLoad(sql, inputStream, sinkRecordObject);
             if (isConnection) {
                 processRecordMap.put(tableName, count + list.size());
@@ -337,7 +343,7 @@ public class WorkThread extends Thread {
             try {
                 inputStream.close();
             } catch (IOException e) {
-                LOGGER.error("inputStream close error", e);
+                LOGGER.error("{}inputStream close error", ErrorCode.IO_EXCEPTION, e);
             }
         }
     }
@@ -360,7 +366,7 @@ public class WorkThread extends Thread {
             if (!connectionInfo.checkConnectionStatus(connection)) {
                 return;
             }
-            LOGGER.error("SQL exception occurred in work thread.", e);
+            LOGGER.error("{}SQL exception occurred in work thread.", ErrorCode.IO_EXCEPTION, e);
         }
     }
 
@@ -443,9 +449,9 @@ public class WorkThread extends Thread {
                 + System.lineSeparator()
                 + sql
                 + System.lineSeparator());
-        LOGGER.error("SQL exception occurred in data {}", data);
-        LOGGER.error("The error SQL statement executed is: {}", sql);
-        LOGGER.error("the cause of the exception is {}", exp.getMessage());
+        LOGGER.error("{}SQL exception occurred in data {}", ErrorCode.SQL_EXCEPTION, data);
+        LOGGER.error("{}The error SQL statement executed is: {}", ErrorCode.SQL_EXCEPTION, sql);
+        LOGGER.error("{}The cause of the exception is {}", ErrorCode.SQL_EXCEPTION, exp.getMessage());
     }
 
     /**

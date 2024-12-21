@@ -16,6 +16,7 @@ import io.debezium.connector.opengauss.process.TableInfo;
 import io.debezium.connector.opengauss.spi.SlotCreationResult;
 import io.debezium.connector.opengauss.spi.SlotState;
 import io.debezium.connector.opengauss.spi.Snapshotter;
+import io.debezium.enums.ErrorCode;
 import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.source.spi.SnapshotProgressListener;
 import io.debezium.pipeline.spi.ChangeRecordEmitter;
@@ -579,11 +580,11 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
             }
             connection.commit();
         } catch (SQLException e) {
-            LOGGER.error("Snapshotting of table " + table.id() + " failed", e);
+            LOGGER.error("{}Snapshotting of table {} failed", ErrorCode.SQL_EXCEPTION, table.id(), e);
         } catch (IOException e) {
-            LOGGER.error("IOException", e);
+            LOGGER.error("{}IOException", ErrorCode.IO_EXCEPTION, e);
         } catch (InterruptedException e) {
-            LOGGER.error("InterruptedException", e);
+            LOGGER.error("{}InterruptedException", ErrorCode.THREAD_INTERRUPTED_EXCEPTION, e);
         }
     }
 
@@ -595,7 +596,7 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
                 releaseDataSnapshotLocks(snapshotContext);
                 LOGGER.info("UNLOCK TABLES.");
             } catch (Exception e) {
-                LOGGER.error("UNLOCK TABLES error", e);
+                LOGGER.error("{}UNLOCK TABLES error", ErrorCode.DB_CONNECTION_EXCEPTION, e);
             }
         }
     }

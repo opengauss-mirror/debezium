@@ -27,6 +27,7 @@ import io.debezium.annotation.SingleThreadAccess;
 import io.debezium.config.CommonConnectorConfig;
 import io.debezium.config.Configuration;
 import io.debezium.config.Field;
+import io.debezium.enums.ErrorCode;
 import io.debezium.pipeline.ChangeEventSourceCoordinator;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Offsets;
@@ -245,7 +246,7 @@ public abstract class BaseSourceTask<P extends Partition, O extends OffsetContex
             }
             catch (InterruptedException e) {
                 Thread.interrupted();
-                LOGGER.error("Interrupted while stopping coordinator", e);
+                LOGGER.error("{}Interrupted while stopping coordinator", ErrorCode.THREAD_INTERRUPTED_EXCEPTION, e);
                 throw new ConnectException("Interrupted while stopping coordinator, failing the task");
             }
 

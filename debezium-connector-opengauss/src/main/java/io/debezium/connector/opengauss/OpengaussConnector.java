@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import io.debezium.config.Configuration;
 import io.debezium.connector.common.RelationalBaseSourceConnector;
 import io.debezium.connector.opengauss.connection.OpengaussConnection;
+import io.debezium.enums.ErrorCode;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
 
 /**
@@ -98,7 +99,7 @@ public class OpengaussConnector extends RelationalBaseSourceConnector {
                         connection.singleResultMapper(rs -> rs.getString("wal_level"), "Could not fetch wal_level"));
                 if (!"logical".equals(walLevel)) {
                     final String errorMessage = "Postgres server wal_level property must be \"logical\" but is: " + walLevel;
-                    LOGGER.error(errorMessage);
+                    LOGGER.error("{}{}", ErrorCode.INCORRECT_CONFIGURATION, errorMessage);
                     hostnameValue.addErrorMessage(errorMessage);
                 }
                 // check user for LOGIN and REPLICATION roles
@@ -121,8 +122,8 @@ public class OpengaussConnector extends RelationalBaseSourceConnector {
                 }
             }
             catch (SQLException e) {
-                LOGGER.error("Failed testing connection for {} with user '{}'", connection.connectionString(),
-                        connection.username(), e);
+                LOGGER.error("{}Failed testing connection for {} with user '{}'", ErrorCode.SQL_EXCEPTION,
+                    connection.connectionString(), connection.username(), e);
                 hostnameValue.addErrorMessage("Error while validating connector config: " + e.getMessage());
             }
         }

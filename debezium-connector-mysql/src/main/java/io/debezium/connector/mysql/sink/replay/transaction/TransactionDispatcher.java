@@ -28,6 +28,7 @@ import io.debezium.connector.mysql.sink.object.ConnectionInfo;
 import io.debezium.connector.mysql.sink.object.TableMetaData;
 import io.debezium.connector.mysql.sink.object.Transaction;
 import io.debezium.connector.mysql.sink.util.SqlTools;
+import io.debezium.enums.ErrorCode;
 
 /**
  * Description: TransactionDispatcher class
@@ -337,7 +338,8 @@ public class TransactionDispatcher {
                     Thread.sleep(1000);
                 }
                 catch (InterruptedException e) {
-                    LOGGER.error("Interrupted exception occurred while thread sleeping", e);
+                    LOGGER.error("{}Interrupted exception occurred while thread sleeping",
+                        ErrorCode.THREAD_INTERRUPTED_EXCEPTION, e);
                 }
             }
         });
@@ -391,8 +393,9 @@ public class TransactionDispatcher {
                 Thread.currentThread().setName("timer-work-status");
                 for (int i = 0; i < threadList.size(); i++) {
                     if (!threadList.get(i).isAlive() && threadList.get(i).canUse()) {
-                        LOGGER.error("Total {} work thread, current work thread {} is dead, so doesn't use it any more.",
-                                threadList.size(), i);
+                        LOGGER.error(
+                            "{}Total {} work thread, current work thread {} is dead, so doesn't use it any more.",
+                            ErrorCode.THREAD_INTERRUPTED_EXCEPTION, threadList.size(), i);
                         threadList.get(i).setAlive(false);
                     }
                 }

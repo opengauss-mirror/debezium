@@ -6,6 +6,7 @@
 package io.debezium.connector.opengauss.sink.object;
 
 import io.debezium.connector.opengauss.sink.task.OpengaussSinkConnectorConfig;
+import io.debezium.enums.ErrorCode;
 import io.debezium.util.MigrationProcessController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -139,12 +140,12 @@ public class ConnectionInfo {
             if (connection.isValid(1)) {
                 return true;
             } else {
-                LOGGER.error("There is a connection problem with the mysql,"
-                        + " check the database status or connection");
+                LOGGER.error("{}There is a connection problem with the mysql,"
+                        + " check the database status or connection", ErrorCode.DB_CONNECTION_EXCEPTION);
                 return false;
             }
         } catch (SQLException exception) {
-            LOGGER.error("the cause of the exception is {}", exception.getMessage());
+            LOGGER.error("{}the cause of the exception is {}", ErrorCode.SQL_EXCEPTION, exception.getMessage());
         }
         return false;
     }
@@ -165,7 +166,7 @@ public class ConnectionInfo {
             ps.execute();
         }
         catch (ClassNotFoundException | SQLException exp) {
-            LOGGER.error("Create openGauss connection failed.", exp);
+            LOGGER.error("{}Create openGauss connection failed.", ErrorCode.DB_CONNECTION_EXCEPTION, exp);
         }
         return connection;
     }

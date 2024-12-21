@@ -10,6 +10,8 @@ import io.debezium.connector.opengauss.OpengaussConnectorConfig;
 import io.debezium.connector.opengauss.sink.task.OpengaussSinkConnectorConfig;
 import io.debezium.connector.process.BaseProcessCommitter;
 import io.debezium.connector.process.BaseSourceProcessInfo;
+import io.debezium.enums.ErrorCode;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -141,7 +143,7 @@ public class OgProcessCommitter extends BaseProcessCommitter {
                 return JSON.parseObject(list.get(0), OgFullSourceProcessInfo.class);
             }
         } catch (IOException e) {
-            LOGGER.error("Progress report get source file failure.", e);
+            LOGGER.error("{}Progress report get source file failure.", ErrorCode.IO_EXCEPTION, e);
         }
         return new OgFullSourceProcessInfo();
     }
@@ -227,7 +229,8 @@ public class OgProcessCommitter extends BaseProcessCommitter {
                 try {
                     Thread.sleep(1000);
                 } catch (InterruptedException exp) {
-                    LOGGER.error("Interrupted exception occurred while thread sleeping", exp);
+                    LOGGER.error("{}Interrupted exception occurred while thread sleeping",
+                        ErrorCode.THREAD_INTERRUPTED_EXCEPTION, exp);
                 }
                 outputCreateCountInfo(filePath + CREATE_COUNT_INFO_NAME, sourceProcessInfo.getCreateCount()
                         - sourceProcessInfo.getSkippedExcludeCount());

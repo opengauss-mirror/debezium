@@ -9,6 +9,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import io.debezium.connector.opengauss.OpengaussType;
+import io.debezium.enums.ErrorCode;
+
 import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,7 +54,8 @@ public abstract class AbstractReplicationMessageColumn implements ReplicationMes
             this.optional = optional;
             Matcher m = TYPE_PATTERN.matcher(typeWithModifiers);
             if (!m.matches()) {
-                LOGGER.error("Failed to parse columnType for {} '{}'", columnName, typeWithModifiers);
+                LOGGER.error("{}Failed to parse columnType for {} '{}'", ErrorCode.DATA_CONVERT_EXCEPTION, columnName,
+                    typeWithModifiers);
                 throw new ConnectException(String.format("Failed to parse columnType '%s' for column %s", typeWithModifiers, columnName));
             }
 

@@ -45,6 +45,7 @@ import io.debezium.annotation.Immutable;
 import io.debezium.config.CommonConnectorConfig.BinaryHandlingMode;
 import io.debezium.connector.mysql.antlr.MySqlAntlrDdlParser;
 import io.debezium.data.Json;
+import io.debezium.enums.ErrorCode;
 import io.debezium.jdbc.JdbcValueConverters;
 import io.debezium.jdbc.TemporalPrecisionMode;
 import io.debezium.relational.Column;
@@ -908,7 +909,10 @@ public class MySqlValueConverters extends JdbcValueConverters {
                 sb = (StringBuilder) field.get(this);
                 return sb;
             } catch (NoSuchFieldException | IllegalAccessException e) {
-                LOGGER.error("An exception occurred when the subclass obtained the private properties of the parent class through reflection.");
+                LOGGER.error(
+                    "{}An exception occurred when the subclass obtained the private properties of the parent class "
+                        + "through reflection.",
+                    ErrorCode.DATA_CONVERT_EXCEPTION);
             }
             return new StringBuilder();
         }

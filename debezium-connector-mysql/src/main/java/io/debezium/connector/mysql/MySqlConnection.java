@@ -29,6 +29,7 @@ import io.debezium.config.Configuration.Builder;
 import io.debezium.config.Field;
 import io.debezium.connector.mysql.MySqlConnectorConfig.SecureConnectionMode;
 import io.debezium.connector.mysql.legacy.MySqlJdbcContext.DatabaseLocales;
+import io.debezium.enums.ErrorCode;
 import io.debezium.jdbc.JdbcConnection;
 import io.debezium.relational.Column;
 import io.debezium.relational.Table;
@@ -100,7 +101,7 @@ public class MySqlConnection extends JdbcConnection {
         try (Statement stmt = conn.createStatement()) {
             stmt.execute("SET SESSION wait_timeout = " + connectionConfig.waitTimeout());
         } catch (SQLException exp) {
-            LOGGER.error("SQL Exception occurred when set session parameter.");
+            LOGGER.error("{}SQL Exception occurred when set session parameter.", ErrorCode.SQL_EXCEPTION);
         }
     }
 

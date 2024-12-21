@@ -77,6 +77,7 @@ import io.debezium.connector.mysql.sink.event.MyGtidEventData;
 import io.debezium.connector.mysql.sink.event.MyGtidEventDataDeserializer;
 import io.debezium.connector.process.BaseSourceProcessInfo;
 import io.debezium.data.Envelope.Operation;
+import io.debezium.enums.ErrorCode;
 import io.debezium.function.BlockingConsumer;
 import io.debezium.pipeline.ErrorHandler;
 import io.debezium.pipeline.EventDispatcher;
@@ -438,9 +439,10 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
 
             // logging some additional context but not the exception itself, this will happen in handleEvent()
             if (eventDeserializationFailureHandlingMode == EventProcessingFailureHandlingMode.FAIL) {
-                LOGGER.error(
-                        "Error while deserializing binlog event at offset {}.{}" +
-                                "Use the mysqlbinlog tool to view the problematic event: mysqlbinlog --start-position={} --stop-position={} --verbose {}",
+                LOGGER.error("{}Error while deserializing binlog event at offset {}.{}"
+                        + "Use the mysqlbinlog tool to view the problematic event: mysqlbinlog --start-position={} "
+                        + "--stop-position={} --verbose {}",
+                        ErrorCode.BINLOG_PARSE_EXCEPTION,
                         offsetContext.getOffset(),
                         System.lineSeparator(),
                         eventHeader.getPosition(),
@@ -464,7 +466,7 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
             }
         }
         else {
-            LOGGER.error("Server incident: {}", event);
+            LOGGER.error("{}Server incident: {}", ErrorCode.DB_CONNECTION_EXCEPTION, event);
         }
     }
 
@@ -681,8 +683,12 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
 
             if (inconsistentSchemaHandlingMode == EventProcessingFailureHandlingMode.FAIL) {
                 LOGGER.error(
-                        "Encountered change event '{}' at offset {} for table {} whose schema isn't known to this connector. One possible cause is an incomplete database history topic. Take a new snapshot in this case.{}"
-                                + "Use the mysqlbinlog tool to view the problematic event: mysqlbinlog --start-position={} --stop-position={} --verbose {}",
+                    "{}Encountered change event '{}' at offset {} for table {} whose schema isn't known to this "
+                        + "connector. One possible cause is an incomplete database history topic. Take a new snapshot"
+                        + " in this case.{}"
+                        + "Use the mysqlbinlog tool to view the problematic event: mysqlbinlog --start-position={} "
+                        + "--stop-position={} --verbose {}",
+                        ErrorCode.BINLOG_PARSE_EXCEPTION,
                         event, offsetContext.getOffset(), tableId, System.lineSeparator(), eventHeader.getPosition(),
                         eventHeader.getNextPosition(), offsetContext.getSource().binlogFilename());
                 throw new DebeziumException("Encountered change event for table " + tableId
@@ -1190,9 +1196,9 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
                 client.setBinlogPosition(position.getPosition());
                 client.connect();
             }
-        }
-        catch (IOException e) {
-            LOGGER.error("Unexpected error when re-connecting to the MySQL binary log reader", e);
+        } catch (IOException e) {
+            LOGGER.error("{}Unexpected error when re-connecting to the MySQL binary log reader", ErrorCode.IO_EXCEPTION,
+                e);
         }
     }
 

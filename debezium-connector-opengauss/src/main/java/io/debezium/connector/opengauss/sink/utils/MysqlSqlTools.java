@@ -9,6 +9,8 @@ import io.debezium.connector.opengauss.sink.object.ColumnMetaData;
 import io.debezium.connector.opengauss.sink.object.ConnectionInfo;
 import io.debezium.connector.opengauss.sink.object.TableMetaData;
 import io.debezium.data.Envelope;
+import io.debezium.enums.ErrorCode;
+
 import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -92,9 +94,9 @@ public class MysqlSqlTools extends SqlTools {
                     return tableMetaData;
                 }
             } catch (SQLException exception) {
-                LOGGER.error("Connection exception occurred");
+                LOGGER.error("{}Connection exception occurred", ErrorCode.DB_CONNECTION_EXCEPTION);
             }
-            LOGGER.error("SQL exception occurred, the sql statement is " + sql);
+            LOGGER.error("{}SQL exception occurred, the sql statement is {}", ErrorCode.SQL_EXCEPTION, sql);
         }
         return tableMetaData;
     }
@@ -117,7 +119,7 @@ public class MysqlSqlTools extends SqlTools {
             }
             return tableList;
         } catch (SQLException e) {
-            LOGGER.error("SQL exception occurred in sql tools", e);
+            LOGGER.error("{}SQL exception occurred in sql tools", ErrorCode.SQL_EXCEPTION, e);
         }
         return null;
     }
@@ -364,7 +366,7 @@ public class MysqlSqlTools extends SqlTools {
                 isExistSql = true;
             }
         } catch (SQLException exception) {
-            LOGGER.error("SQL exception occurred, the sql statement is " + sql);
+            LOGGER.error("{}SQL exception occurred, the sql statement is {}", ErrorCode.SQL_EXCEPTION, sql);
         }
         return isExistSql;
     }

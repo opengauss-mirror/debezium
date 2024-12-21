@@ -21,6 +21,7 @@ import io.debezium.connector.mysql.MySqlConnectorConfig;
 import io.debezium.connector.mysql.sink.task.MySqlSinkConnectorConfig;
 import io.debezium.connector.process.BaseProcessCommitter;
 import io.debezium.connector.process.BaseSourceProcessInfo;
+import io.debezium.enums.ErrorCode;
 
 /**
  * Description: MysqlProcessCommitter
@@ -206,7 +207,7 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
             });
         }
         catch (SQLException e) {
-            LOGGER.error("SQL exception occurred when query the current event index.");
+            LOGGER.error("{}SQL exception occurred when query the current event index.", ErrorCode.SQL_EXCEPTION);
         }
         if ("".equals(currentGtidSet.get())) {
             return this.gtidSet;
@@ -226,7 +227,7 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
             Thread.sleep(commitTimeInterval * 1000L);
         }
         catch (InterruptedException exp) {
-            LOGGER.warn("Interrupted exception occurred", exp);
+            LOGGER.warn("{}Interrupted exception occurred", ErrorCode.PROGRESS_COMMIT_EXCEPTION, exp);
         }
         return before;
     }
@@ -234,7 +235,8 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
     private void executeOutPutThread(String dirPath) {
         threadPool.execute(() -> {
             if (!initFile(dirPath).exists()) {
-                LOGGER.warn("Failed to output source create count, the sink overallPipe will always be 0.");
+                LOGGER.warn("{}Failed to output source create count, the sink overallPipe will always be 0.",
+                    ErrorCode.PROGRESS_COMMIT_EXCEPTION);
                 threadPool.shutdown();
                 return;
             }
@@ -243,7 +245,8 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
                     Thread.sleep(1000);
                 }
                 catch (InterruptedException exp) {
-                    LOGGER.error("Interrupted exception occurred while thread sleeping", exp);
+                    LOGGER.error("{}Interrupted exception occurred while thread sleeping",
+                        ErrorCode.PROGRESS_COMMIT_EXCEPTION, exp);
                 }
                 outputCreateCountInfo(dirPath + CREATE_COUNT_INFO_NAME, sourceProcessInfo
                         .getCreateCount() - sourceProcessInfo.getSkippedExcludeCount());

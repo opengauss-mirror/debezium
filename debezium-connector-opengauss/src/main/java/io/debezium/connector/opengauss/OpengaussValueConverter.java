@@ -64,6 +64,7 @@ import io.debezium.data.VariableScaleDecimal;
 import io.debezium.data.geometry.Geography;
 import io.debezium.data.geometry.Geometry;
 import io.debezium.data.geometry.Point;
+import io.debezium.enums.ErrorCode;
 import io.debezium.jdbc.JdbcValueConverters;
 import io.debezium.jdbc.TemporalPrecisionMode;
 import io.debezium.relational.Column;
@@ -627,7 +628,7 @@ public class OpengaussValueConverter extends JdbcValueConverters {
                     r.deliver(ltrees);
                 }
                 catch (SQLException e) {
-                    logger.error("Failed to parse PgArray: " + pgArray, e);
+                    logger.error("{}Failed to parse PgArray: {}", ErrorCode.SQL_EXCEPTION, pgArray, e);
                 }
             }
         });
