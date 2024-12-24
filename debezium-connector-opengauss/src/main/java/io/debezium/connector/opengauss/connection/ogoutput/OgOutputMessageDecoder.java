@@ -44,6 +44,7 @@ import io.debezium.connector.opengauss.connection.MessageDecoderContext;
 import io.debezium.connector.opengauss.connection.OpengaussConnection;
 import io.debezium.connector.opengauss.connection.TransactionMessage;
 import io.debezium.connector.opengauss.connection.WalPositionLocator;
+import io.debezium.enums.ErrorCode;
 import io.debezium.relational.ColumnEditor;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
@@ -372,7 +373,8 @@ public class OgOutputMessageDecoder extends AbstractMessageDecoder {
             }
         }
         catch (SQLException e) {
-            LOGGER.error("Failed to read column metadata for '{}.{}'", tableId.schema(), tableId.table());
+            LOGGER.error("{}Failed to read column metadata for '{}.{}'", ErrorCode.SQL_EXCEPTION, tableId.schema(),
+                tableId.table());
             throw e;
         }
 

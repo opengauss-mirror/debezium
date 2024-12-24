@@ -5,6 +5,8 @@
  */
 package io.debezium.connector.process;
 
+import io.debezium.enums.ErrorCode;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -192,7 +194,8 @@ public class BaseSourceProcessInfo implements Cloneable {
                 return (BaseSourceProcessInfo) super.clone();
             }
         } catch (CloneNotSupportedException e) {
-            LOGGER.error("The process information object is not supported clone.");
+            LOGGER.error("{}The process information object is not supported clone.",
+                ErrorCode.PROGRESS_COMMIT_EXCEPTION);
         }
         return this;
     }

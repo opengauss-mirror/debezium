@@ -56,6 +56,7 @@ import io.debezium.config.Configuration;
 import io.debezium.config.Field;
 import io.debezium.config.Field.Validator;
 import io.debezium.document.DocumentReader;
+import io.debezium.enums.ErrorCode;
 import io.debezium.relational.HistorizedRelationalDatabaseConnectorConfig;
 import io.debezium.util.Collect;
 import io.debezium.util.Threads;
@@ -317,10 +318,12 @@ public class KafkaDatabaseHistory extends AbstractDatabaseHistory {
                         }
                     }
                     catch (final IOException e) {
-                        LOGGER.error("Error while deserializing history record '{}'", record, e);
+                        LOGGER.error("{}Error while deserializing history record '{}'", ErrorCode.IO_EXCEPTION, record,
+                            e);
                     }
                     catch (final Exception e) {
-                        LOGGER.error("Unexpected exception while processing record '{}'", record, e);
+                        LOGGER.error("{}Unexpected exception while processing record '{}'", ErrorCode.UNKNOWN, record,
+                            e);
                         throw e;
                     }
                 }

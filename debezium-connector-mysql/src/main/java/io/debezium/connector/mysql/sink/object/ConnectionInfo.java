@@ -12,6 +12,7 @@ import java.sql.Statement;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.debezium.connector.mysql.sink.task.MySqlSinkConnectorConfig;
+import io.debezium.enums.ErrorCode;
 import io.debezium.util.MigrationProcessController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -258,7 +259,7 @@ public class ConnectionInfo {
             }
         }
         catch (SQLException exception) {
-            LOGGER.error("the cause of the exception is {}", exception.getMessage());
+            LOGGER.error("{}the cause of the exception is {}", ErrorCode.SQL_EXCEPTION, exception.getMessage());
         }
         return false;
     }

@@ -31,6 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.opengauss.connection.wal2json.DateTimeFormat;
+import io.debezium.enums.ErrorCode;
 
 /**
  * @author Chris Cranford
@@ -87,7 +88,8 @@ public abstract class AbstractColumnValue<T> implements ReplicationMessage.Colum
             return new PGbox(asString());
         }
         catch (final SQLException e) {
-            LOGGER.error("Failed to parse point {}, {}", asString(), e);
+            LOGGER.error("{}Failed to parse point {}, {}", ErrorCode.DATA_CONVERT_EXCEPTION, asString(),
+                e.getMessage());
             throw new ConnectException(e);
         }
     }
@@ -98,7 +100,8 @@ public abstract class AbstractColumnValue<T> implements ReplicationMessage.Colum
             return new PGcircle(asString());
         }
         catch (final SQLException e) {
-            LOGGER.error("Failed to parse circle {}, {}", asString(), e);
+            LOGGER.error("{}Failed to parse circle {}, {}", ErrorCode.DATA_CONVERT_EXCEPTION, asString(),
+                e.getMessage());
             throw new ConnectException(e);
         }
     }
@@ -109,7 +112,8 @@ public abstract class AbstractColumnValue<T> implements ReplicationMessage.Colum
             return new PGInterval(asString());
         }
         catch (final SQLException e) {
-            LOGGER.error("Failed to parse point {}, {}", asString(), e);
+            LOGGER.error("{}Failed to parse point {}, {}", ErrorCode.DATA_CONVERT_EXCEPTION, asString(),
+                e.getMessage());
             throw new ConnectException(e);
         }
     }
@@ -120,7 +124,8 @@ public abstract class AbstractColumnValue<T> implements ReplicationMessage.Colum
             return new PGline(asString());
         }
         catch (final SQLException e) {
-            LOGGER.error("Failed to parse point {}, {}", asString(), e);
+            LOGGER.error("{}Failed to parse point {}, {}", ErrorCode.DATA_CONVERT_EXCEPTION, asString(),
+                e.getMessage());
             throw new ConnectException(e);
         }
     }
@@ -131,7 +136,8 @@ public abstract class AbstractColumnValue<T> implements ReplicationMessage.Colum
             return new PGlseg(asString());
         }
         catch (final SQLException e) {
-            LOGGER.error("Failed to parse point {}, {}", asString(), e);
+            LOGGER.error("{}Failed to parse point {}, {}", ErrorCode.DATA_CONVERT_EXCEPTION, asString(),
+                e.getMessage());
             throw new ConnectException(e);
         }
     }
@@ -147,7 +153,8 @@ public abstract class AbstractColumnValue<T> implements ReplicationMessage.Colum
             return new PGmoney(asString());
         }
         catch (final SQLException e) {
-            LOGGER.error("Failed to parse money {}, {}", asString(), e);
+            LOGGER.error("{}Failed to parse money {}, {}", ErrorCode.DATA_CONVERT_EXCEPTION, asString(),
+                e.getMessage());
             throw new ConnectException(e);
         }
     }
@@ -158,7 +165,8 @@ public abstract class AbstractColumnValue<T> implements ReplicationMessage.Colum
             return new PGpath(asString());
         }
         catch (final SQLException e) {
-            LOGGER.error("Failed to parse point {}, {}", asString(), e);
+            LOGGER.error("{}Failed to parse point {}, {}", ErrorCode.DATA_CONVERT_EXCEPTION, asString(),
+                e.getMessage());
             throw new ConnectException(e);
         }
     }
@@ -169,7 +177,8 @@ public abstract class AbstractColumnValue<T> implements ReplicationMessage.Colum
             return new PGpoint(asString());
         }
         catch (final SQLException e) {
-            LOGGER.error("Failed to parse point {}, {}", asString(), e);
+            LOGGER.error("{}Failed to parse point {}, {}", ErrorCode.DATA_CONVERT_EXCEPTION, asString(),
+                e.getMessage());
             throw new ConnectException(e);
         }
     }
@@ -180,7 +189,8 @@ public abstract class AbstractColumnValue<T> implements ReplicationMessage.Colum
             return new PGpolygon(asString());
         }
         catch (final SQLException e) {
-            LOGGER.error("Failed to parse point {}, {}", asString(), e);
+            LOGGER.error("{}Failed to parse point {}, {}", ErrorCode.DATA_CONVERT_EXCEPTION, asString(),
+                e.getMessage());
             throw new ConnectException(e);
         }
     }
@@ -197,7 +207,8 @@ public abstract class AbstractColumnValue<T> implements ReplicationMessage.Colum
             return new PgArray(connection.get(), type.getOid(), dataString);
         }
         catch (SQLException e) {
-            LOGGER.warn("Unexpected exception trying to process PgArray ({}) column '{}', {}", fullType, columnName, e);
+            LOGGER.warn("{}Unexpected exception trying to process PgArray ({}) column '{}', {}",
+                ErrorCode.DATA_CONVERT_EXCEPTION, fullType, columnName, e.getMessage());
         }
         return null;
     }

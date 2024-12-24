@@ -48,6 +48,7 @@ import io.debezium.connector.opengauss.OpengaussValueConverter;
 import io.debezium.connector.opengauss.TypeRegistry;
 import io.debezium.connector.opengauss.spi.SlotState;
 import io.debezium.data.SpecialValueDecimal;
+import io.debezium.enums.ErrorCode;
 import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.jdbc.JdbcConnection;
 import io.debezium.relational.Column;
@@ -449,7 +450,8 @@ public class OpengaussConnection extends JdbcConnection {
                     return false;
                 }
                 else {
-                    LOGGER.error("Unexpected error while attempting to drop replication slot", e);
+                    LOGGER.error("{}Unexpected error while attempting to drop replication slot",
+                        ErrorCode.SQL_EXCEPTION, e);
                     return false;
                 }
             }
@@ -479,7 +481,7 @@ public class OpengaussConnection extends JdbcConnection {
                 LOGGER.debug("Publication {} has already been dropped", publicationName);
             }
             else {
-                LOGGER.error("Unexpected error while attempting to drop publication", e);
+                LOGGER.error("{}Unexpected error while attempting to drop publication", ErrorCode.SQL_EXCEPTION, e);
             }
             return false;
         }
@@ -491,7 +493,7 @@ public class OpengaussConnection extends JdbcConnection {
             super.close();
         }
         catch (SQLException e) {
-            LOGGER.error("Unexpected error while closing Postgres connection", e);
+            LOGGER.error("{}Unexpected error while closing Postgres connection", ErrorCode.DB_CONNECTION_EXCEPTION, e);
         }
     }
 
@@ -734,7 +736,7 @@ public class OpengaussConnection extends JdbcConnection {
             stmt.execute("set session_timeout = 0");
             stmt.execute("set dolphin.b_compatibility_mode to on");
         } catch (SQLException exp) {
-            LOGGER.error("SQL Exception occurred when set session parameter.");
+            LOGGER.error("{}SQL Exception occurred when set session parameter.", ErrorCode.DB_CONNECTION_EXCEPTION);
         }
     }
 

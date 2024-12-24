@@ -46,6 +46,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.Queues;
 
 import io.debezium.config.Field;
+import io.debezium.enums.ErrorCode;
 
 /**
  * Description: BreakPointRecord
@@ -210,7 +211,8 @@ public class BreakPointRecord {
                         ++numRecordsProcessed;
                     }
                     catch (NumberFormatException e) {
-                        LOGGER.error("NumberFormat exception while processing record '{}'", record, e);
+                        LOGGER.error("{}NumberFormat exception while processing record '{}'",
+                            ErrorCode.BREAKPOINT_MESSAGE_HANDLE_EXCEPTION, record, e);
                     }
                 }
                 if (numRecordsProcessed == 0) {
@@ -303,7 +305,7 @@ public class BreakPointRecord {
                     toStoreList.clear();
                 }
                 catch (InterruptedException e) {
-                    LOGGER.error("occurred exception is {}", e.getMessage());
+                    LOGGER.error("{}occurred exception is {}", ErrorCode.THREAD_INTERRUPTED_EXCEPTION, e.getMessage());
                 }
             }
         });
@@ -469,7 +471,8 @@ public class BreakPointRecord {
                 lowWatermark = Math.min(entry.getValue().get().lowWatermark(), lowWatermark);
             }
             catch (InterruptedException | ExecutionException e) {
-                LOGGER.error("Deleting the breakpoint kafka offset occur exception");
+                LOGGER.error("{}Deleting the breakpoint kafka offset occur exception.",
+                    ErrorCode.BREAKPOINT_MESSAGE_HANDLE_EXCEPTION);
             }
         }
         LOGGER.info("deleted lowWatermark is {}", lowWatermark);

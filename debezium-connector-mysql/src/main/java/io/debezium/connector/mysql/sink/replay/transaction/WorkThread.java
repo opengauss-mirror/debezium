@@ -18,11 +18,13 @@ import java.util.concurrent.PriorityBlockingQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.debezium.ThreadExceptionHandler;
 import io.debezium.connector.breakpoint.BreakPointObject;
 import io.debezium.connector.breakpoint.BreakPointRecord;
 import io.debezium.connector.mysql.sink.object.ConnectionInfo;
 import io.debezium.connector.mysql.sink.object.Transaction;
 import io.debezium.connector.mysql.sink.util.SqlTools;
+import io.debezium.enums.ErrorCode;
 
 /**
  * Description: WorkThread class
@@ -115,7 +117,7 @@ public class WorkThread extends Thread {
                 lock.wait();
             }
             catch (InterruptedException exp) {
-                LOGGER.error("Interrupted exception occurred", exp);
+                LOGGER.error("{}Interrupted exception occurred", ErrorCode.THREAD_INTERRUPTED_EXCEPTION, exp);
             }
         }
     }
@@ -129,6 +131,7 @@ public class WorkThread extends Thread {
 
     @Override
     public void run() {
+        Thread.currentThread().setUncaughtExceptionHandler(new ThreadExceptionHandler());
         try (Connection connection = connectionInfo.createOpenGaussConnection();
                 Statement statement = connection.createStatement()) {
             while (isConnection) {
@@ -137,8 +140,8 @@ public class WorkThread extends Thread {
             }
         }
         catch (Throwable exp) {
-            LOGGER.error("Exception occurred in work thread {} and the exp message is {}",
-                    this.getName(), exp.getMessage());
+            LOGGER.error("{}Exception occurred in work thread {} and the exp message is {}",
+                    ErrorCode.DB_CONNECTION_EXCEPTION, this.getName(), exp.getMessage());
         }
     }
 
@@ -199,9 +202,10 @@ public class WorkThread extends Thread {
                     isConnection = false;
                     return false;
                 }
-                LOGGER.error("SQL exception occurred in transaction {}", txn.getSourceField());
-                LOGGER.error("The error SQL statement executed is: {}", sql);
-                LOGGER.error("the cause of the exception is {}", exp.getMessage());
+                LOGGER.error("{}SQL exception occurred in transaction {}", ErrorCode.SQL_EXCEPTION,
+                    txn.getSourceField());
+                LOGGER.error("{}The error SQL statement executed is: {}", ErrorCode.SQL_EXCEPTION, sql);
+                LOGGER.error("{}the cause of the exception is {}", ErrorCode.SQL_EXCEPTION, exp.getMessage());
                 txn.setExpMessage(exp.getMessage());
                 return false;
             }

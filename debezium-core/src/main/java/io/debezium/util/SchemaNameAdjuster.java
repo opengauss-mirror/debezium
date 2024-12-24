@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.annotation.ThreadSafe;
+import io.debezium.enums.ErrorCode;
 
 /**
  * A adjuster for the names of change data message schemas. Currently, this solely implements the rules required for
@@ -162,8 +163,10 @@ public interface SchemaNameAdjuster {
     public static SchemaNameAdjuster create(ReplacementOccurred uponConflict) {
         ReplacementOccurred handler = (original, replacement, conflictsWith) -> {
             if (conflictsWith != null) {
-                LOGGER.error("The Kafka Connect schema name '{}' is not a valid Avro schema name and its replacement '{}' conflicts with another different schema '{}'",
-                        original, replacement, conflictsWith);
+                LOGGER.error(
+                    "{}The Kafka Connect schema name '{}' is not a valid Avro schema name and its replacement '{}' "
+                        + "conflicts with another different schema '{}'",
+                    ErrorCode.AVRO_EXCEPTION, original, replacement, conflictsWith);
                 if (uponConflict != null) {
                     uponConflict.accept(original, replacement, conflictsWith);
                 }

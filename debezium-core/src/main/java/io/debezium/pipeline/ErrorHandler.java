@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.base.ChangeEventQueue;
+import io.debezium.enums.ErrorCode;
 
 public class ErrorHandler {
 
@@ -28,7 +29,7 @@ public class ErrorHandler {
     }
 
     public void setProducerThrowable(Throwable producerThrowable) {
-        LOGGER.error("Producer failure", producerThrowable);
+        LOGGER.error("{}Producer failure", ErrorCode.KAFKA_PRODUCE_EXCEPTION, producerThrowable);
 
         boolean first = this.producerThrowable.compareAndSet(null, producerThrowable);
         boolean retriable = isRetriable(producerThrowable);

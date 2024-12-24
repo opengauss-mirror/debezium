@@ -24,6 +24,7 @@ import org.apache.kafka.connect.errors.DataException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.debezium.ThreadExceptionHandler;
 import io.debezium.connector.breakpoint.BreakPointObject;
 import io.debezium.connector.breakpoint.BreakPointRecord;
 import io.debezium.connector.mysql.sink.object.ConnectionInfo;
@@ -32,6 +33,7 @@ import io.debezium.connector.mysql.sink.object.SinkRecordObject;
 import io.debezium.connector.mysql.sink.object.SourceField;
 import io.debezium.connector.mysql.sink.object.TableMetaData;
 import io.debezium.connector.mysql.sink.util.SqlTools;
+import io.debezium.enums.ErrorCode;
 
 /**
  * Description: WorkThread class
@@ -95,13 +97,14 @@ public class WorkThread extends Thread {
 
     @Override
     public void run() {
+        Thread.currentThread().setUncaughtExceptionHandler(new ThreadExceptionHandler());
         SinkRecordObject sinkRecordObject = null;
         connection = connectionInfo.createOpenGaussConnection();
         try {
             statement = connection.createStatement();
         }
         catch (SQLException exp) {
-            LOGGER.error("SQL exception occurred in work thread", exp);
+            LOGGER.error("{}SQL exception occurred in work thread", ErrorCode.SQL_EXCEPTION, exp);
         }
         Object sql = null;
         while (!isStop) {
@@ -142,8 +145,9 @@ public class WorkThread extends Thread {
                     oldTableMap.remove(schemaMappingMap.get(sinkRecordObject.getSourceField()
                             .getDatabase()) + "." + sinkRecordObject.getSourceField().getTable());
                 }
-                LOGGER.error("DataException occurred because of invalid field, possible reason is tables "
-                        + "of OpenGauss and MySQL have same table name but different table structure.", exp);
+                LOGGER.error("{}DataException occurred because of invalid field, possible reason is tables "
+                        + "of OpenGauss and MySQL have same table name but different table structure.",
+                    ErrorCode.DATA_CONVERT_EXCEPTION, exp);
             }
         }
     }
@@ -245,8 +249,8 @@ public class WorkThread extends Thread {
         String sql = "";
         if (tableMetaData == null && !sqlTools.getIsConnection()) {
             isConnection = false;
-            LOGGER.error("There is a connection problem with the openGauss,"
-                    + " check the database status or connection");
+            LOGGER.error("{}There is a connection problem with the openGauss,"
+                    + " check the database status or connection", ErrorCode.DB_CONNECTION_EXCEPTION);
             return sql;
         }
         String operation = dmlOperation.getOperation();
@@ -332,9 +336,10 @@ public class WorkThread extends Thread {
                     + exp.getMessage().replaceAll(System.lineSeparator(), "; ")
                     + System.lineSeparator()
                     + sql + System.lineSeparator());
-            LOGGER.error("SQL exception occurred in struct date {}", sinkRecordObject.getSourceField());
-            LOGGER.error("The error SQL statement executed is: {}", sql);
-            LOGGER.error("the cause of the exception is {}", exp.getMessage());
+            LOGGER.error("{}SQL exception occurred in struct date {}", ErrorCode.SQL_EXCEPTION,
+                sinkRecordObject.getSourceField());
+            LOGGER.error("{}The error SQL statement executed is: {}", ErrorCode.SQL_EXCEPTION, sql);
+            LOGGER.error("{}The cause of the exception is {}", ErrorCode.SQL_EXCEPTION, exp.getMessage());
         }
     }
 

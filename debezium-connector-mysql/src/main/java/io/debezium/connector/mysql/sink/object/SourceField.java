@@ -5,6 +5,8 @@
  */
 package io.debezium.connector.mysql.sink.object;
 
+import io.debezium.enums.ErrorCode;
+
 import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -269,7 +271,7 @@ public class SourceField implements Cloneable {
             return (SourceField) super.clone();
         }
         catch (CloneNotSupportedException exp) {
-            LOGGER.error("Clone source field failed.", exp);
+            LOGGER.error("{}Clone source field failed.", ErrorCode.DATA_CONVERT_EXCEPTION, exp);
         }
         return null;
     }

@@ -19,6 +19,7 @@ import io.debezium.connector.opengauss.connection.ogoutput.ColumnMetaData;
 import io.debezium.connector.opengauss.connection.ogoutput.OgOutputAndMppdbRelationMetaData;
 import io.debezium.connector.opengauss.connection.ogoutput.OgOutputReplicationMessage;
 import io.debezium.connector.opengauss.connection.ogoutput.mppdbdecoding.entity.TableStructureEntity;
+import io.debezium.enums.ErrorCode;
 import io.debezium.relational.Column;
 import io.debezium.relational.ColumnEditor;
 import io.debezium.relational.Table;
@@ -544,7 +545,8 @@ public class MppdbMessageDecoder extends AbstractMessageDecoder {
                 }
             }
         } catch (SQLException e) {
-            LOGGER.error("Failed to read column metadata for '{}.{}'", tableId.schema(), tableId.table());
+            LOGGER.error("{}Failed to read column metadata for '{}.{}'", ErrorCode.SQL_EXCEPTION, tableId.schema(),
+                tableId.table());
             throw e;
         }
         return readColumns;

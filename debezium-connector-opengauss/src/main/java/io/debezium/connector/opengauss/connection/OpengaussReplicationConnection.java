@@ -13,6 +13,7 @@ import io.debezium.connector.opengauss.OpengaussErrorHandler;
 import io.debezium.connector.opengauss.OpengaussSchema;
 import io.debezium.connector.opengauss.TypeRegistry;
 import io.debezium.connector.opengauss.spi.SlotCreationResult;
+import io.debezium.enums.ErrorCode;
 import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.jdbc.JdbcConnection;
 import io.debezium.jdbc.JdbcConnectionException;
@@ -469,7 +470,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
                 messageDecoder.setContainsMetadata(false);
             }
             else if (e.getMessage().matches("(?s)ERROR: requested WAL segment .* has already been removed.*")) {
-                LOGGER.error("Cannot rewind to last processed WAL position", e);
+                LOGGER.error("{}Cannot rewind to last processed WAL position", ErrorCode.DATA_CONVERT_EXCEPTION, e);
                 throw new ConnectException(
                         "The offset to start reading from has been removed from the database write-ahead log. Create a new snapshot and consider setting of PostgreSQL parameter wal_keep_segments = 0.");
             }
@@ -642,7 +643,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
                 .collect(Collectors.toSet());
             return newTablesToCapture.stream().map(TableId::toString).collect(Collectors.joining(","));
         } catch (SQLException e) {
-            LOGGER.error("getWhiteList is error");
+            LOGGER.error("{}getWhiteList is error", ErrorCode.DB_CONNECTION_EXCEPTION);
             return "";
         }
     }
@@ -691,7 +692,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
             messageDecoder.close();
         }
         catch (Throwable e) {
-            LOGGER.error("Unexpected error while closing message decoder", e);
+            LOGGER.error("{}Unexpected error while closing message decoder", ErrorCode.UNKNOWN, e);
         }
 
         try {
@@ -699,7 +700,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
             super.close();
         }
         catch (Throwable e) {
-            LOGGER.error("Unexpected error while closing Postgres connection", e);
+            LOGGER.error("{}Unexpected error while closing Postgres connection", ErrorCode.UNKNOWN, e);
         }
 
         originalConfig.restoreToOriginalWalSenderTimeout();
@@ -718,7 +719,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
                 connection.dropPublication(publicationName);
             }
             catch (Throwable e) {
-                LOGGER.error("Unexpected error while dropping replication slot", e);
+                LOGGER.error("{}Unexpected error while dropping replication slot", ErrorCode.UNKNOWN, e);
             }
         }
     }

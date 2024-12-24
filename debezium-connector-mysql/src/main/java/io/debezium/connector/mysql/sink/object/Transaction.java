@@ -5,6 +5,8 @@
  */
 package io.debezium.connector.mysql.sink.object;
 
+import io.debezium.enums.ErrorCode;
+
 import java.util.ArrayList;
 import java.util.LinkedList;
 
@@ -192,7 +194,7 @@ public class Transaction implements Cloneable {
             }
         }
         catch (CloneNotSupportedException exp) {
-            LOGGER.error("Clone transaction failed.", exp);
+            LOGGER.error("{}Clone transaction failed.", ErrorCode.DATA_CONVERT_EXCEPTION, exp);
         }
         return transaction;
     }

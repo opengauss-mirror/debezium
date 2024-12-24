@@ -8,6 +8,7 @@ package io.debezium.connector.opengauss.sink.utils;
 import io.debezium.connector.opengauss.sink.object.ColumnMetaData;
 import io.debezium.connector.opengauss.sink.object.TableMetaData;
 import io.debezium.data.Envelope;
+import io.debezium.enums.ErrorCode;
 import io.debezium.util.Clock;
 import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
@@ -78,9 +79,9 @@ public class OpengaussSqlTools extends SqlTools {
                 }
             }
             catch (SQLException exception) {
-                LOGGER.error("Connection exception occurred");
+                LOGGER.error("{}Connection exception occurred", ErrorCode.DB_CONNECTION_EXCEPTION);
             }
-            LOGGER.error("SQL exception occurred, the sql statement is " + sql);
+            LOGGER.error("{}SQL exception occurred, the sql statement is {}", ErrorCode.SQL_EXCEPTION, sql);
         }
         long currentTimeMillis = Clock.system().currentTimeInMillis();
         if (columnMetaDataList.isEmpty() && (currentTimeMillis - timeMillis) < ATTEMPTS) {
@@ -124,7 +125,7 @@ public class OpengaussSqlTools extends SqlTools {
             return tableList;
         }
         catch (SQLException e) {
-            LOGGER.error("SQL exception occurred in sql tools", e);
+            LOGGER.error("{}SQL exception occurred in sql tools", ErrorCode.SQL_EXCEPTION, e);
         }
         return new ArrayList<>(0);
     }
@@ -144,7 +145,7 @@ public class OpengaussSqlTools extends SqlTools {
             }
         }
         catch (SQLException e) {
-            LOGGER.error("SQL exception occurred in sql tools", e);
+            LOGGER.error("{}SQL exception occurred in sql tools", ErrorCode.SQL_EXCEPTION, e);
         }
         return new String[0];
     }
@@ -168,7 +169,8 @@ public class OpengaussSqlTools extends SqlTools {
             }
         }
         catch (SQLException exp) {
-            LOGGER.error("SQL exception occurred in get sql compatibility and dolphin extension", exp);
+            LOGGER.error("{}SQL exception occurred in get sql compatibility and dolphin extension",
+                ErrorCode.SQL_EXCEPTION, exp);
         }
     }
 
@@ -330,7 +332,7 @@ public class OpengaussSqlTools extends SqlTools {
             }
         }
         catch (SQLException exp) {
-            LOGGER.error("Fail to get current xlog position.");
+            LOGGER.error("{}Fail to get current xlog position.", ErrorCode.SQL_EXCEPTION);
         }
         return xlogPosition;
     }
@@ -401,7 +403,7 @@ public class OpengaussSqlTools extends SqlTools {
             }
         }
         catch (SQLException exception) {
-            LOGGER.error("SQL exception occurred, the sql statement is " + sql);
+            LOGGER.error("{}SQL exception occurred, the sql statement is {}", ErrorCode.SQL_EXCEPTION, sql);
         }
         return isExistSql;
     }
@@ -423,8 +425,8 @@ public class OpengaussSqlTools extends SqlTools {
             try {
                 connection.close();
             } catch (SQLException exp) {
-                LOGGER.error("Unexpected error while closing the connection, the exception message is {}",
-                        exp.getMessage());
+                LOGGER.error("{}Unexpected error while closing the connection, the exception message is {}",
+                        ErrorCode.DB_CONNECTION_EXCEPTION, exp.getMessage());
             } finally {
                 connection = null;
             }
