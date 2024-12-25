@@ -24,6 +24,7 @@ import io.debezium.relational.Column;
 import io.debezium.relational.ColumnEditor;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
+import io.debezium.util.Strings;
 import org.postgresql.replication.fluent.logical.ChainedLogicalStreamBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -288,6 +289,8 @@ public class MppdbMessageDecoder extends AbstractMessageDecoder {
             int columnNameLength = buffer.getShort(currentIndex); // 2
             currentIndex = currentIndex + 2;
             String columnName = new String(source, offset + currentIndex, columnNameLength, StandardCharsets.UTF_8);
+            // Unquotes the columnName if it is a keyword, eg: date, time
+            columnName = Strings.unquoteIdentifierPart(columnName);
             columnNameList.add(columnName);
             currentIndex = currentIndex + columnNameLength;
             int oid = buffer.getInt(currentIndex); // 4
