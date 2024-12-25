@@ -121,7 +121,7 @@ public class OpengaussSchema extends RelationalDatabaseSchema {
             boolean isEmpty = tables().forTable(tableId).primaryKeyColumns().isEmpty();
             if (isEmpty && ! "FULL".equals(replicaIdentity.toString())) {
                 Statement stmt = connection.connection().createStatement();
-                String sql = String.format("ALTER TABLE %s REPLICA IDENTITY FULL", tableId);
+                String sql = String.format("ALTER TABLE %s REPLICA IDENTITY FULL", tableId.toDoubleQuotedString());
                 stmt.execute(sql);
                 LOGGER.info("REPLICA IDENTITY for '{}' is changed to  FULL, UPDATE AND DELETE events will contain the previous values of all the columns", tableId);
             }
