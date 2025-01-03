@@ -72,6 +72,11 @@ import java.util.stream.Collectors;
  * @since 2023-06-07
  */
 public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChangeEventSource<OpengaussPartition, OpengaussOffsetContext> {
+    /**
+     * The escape of NULL, distinguishing it from the string 'NULL'
+     */
+    public static final String NULL_ESCAPE = "\\N";
+
     private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussSnapshotChangeEventSource.class);
     private static final String DELIMITER = " | ";
     private static final int MEMORY_UNIT = 1024;
@@ -744,6 +749,9 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
                     bytes.append(String.valueOf(b));
                 }
                 value = bytes.toString();
+            }
+            if (value == null) {
+                value = NULL_ESCAPE;
             }
             stringBuilder.append(value);
             if (i != len - 1) {

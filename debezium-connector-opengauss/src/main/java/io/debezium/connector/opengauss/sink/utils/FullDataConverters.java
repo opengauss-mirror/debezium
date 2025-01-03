@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
+import static io.debezium.connector.opengauss.OpengaussSnapshotChangeEventSource.NULL_ESCAPE;
 import static java.lang.Integer.toBinaryString;
 
 /**
@@ -82,6 +83,9 @@ public class FullDataConverters {
     public static String getValue(ColumnMetaData columnMetaData, Object value, Struct after) {
         String columnName = columnMetaData.getColumnName();
         String columnType = columnMetaData.getColumnType();
+        if (value instanceof String && NULL_ESCAPE.equals(value.toString())) {
+            return addingSingleQuotation(value.toString());
+        }
         if (dataConverterMap.containsKey(columnType)) {
             return dataConverterMap.get(columnType).convert(columnName, value, after);
         }
