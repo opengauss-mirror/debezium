@@ -440,6 +440,6 @@ public class OpengaussSqlTools extends SqlTools {
      * @return String the wrapped name
      */
     public String getWrappedName(String name) {
-        return "`" + name + "`";
+        return objectWrappedSymbol + name + objectWrappedSymbol;
     }
 }
