@@ -1118,3 +1118,16 @@ connector.client.config.override.policy=All
   connector.client.config.override.policy=All
   ```
 
+### (3) 迁移过程中同时发生数据变更的表数量超过1000报错
+
+kafka创建的schema数量超过最大值报错：`Too many schema objects created for dml_topic-value!`
+
+
+解决方案：
+kafka默认配置对创建的schema数量有一定的限制，默认为1000。若在迁移过程中同时发生数据变更的表数量超过1000，需修改source和sink端kafka-connect配置文件connect-avro-standalone.properties中参数，以允许创建更多的schema。
+
+在confluent-5.5.1/etc/schema-registry/下`connect-avro-standalone.properties`和`connect-avro-standalone-1.properties`中添加如下两个参数并配置指定的值即可：
+```
+key.converter.max.schemas.per.subject=1200
+value.converter.max.schemas.per.subject=1200
+```
