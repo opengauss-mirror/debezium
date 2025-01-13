@@ -85,7 +85,7 @@ public class OgOutputMessageDecoder extends AbstractMessageDecoder {
         TYPE,
         ORIGIN,
         TRUNCATE,
-        NODE_INFO_MESSAGE,
+        UNKNOWN_MESSAGE,
         LOGICAL_DECODING_MESSAGE;
 
         public static MessageType forType(char type) {
@@ -110,11 +110,9 @@ public class OgOutputMessageDecoder extends AbstractMessageDecoder {
                     return TRUNCATE;
                 case 'M':
                     return LOGICAL_DECODING_MESSAGE;
-                case 'S':
-                    LOGGER.warn("The new message type:{} is not processed for now", type);
-                    return NODE_INFO_MESSAGE;
                 default:
-                    throw new IllegalArgumentException("Unsupported message type: " + type);
+                    LOGGER.warn("The new message type:{} is not processed for now", type);
+                    return UNKNOWN_MESSAGE;
             }
         }
     }
@@ -137,7 +135,7 @@ public class OgOutputMessageDecoder extends AbstractMessageDecoder {
         try {
             MessageType type = MessageType.forType((char) buffer.get());
             LOGGER.trace("Message Type: {}", type);
-            if (type.equals(MessageType.NODE_INFO_MESSAGE)) {
+            if (type.equals(MessageType.UNKNOWN_MESSAGE)) {
                 LOGGER.warn("Message Type {} skipped, not processed.", type);
                 return true;
             }
