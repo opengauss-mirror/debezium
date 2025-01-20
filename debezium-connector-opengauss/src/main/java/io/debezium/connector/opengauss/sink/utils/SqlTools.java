@@ -54,4 +54,14 @@ public abstract class SqlTools {
     public abstract List<String> getReadSqlForUpdate(TableMetaData tableMetaData, Struct before, Struct after);
 
     public abstract List<String> getForeignTableList(String tableFullName);
+
+    /**
+     * Get full migrate sql
+     *
+     * @param tableFullName tableFullName
+     * @return Executable SQL statements
+     */
+    public String loadFullSql(String tableFullName) {
+        return null;
+    }
 }

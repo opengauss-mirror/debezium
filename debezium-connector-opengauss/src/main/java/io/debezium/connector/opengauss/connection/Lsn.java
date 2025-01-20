@@ -7,11 +7,11 @@ package io.debezium.connector.opengauss.connection;
 
 import java.nio.ByteBuffer;
 
-import org.postgresql.replication.LogSequenceNumber;
+import org.opengauss.replication.LogSequenceNumber;
 
 /**
  * Abstraction of PostgreSQL log sequence number, adapted from
- * {@link org.postgresql.replication.LogSequenceNumber}.
+ * {@link org.opengauss.replication.LogSequenceNumber}.
  *
  * @author Jiri Pechanec
  *

@@ -37,7 +37,7 @@ import io.debezium.util.Clock;
 import io.debezium.util.Strings;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.ConnectException;
-import org.postgresql.core.BaseConnection;
+import org.opengauss.core.BaseConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -86,6 +86,8 @@ public class OpengaussChangeRecordEmitter extends RelationalChangeRecordEmitter 
                 return Operation.DELETE;
             case TRUNCATE:
                 return Operation.TRUNCATE;
+            case DDL:
+                return Operation.DDL;
             default:
                 throw new IllegalArgumentException("Received event of unexpected command type: " + message.getOperation());
         }
@@ -99,14 +101,13 @@ public class OpengaussChangeRecordEmitter extends RelationalChangeRecordEmitter 
                 || getOperation().name().equals("DELETE")) {
             BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreasePollCount(1);
         }
-
     }
 
     @Override
     protected void emitTruncateRecord(Receiver receiver, TableSchema tableSchema) throws InterruptedException {
-        Struct key = tableSchema.keySchema() == null ? null : new Struct(tableSchema.keySchema());
+        tableSchema.removeKeySchema();
         Struct envelope = tableSchema.getEnvelopeSchema().truncate(getOffset().getSourceInfo(), getClock().currentTimeAsInstant());
-        receiver.changeRecord(getPartition(), tableSchema, Operation.TRUNCATE, key, envelope, getOffset(), null);
+        receiver.changeRecord(getPartition(), tableSchema, Operation.TRUNCATE, null, envelope, getOffset(), null);
     }
 
     @Override

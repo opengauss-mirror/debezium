@@ -5,7 +5,6 @@
  */
 package io.debezium.connector.opengauss;
 
-import io.debezium.DebeziumException;
 import io.debezium.connector.opengauss.connection.Lsn;
 import io.debezium.connector.opengauss.connection.OpengaussConnection;
 import io.debezium.connector.opengauss.connection.ReplicationMessage;
@@ -24,14 +23,14 @@ import io.debezium.relational.Column;
 import io.debezium.relational.RelationalSnapshotChangeEventSource;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
-import io.debezium.relational.TableSchema;
 import io.debezium.schema.SchemaChangeEvent;
 import io.debezium.schema.SchemaChangeEvent.SchemaChangeEventType;
 import io.debezium.util.Clock;
 import io.debezium.util.ColumnUtils;
+import io.debezium.util.HexConverter;
 import io.debezium.util.Threads;
 import org.apache.commons.io.FileUtils;
-import org.apache.kafka.connect.data.Struct;
+import org.opengauss.core.types.PGClob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -78,7 +77,7 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
     public static final String NULL_ESCAPE = "\\N";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussSnapshotChangeEventSource.class);
-    private static final String DELIMITER = " | ";
+    private static final String DELIMITER = "|";
     private static final int MEMORY_UNIT = 1024;
     private static final String METADATASQL = "select"
             + "    c.relname tableName,"
@@ -728,16 +727,10 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
 
     private String columnToString(ResultSet rs, ColumnUtils.ColumnArray columnArray, Table table) throws SQLException {
         StringBuilder stringBuilder = new StringBuilder();
-        TableSchema tableSchema;
-        if (dispatcher.getSchema().schemaFor(table.id()) instanceof TableSchema) {
-            tableSchema = (TableSchema) dispatcher.getSchema().schemaFor(table.id());
-        } else {
-            throw new DebeziumException("opengauss2mysql full data schema error");
-        }
-        Struct newValue = tableSchema.valueFromColumnData(jdbcConnection.rowToArray(table, schema(), rs, columnArray));
+        Object[] columnData = jdbcConnection.rowToArray(table, schema(), rs, columnArray);
         int len = columnArray.getColumns().length;
         for (int i = 0; i < len; i++) {
-            Object value = getValue(columnArray.getColumns()[i], newValue);
+            Object value = getValue(columnArray.getColumns()[i], columnData);
             if (value instanceof ByteBuffer) {
                 ByteBuffer object = (ByteBuffer) value;
                 value = new String(object.array(), object.position(), object.limit(), Charset.defaultCharset());
@@ -745,15 +738,20 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
             if (value instanceof byte[]) {
                 StringBuilder bytes = new StringBuilder();
                 byte[] obj = (byte[]) value;
-                for (byte b : obj) {
-                    bytes.append(String.valueOf(b));
+                if (obj.length > 0) {
+                    bytes.append("\\x");
+                    bytes.append(HexConverter.convertToHexString(obj));
                 }
                 value = bytes.toString();
             }
-            if (value == null) {
-                value = NULL_ESCAPE;
+            if (value != null) {
+                stringBuilder.append("\"")
+                        .append(value.toString().replace("\"", "\"\""))
+                        .append("\"");
+            } else {
+                stringBuilder.append(NULL_ESCAPE);
             }
-            stringBuilder.append(value);
+
             if (i != len - 1) {
                 stringBuilder.append(DELIMITER);
             }
@@ -761,22 +759,26 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
         return stringBuilder.toString();
     }
 
-    private Object getValue(Column column, Struct newValue) {
-        String columnName = column.name();
+    private Object getValue(Column column, Object[] columnData) throws SQLException {
+        int index = column.position() - 1;
         int oid = column.jdbcType();
-        Object value;
+        Object value = columnData[index];
+        if (value == null) {
+            return value;
+        }
         switch (oid) {
+            case Types.CLOB:
+                PGClob pgClob = (PGClob) value;
+                value = pgClob.getSubString(1, (int) pgClob.length());
+                break;
             case Types.BLOB:
-                byte[] bytes = newValue.getBytes(columnName);
-                value = new String(bytes);
+                value = HexConverter.convertToHexString((byte[]) value);
                 break;
             case Types.BINARY:
             case Types.VARBINARY:
             case Types.LONGVARBINARY:
-                value = newValue.getBytes(columnName);
-                break;
             default:
-                value = newValue.get(columnName);
+                break;
         }
         return value;
     }

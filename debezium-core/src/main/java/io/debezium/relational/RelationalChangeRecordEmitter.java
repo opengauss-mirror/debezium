@@ -67,7 +67,7 @@ public abstract class RelationalChangeRecordEmitter extends AbstractChangeRecord
     private void emitPathRecord(Receiver receiver, TableSchema tableSchema)
             throws InterruptedException {
         Object[] values = getNewColumnValues();
-        Struct key = tableSchema.keySchema() == null ? null : new Struct(tableSchema.keySchema());
+        tableSchema.removeKeySchema();
         String[] value = (String[]) Arrays.asList(values).toArray(new String[0]);
         String data = String.join("|", value);
         Object value1 = values[1];
@@ -75,7 +75,7 @@ public abstract class RelationalChangeRecordEmitter extends AbstractChangeRecord
         Struct after = tableSchema.valueFromColumnData(new Object[length]);
         Struct envelope = tableSchema.getEnvelopeSchema().path(data, after, getOffset().getSourceInfo(),
                 getClock().currentTimeAsInstant());
-        receiver.changeRecord(getPartition(), tableSchema, Operation.PATH, key, envelope, getOffset(), null);
+        receiver.changeRecord(getPartition(), tableSchema, Operation.PATH, null, envelope, getOffset(), null);
     }
 
     @Override

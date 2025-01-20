@@ -12,7 +12,7 @@ import org.apache.kafka.connect.data.Struct;
  * @author wangzhengyuan
  * @date 2022/11/04
  */
-public class DmlOperation {
+public class DmlOperation extends DataOperation {
     /**
      * Before
      */
@@ -22,11 +22,6 @@ public class DmlOperation {
      * After
      */
     public static final String AFTER = "after";
-
-    /**
-     * Operation
-     */
-    public static final String OPERATION = "op";
 
     /**
      * CSV
@@ -48,6 +43,7 @@ public class DmlOperation {
         this.before = value.getStruct(DmlOperation.BEFORE);
         this.after = value.getStruct(DmlOperation.AFTER);
         this.csv = value.getString(DmlOperation.CSV);
+        setIsDml(true);
     }
 
     /**

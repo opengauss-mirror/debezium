@@ -303,7 +303,7 @@ public class TableSchemaBuilder {
                         try {
                             value = converter.convert(value);
                             if ("int1".equalsIgnoreCase(columns.get(i).typeName()) && value != null) {
-                                value = Byte.parseByte(value.toString());
+                                value = Short.parseShort(value.toString());
                             }
                             result.put(fields[i], value);
                         }

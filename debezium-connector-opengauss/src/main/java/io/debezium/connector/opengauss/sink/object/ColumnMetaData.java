@@ -5,8 +5,6 @@
  */
 package io.debezium.connector.opengauss.sink.object;
 
-import io.debezium.connector.opengauss.sink.utils.SqlTools;
-
 /**
  * Description: ColumnMetaData
  * @author wangzhengyuan
@@ -17,6 +15,8 @@ public class ColumnMetaData {
     private String columnName;
     private String columnType;
     private boolean isPrimaryKeyColumn = false;
+    private Integer scale;
+    private int length = 0;
 
     /**
      * Constructor
@@ -27,6 +27,19 @@ public class ColumnMetaData {
     public ColumnMetaData(String columnName, String columnType) {
         this.columnName = columnName;
         this.columnType = columnType;
+    }
+
+    /**
+     * Constructor
+     *
+     * @param columnName String the column name
+     * @param columnType String the column type
+     * @param scale Integer the scale
+     */
+    public ColumnMetaData(String columnName, String columnType, Integer scale) {
+        this.columnName = columnName;
+        this.columnType = columnType;
+        this.scale = scale;
     }
 
     /**
@@ -94,5 +107,21 @@ public class ColumnMetaData {
      */
     public void setPrimaryKeyColumn(boolean primaryColumn) {
         isPrimaryKeyColumn = primaryColumn;
+    }
+
+    public Integer getScale() {
+        return scale;
+    }
+
+    public void setScale(Integer scale) {
+        this.scale = scale;
+    }
+
+    public int getLength() {
+        return length;
+    }
+
+    public void setLength(int length) {
+        this.length = length;
     }
 }

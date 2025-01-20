@@ -18,7 +18,7 @@ import io.debezium.connector.opengauss.connection.ReplicationMessage;
 import io.debezium.connector.opengauss.connection.ReplicationStream;
 import io.debezium.connector.opengauss.connection.TransactionMessage;
 import org.apache.kafka.connect.errors.ConnectException;
-import org.postgresql.replication.fluent.logical.ChainedLogicalStreamBuilder;
+import org.opengauss.replication.fluent.logical.ChainedLogicalStreamBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

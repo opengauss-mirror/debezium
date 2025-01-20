@@ -6,18 +6,26 @@
 package io.debezium.connector.opengauss.sink.utils;
 
 import io.debezium.connector.opengauss.sink.object.ColumnMetaData;
-import io.debezium.data.geometry.Point;
 import io.debezium.util.HexConverter;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.errors.DataException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.charset.Charset;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.OffsetTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoField;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAccessor;
 import java.util.ArrayList;
@@ -37,12 +45,31 @@ import static java.lang.Integer.toBinaryString;
  * @date 2023/06/06
  **/
 public class FullDataConverters {
+    private static final Logger LOGGER = LoggerFactory.getLogger(FullDataConverters.class);
     private static final String HEX_PREFIX = "x";
     private static final String HEX_FORMAT_PREFIX = "00000000";
     private static final long NANOSECOND_OF_DAY = 86400000000000L;
     private static final String INVALID_TIME_FORMAT_STRING = "HH:mm:ss.SSSSSSSSS";
-    private static final String SINGLE_QUOTE = "'";
+    private static final char DOUBLE_QUOTE = '"';
     private static final String BACKSLASH = "\\\\";
+    private static final DateTimeFormatter TIME_WITH_TIMEZONE_FORMATTER = new DateTimeFormatterBuilder()
+            .appendPattern("HH:mm:ss")
+            .appendFraction(ChronoField.MICRO_OF_SECOND, 0, 6, true)
+            .appendPattern("[XXX][XX][X]")
+            .toFormatter();
+    private static final DateTimeFormatter TIME_WITHOUT_TIMEZONE_FORMATTER = new DateTimeFormatterBuilder()
+            .appendPattern("HH:mm:ss")
+            .appendFraction(ChronoField.MICRO_OF_SECOND, 0, 6, true)
+            .toFormatter();
+    private static final DateTimeFormatter DATETIME_WITH_TIMEZONE_FORMATTER = new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd HH:mm:ss")
+            .appendFraction(ChronoField.MICRO_OF_SECOND, 0, 6, true)
+            .appendPattern("[XXX][XX][X]")
+            .toFormatter();
+    private static final DateTimeFormatter DATETIME_WITHOUT_TIMEZONE_FORMATTER = new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd HH:mm:ss")
+            .appendFraction(ChronoField.MICRO_OF_SECOND, 0, 6, true)
+            .toFormatter();
 
     private static Map<String, ObjectConverter> dataConverterMap = new HashMap<String, ObjectConverter>() {
         {
@@ -50,13 +77,14 @@ public class FullDataConverters {
             put("tinyint", (columnName, value, after) -> objectConvertNumberType(columnName, value, after));
             put("double", (columnName, value, after) -> objectConvertNumberType(columnName, value, after));
             put("float", (columnName, value, after) -> objectConvertNumberType(columnName, value, after));
+            put("blob", (columnName, value, after) -> objectConvertBlob(columnName, value, after));
             put("tinyblob", (columnName, value, after) -> objectConvertBlob(columnName, value, after));
             put("mediumblob", (columnName, value, after) -> objectConvertBlob(columnName, value, after));
             put("longblob", (columnName, value, after) -> objectConvertBlob(columnName, value, after));
-            put("datetime", (columnName, value, after) -> objectConvertDatetimeAndTimestamp(columnName, value, after));
-            put("timestamp", (columnName, value, after) -> objectConvertDatetimeAndTimestamp(columnName, value, after));
-            put("date", (columnName, value, after) -> objectConvertDate(columnName, value, after));
-            put("time", (columnName, value, after) -> objectConvertTime(columnName, value, after));
+            put("datetime", (columnName, value, after) -> stringConvertDatetimeAndTimestamp(columnName, value, after));
+            put("timestamp", (columnName, value, after) -> stringConvertDatetimeAndTimestamp(columnName, value, after));
+            put("date", (columnName, value, after) -> stringConvertDate(columnName, value, after));
+            put("time", (columnName, value, after) -> stringConvertTime(columnName, value, after));
             put("binary", (columnName, value, after) -> objectConvertBinary(columnName, value, after));
             put("varbinary", (columnName, value, after) -> objectConvertBinary(columnName, value, after));
             put("bit", (columnName, value, after) -> objectConvertBit(columnName, value, after));
@@ -84,12 +112,26 @@ public class FullDataConverters {
         String columnName = columnMetaData.getColumnName();
         String columnType = columnMetaData.getColumnType();
         if (value instanceof String && NULL_ESCAPE.equals(value.toString())) {
-            return addingSingleQuotation(value.toString());
+            return value.toString();
         }
-        if (dataConverterMap.containsKey(columnType)) {
-            return dataConverterMap.get(columnType).convert(columnName, value, after);
+        try {
+            if (dataConverterMap.containsKey(columnType)) {
+                if (value instanceof String) {
+                    // Remove double quote
+                    value = ((String) value).substring(1, ((String) value).length() - 1);
+                }
+                return dataConverterMap.get(columnType).convert(columnName, value, after);
+            }
+        } catch (DataException | IndexOutOfBoundsException e) {
+            LOGGER.error("convert occurred exception, columnName: {}, columnType: {}, value: {}",
+                    columnName, columnType, value, e);
+            throw new DataException(e);
+        } catch (Exception e) {
+            LOGGER.error("convert occurred unknown exception, columnName: {}, columnType: {}, value: {}",
+                    columnName, columnType, value, e);
+            throw new DataException(e);
         }
-        return value == null ? "" : addingSingleQuotation(value.toString());
+        return value == null ? "" : replaceBackSlash(value.toString());
     }
 
     private static String objectConvertNumberType(String columnName, Object value, Struct valueStruct) {
@@ -100,7 +142,7 @@ public class FullDataConverters {
         if (object.equalsIgnoreCase("true") || object.equalsIgnoreCase("false")) {
             return Boolean.parseBoolean(object) ? "1" : "0";
         }
-        return addingSingleQuotation(object);
+        return addingDoubleQuotation(object);
     }
 
     private static String objectConvertBlob(String columnName, Object value, Struct valueStruct) {
@@ -111,7 +153,7 @@ public class FullDataConverters {
         if (str.startsWith("\\x")) {
             str = str.substring(2);
         }
-        return addingSingleQuotation(str);
+        return addingDoubleQuotation(str);
     }
 
     private static String objectConvertDatetimeAndTimestamp(String columnName, Object value, Struct valueStruct) {
@@ -129,7 +171,7 @@ public class FullDataConverters {
             dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS")
                     .withZone(ZoneOffset.UTC);
         }
-        return addingSingleQuotation(dateTimeFormatter.format(instant));
+        return addingDoubleQuotation(dateTimeFormatter.format(instant));
     }
 
     private static String objectConvertDate(String columnName, Object value, Struct valueStruct) {
@@ -141,7 +183,7 @@ public class FullDataConverters {
         Instant instant = convertDbzDateTime(value, schemaName);
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
                 .withZone(ZoneId.of("Asia/Shanghai"));
-        return addingSingleQuotation(dateTimeFormatter.format(instant));
+        return addingDoubleQuotation(dateTimeFormatter.format(instant));
     }
 
     private static long getNanoOfTime(String schemaName, Object object) {
@@ -165,16 +207,16 @@ public class FullDataConverters {
             long originNano = getNanoOfTime(schemaName, value);
 
             if (originNano >= NANOSECOND_OF_DAY) {
-                return addingSingleQuotation(handleInvalidTime(originNano));
+                return addingDoubleQuotation(handleInvalidTime(originNano));
             }
 
             if (originNano < 0) {
-                return addingSingleQuotation("-" + handleNegativeTime(-originNano));
+                return addingDoubleQuotation("-" + handleNegativeTime(-originNano));
             }
         }
         Instant instant = convertDbzDateTime(value, schemaName);
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneOffset.UTC);
-        return addingSingleQuotation(dateTimeFormatter.format(instant));
+        return addingDoubleQuotation(dateTimeFormatter.format(instant));
     }
 
     private static String objectConvertBinary(String columnName, Object value, Struct valueStruct) {
@@ -182,7 +224,7 @@ public class FullDataConverters {
         if (str.startsWith("\\x")) {
             str = str.substring(2);
         }
-        return addingSingleQuotation(str);
+        return addingDoubleQuotation(str);
     }
 
     private static String convertHexString(byte[] bytes) {
@@ -197,17 +239,18 @@ public class FullDataConverters {
         if (object.equalsIgnoreCase("true") || object.equalsIgnoreCase("false")) {
             return Boolean.parseBoolean(value.toString()) ? "1" : "0";
         }
-        return addingSingleQuotation(object);
+        // must convert binary to decimal before loading csv
+        String result = Integer.valueOf(object, 2).toString();
+        return addingDoubleQuotation(result);
     }
 
     private static String objectConvertSet(String columnName, Object value, Struct after) {
-        return value == null ? "" : addingSingleQuotation(value);
+        return value == null ? "" : addingDoubleQuotation(value);
     }
 
     private static String objectConvertPoint(String columnName, Object value, Struct after) {
-        Object obj = value == null ? ""
-                : formatPoint(Point.parseWKBPoint(value.toString().getBytes(Charset.defaultCharset())));
-        return addingSingleQuotation(obj);
+        Object obj = value == null ? "" : formatPoint(value.toString());
+        return addingDoubleQuotation(obj);
     }
 
     private static String objectConvertLinestring(String columnName, Object value, Struct after) {
@@ -218,10 +261,10 @@ public class FullDataConverters {
         }
         byte[] bytes = value.toString().getBytes(Charset.defaultCharset());
         if (isGeometry(schemaName)) {
-            return HEX_PREFIX + addingSingleQuotation(HEX_FORMAT_PREFIX + convertHexString(bytes));
+            return HEX_PREFIX + addingDoubleQuotation(HEX_FORMAT_PREFIX + convertHexString(bytes));
         }
         String[] coordinateArr = getCoordinate(bytes);
-        return addingSingleQuotation(formatLinestring(coordinateArr));
+        return addingDoubleQuotation(formatLinestring(coordinateArr));
     }
 
     private static String objectConvertPolygon(String columnName, Object value, Struct after) {
@@ -232,10 +275,10 @@ public class FullDataConverters {
         String schemaName = field.schema().name();
         byte[] bytes = value.toString().getBytes(Charset.defaultCharset());
         if (isGeometry(schemaName)) {
-            return HEX_PREFIX + addingSingleQuotation(HEX_FORMAT_PREFIX + convertHexString(bytes));
+            return HEX_PREFIX + addingDoubleQuotation(HEX_FORMAT_PREFIX + convertHexString(bytes));
         }
         String[] coordinateArr = getCoordinate(bytes);
-        return addingSingleQuotation(formatPolygon(coordinateArr));
+        return addingDoubleQuotation(formatPolygon(coordinateArr));
     }
 
     private static String objectConvertMultipoint(String columnName, Object value, Struct after) {
@@ -243,10 +286,10 @@ public class FullDataConverters {
         String schemaName = field.schema().name();
         byte[] bytes = value.toString().getBytes(Charset.defaultCharset());
         if (isGeometry(schemaName)) {
-            return HEX_PREFIX + addingSingleQuotation(HEX_FORMAT_PREFIX + convertHexString(bytes));
+            return HEX_PREFIX + addingDoubleQuotation(HEX_FORMAT_PREFIX + convertHexString(bytes));
         }
         String hexString = convertHexString(bytes);
-        return HEX_PREFIX + addingSingleQuotation(new String(Objects.requireNonNull(parseHexStr2bytes(hexString))));
+        return HEX_PREFIX + addingDoubleQuotation(new String(Objects.requireNonNull(parseHexStr2bytes(hexString))));
     }
 
     private static String objectConvertMultilinestring(String columnName, Object value, Struct after) {
@@ -254,10 +297,10 @@ public class FullDataConverters {
         String schemaName = field.schema().name();
         byte[] bytes = value.toString().getBytes(Charset.defaultCharset());
         if (isGeometry(schemaName)) {
-            return HEX_PREFIX + addingSingleQuotation(HEX_FORMAT_PREFIX + convertHexString(bytes));
+            return HEX_PREFIX + addingDoubleQuotation(HEX_FORMAT_PREFIX + convertHexString(bytes));
         }
         String hexString = convertHexString(bytes);
-        return HEX_PREFIX + addingSingleQuotation(new String(Objects.requireNonNull(parseHexStr2bytes(hexString))));
+        return HEX_PREFIX + addingDoubleQuotation(new String(Objects.requireNonNull(parseHexStr2bytes(hexString))));
     }
 
     private static String objectConvertMultipolygon(String columnName, Object value, Struct after) {
@@ -265,10 +308,10 @@ public class FullDataConverters {
         String schemaName = field.schema().name();
         byte[] bytes = value.toString().getBytes(Charset.defaultCharset());
         if (isGeometry(schemaName)) {
-            return HEX_PREFIX + addingSingleQuotation(HEX_FORMAT_PREFIX + convertHexString(bytes));
+            return HEX_PREFIX + addingDoubleQuotation(HEX_FORMAT_PREFIX + convertHexString(bytes));
         }
         String hexString = convertHexString(bytes);
-        return HEX_PREFIX + addingSingleQuotation(new String(Objects.requireNonNull(parseHexStr2bytes(hexString))));
+        return HEX_PREFIX + addingDoubleQuotation(new String(Objects.requireNonNull(parseHexStr2bytes(hexString))));
     }
 
     private static String objectConvertGeometrycollection(String columnName, Object value, Struct after) {
@@ -276,10 +319,10 @@ public class FullDataConverters {
         String schemaName = field.schema().name();
         byte[] bytes = value.toString().getBytes(Charset.defaultCharset());
         if (isGeometry(schemaName)) {
-            return HEX_PREFIX + addingSingleQuotation(HEX_FORMAT_PREFIX + convertHexString(bytes));
+            return HEX_PREFIX + addingDoubleQuotation(HEX_FORMAT_PREFIX + convertHexString(bytes));
         }
         String hexString = convertHexString(bytes);
-        return HEX_PREFIX + addingSingleQuotation(new String(Objects.requireNonNull(parseHexStr2bytes(hexString))));
+        return HEX_PREFIX + addingDoubleQuotation(new String(Objects.requireNonNull(parseHexStr2bytes(hexString))));
     }
 
     private static String[] getCoordinate(byte[] bytes) {
@@ -313,8 +356,10 @@ public class FullDataConverters {
         return "ST_GeomFROMtEXT('LINESTRING(" + formatCoordinate(coordinateArr) + ")')";
     }
 
-    private static String formatPoint(double[] coordinate) {
-        return "ST_GeomFROMtEXT('POINT(" + coordinate[0] + " " + coordinate[1] + ")')";
+    private static String formatPoint(String coordinate) {
+        // (1.0,1.0) -> (1.0 1.0)
+        String point = coordinate.replace(",", " ");
+        return "ST_GeomFROMtEXT('POINT" + point + "')";
     }
 
     private static String formatCoordinate(String[] coordinateArr) {
@@ -337,7 +382,7 @@ public class FullDataConverters {
                 sb.append(toBinaryString((bytes[i] & 0xFF) + 0x100).substring(1));
             }
         }
-        return addingSingleQuotation(sb.toString());
+        return addingDoubleQuotation(sb.toString());
     }
 
     private static int adjustByte(byte abyte) {
@@ -444,14 +489,50 @@ public class FullDataConverters {
         return bytes;
     }
 
-    private static String addingSingleQuotation(Object originValue) {
+    private static String replaceBackSlash(Object originValue) {
         String ret = originValue.toString();
-        if (ret.contains(SINGLE_QUOTE)) {
-            ret = ret.replaceAll(SINGLE_QUOTE, SINGLE_QUOTE + SINGLE_QUOTE);
-        }
         if (ret.contains(BACKSLASH)) {
             ret = ret.replaceAll(BACKSLASH, BACKSLASH + BACKSLASH);
         }
-        return SINGLE_QUOTE + ret + SINGLE_QUOTE;
+        return ret;
+    }
+
+    private static String addingDoubleQuotation(Object originValue) {
+        String ret = originValue.toString();
+        if (ret.contains(BACKSLASH)) {
+            ret = ret.replaceAll(BACKSLASH, BACKSLASH + BACKSLASH);
+        }
+        return DOUBLE_QUOTE + ret + DOUBLE_QUOTE;
+    }
+
+    private static String stringConvertTime(String columnName, Object value, Struct after) {
+        String time = value.toString();
+        try {
+            OffsetTime offsetTime = OffsetTime.parse(time, TIME_WITH_TIMEZONE_FORMATTER);
+            ZonedDateTime zonedDateTime = offsetTime.atDate(LocalDate.now())
+                    .atZoneSameInstant(ZoneId.of("Asia/Shanghai"));
+            String withoutZonedTime = TIME_WITHOUT_TIMEZONE_FORMATTER.format(zonedDateTime);
+            return addingDoubleQuotation(withoutZonedTime);
+        } catch (DateTimeParseException e) {
+            // time without zone
+            return addingDoubleQuotation(time);
+        }
+    }
+
+    private static String stringConvertDate(String columnName, Object value, Struct after) {
+        return addingDoubleQuotation(value);
+    }
+
+    private static String stringConvertDatetimeAndTimestamp(String columnName, Object value, Struct after) {
+        String time = value.toString();
+        try {
+            OffsetDateTime offsetDateTime = OffsetDateTime.parse(time, DATETIME_WITH_TIMEZONE_FORMATTER);
+            ZonedDateTime zonedDateTime = offsetDateTime.atZoneSameInstant(ZoneId.of("Asia/Shanghai"));
+            String withoutZonedDateTime = DATETIME_WITHOUT_TIMEZONE_FORMATTER.format(zonedDateTime);
+            return addingDoubleQuotation(withoutZonedDateTime);
+        } catch (DateTimeParseException e) {
+            // datetime without zone
+            return addingDoubleQuotation(time);
+        }
     }
 }

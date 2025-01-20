@@ -19,13 +19,13 @@ import io.debezium.connector.opengauss.connection.ogoutput.ColumnMetaData;
 import io.debezium.connector.opengauss.connection.ogoutput.OgOutputAndMppdbRelationMetaData;
 import io.debezium.connector.opengauss.connection.ogoutput.OgOutputReplicationMessage;
 import io.debezium.connector.opengauss.connection.ogoutput.mppdbdecoding.entity.TableStructureEntity;
+import org.opengauss.replication.fluent.logical.ChainedLogicalStreamBuilder;
 import io.debezium.enums.ErrorCode;
 import io.debezium.relational.Column;
 import io.debezium.relational.ColumnEditor;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
 import io.debezium.util.Strings;
-import org.postgresql.replication.fluent.logical.ChainedLogicalStreamBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

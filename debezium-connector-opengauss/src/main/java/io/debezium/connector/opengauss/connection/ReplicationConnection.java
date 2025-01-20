@@ -13,7 +13,7 @@ import java.util.Optional;
 import io.debezium.connector.opengauss.OpengaussConnectorConfig;
 import io.debezium.connector.opengauss.OpengaussSchema;
 import io.debezium.connector.opengauss.TypeRegistry;
-import org.postgresql.replication.PGReplicationStream;
+import org.opengauss.replication.PGReplicationStream;
 
 import io.debezium.annotation.NotThreadSafe;
 import io.debezium.connector.opengauss.spi.SlotCreationResult;

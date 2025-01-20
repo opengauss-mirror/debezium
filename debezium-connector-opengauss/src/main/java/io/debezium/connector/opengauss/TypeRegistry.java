@@ -20,9 +20,9 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.kafka.connect.errors.ConnectException;
-import org.postgresql.core.BaseConnection;
-import org.postgresql.core.TypeInfo;
-import org.postgresql.jdbc.PgDatabaseMetaData;
+import org.opengauss.core.BaseConnection;
+import org.opengauss.core.TypeInfo;
+import org.opengauss.jdbc.PgDatabaseMetaData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

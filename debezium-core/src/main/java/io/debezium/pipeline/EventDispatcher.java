@@ -447,7 +447,9 @@ public class EventDispatcher<T extends DataCollectionId> {
                 queue.enqueue(bufferedEvent.get());
             }
 
-            Schema keySchema = dataCollectionSchema.keySchema();
+            // Truncate events must have null key schema as they are sent to table topics without keys
+            Schema keySchema = (key == null && (operation == Operation.TRUNCATE || operation == Operation.TRUNCATE_CASCADE)) ? null
+                    : dataCollectionSchema.keySchema();
             String topicName = topicSelector.topicNameFor((T) dataCollectionSchema.id());
 
             // the record is produced lazily, so to have the correct offset as per the pre/post completion callbacks
@@ -497,7 +499,9 @@ public class EventDispatcher<T extends DataCollectionId> {
 
             LOGGER.trace("Received change record for {} operation on key {}", operation, key);
 
-            Schema keySchema = dataCollectionSchema.keySchema();
+            // Truncate events must have null key schema as they are sent to table topics without keys
+            Schema keySchema = (key == null && (operation == Operation.TRUNCATE || operation == Operation.TRUNCATE_CASCADE)) ? null
+                    : dataCollectionSchema.keySchema();
             String topicName = topicSelector.topicNameFor((T) dataCollectionSchema.id());
 
             SourceRecord record = new SourceRecord(

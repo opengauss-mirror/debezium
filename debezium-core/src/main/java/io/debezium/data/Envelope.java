@@ -60,6 +60,10 @@ public final class Envelope {
          */
         TRUNCATE_CASCADE("tc"),
         /**
+         * An operation that resulted in a ddl change
+         */
+        DDL("l"),
+        /**
          * An operation that resulted in a generic message
          */
         MESSAGE("m");
