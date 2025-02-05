@@ -6,6 +6,8 @@
 package io.debezium.config;
 
 import java.io.File;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -511,14 +513,35 @@ public class SinkConnectorConfig extends AbstractConfig {
         if (value.contains("localhost")) {
             value = value.replace("localhost", "127.0.0.1");
         }
-        String regex = "((25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)\\.)"
-                + "{3}(25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)"
-                + "(:([0-9]|[1-9]\\d|[1-9]\\d{2}|[1-9]\\d{3}|[1-5]\\d{4}|6[0-4]\\d{2}|655[0-2]\\d|6553[0-5])$)";
-        if ("".equals(value) || !value.matches(regex)) {
-            LOGGER.warn("The parameter " + parameterName + " is invalid, it must be server path,"
-                    + " will adopt it's default value: " + defaultValue);
+
+        int colonIndex = value.lastIndexOf(":");
+        if (colonIndex == -1) {
             return false;
         }
+
+        String serverPort = value.substring(colonIndex + 1);
+        try {
+            int port = Integer.parseInt(serverPort);
+            if (port < 1 || port > 65535) {
+                LOGGER.warn(
+                    "The port of the parameter " + parameterName + " " + value + " is invalid: " + serverPort);
+                return false;
+            }
+        } catch (NumberFormatException e) {
+            LOGGER.warn(
+                "The port of the parameter " + parameterName + " " + value + " is invalid: " + serverPort);
+            return false;
+        }
+
+        String serverIp = value.substring(0, colonIndex);
+        try {
+            InetAddress inetAddress = InetAddress.getByName(serverIp);
+        } catch (UnknownHostException e) {
+            LOGGER.warn(
+                "The ip of the parameter " + parameterName + " " + value + " is invalid: " + serverIp);
+            return false;
+        }
+
         return true;
     }
 

@@ -7,6 +7,8 @@ package io.debezium.relational;
 
 import java.io.File;
 import java.math.BigDecimal;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
@@ -971,12 +973,35 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
         if (value.contains("localhost")) {
             value = value.replace("localhost", "127.0.0.1");
         }
-        String regex = "((25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)\\.)"
-                + "{3}(25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)"
-                + "(:([0-9]|[1-9]\\d|[1-9]\\d{2}|[1-9]\\d{3}|[1-5]\\d{4}|6[0-4]\\d{2}|655[0-2]\\d|6553[0-5])$)";
-        if ("".equals(value) || !value.matches(regex)) {
+
+        int colonIndex = value.lastIndexOf(":");
+        if (colonIndex == -1) {
             return false;
         }
+
+        String serverPort = value.substring(colonIndex + 1);
+        try {
+            int port = Integer.parseInt(serverPort);
+            if (port < 1 || port > 65535) {
+                LOGGER.warn("The port of the parameter " + parameterName.name()
+                    + " " + value + " is invalid: " + serverPort);
+                return false;
+            }
+        } catch (NumberFormatException e) {
+            LOGGER.warn("The port of the parameter " + parameterName.name()
+                + " " + value + " is invalid: " + serverPort);
+            return false;
+        }
+
+        String serverIp = value.substring(0, colonIndex);
+        try {
+            InetAddress inetAddress = InetAddress.getByName(serverIp);
+        } catch (UnknownHostException e) {
+            LOGGER.warn("The ip of the parameter " + parameterName.name()
+                + " " + value + " is invalid: " + serverIp);
+            return false;
+        }
+
         return true;
     }
 
