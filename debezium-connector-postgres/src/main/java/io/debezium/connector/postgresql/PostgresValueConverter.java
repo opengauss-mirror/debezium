@@ -42,6 +42,7 @@ import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.postgresql.PGStatement;
+import org.postgresql.geometric.PGline;
 import org.postgresql.geometric.PGpoint;
 import org.postgresql.jdbc.PgArray;
 import org.postgresql.util.HStoreConverter;
@@ -225,6 +226,8 @@ public class PostgresValueConverter extends JdbcValueConverters {
                 return Uuid.builder();
             case PgOid.POINT:
                 return Point.builder();
+            case PgOid.LINE:
+                return SchemaBuilder.string();
             case PgOid.MONEY:
                 return moneySchema();
             case PgOid.NUMERIC:
@@ -419,6 +422,8 @@ public class PostgresValueConverter extends JdbcValueConverters {
                 return data -> convertString(column, fieldDefn, data);
             case PgOid.POINT:
                 return data -> convertPoint(column, fieldDefn, data);
+            case PgOid.LINE:
+                return data -> convertLine(column, fieldDefn, data);
             case PgOid.MONEY:
                 return data -> convertMoney(column, fieldDefn, data, decimalMode);
             case PgOid.NUMERIC:
@@ -508,6 +513,16 @@ public class PostgresValueConverter extends JdbcValueConverters {
                     return jdbcConverter;
                 }
         }
+    }
+
+    private Object convertLine(Column column, Field fieldDefn, Object data) {
+        if (data == null) {
+            return null;
+        }
+        if (data instanceof PGline) {
+            return data.toString();
+        }
+        return convertBinary(column, fieldDefn, data, binaryMode);
     }
 
     private ValueConverter createArrayConverter(Column column, Field fieldDefn) {

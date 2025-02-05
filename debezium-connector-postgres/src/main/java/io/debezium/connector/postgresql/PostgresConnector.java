@@ -15,12 +15,14 @@ import java.util.Map;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigValue;
 import org.apache.kafka.connect.connector.Task;
+import org.postgresql.core.ServerVersion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.common.RelationalBaseSourceConnector;
 import io.debezium.connector.postgresql.connection.PostgresConnection;
+import io.debezium.connector.postgresql.migration.PostgresSqlConstant;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
 
 /**
@@ -101,32 +103,38 @@ public class PostgresConnector extends RelationalBaseSourceConnector {
                     LOGGER.error(errorMessage);
                     hostnameValue.addErrorMessage(errorMessage);
                 }
+
+                final String serverVersion = connection.queryAndMap(
+                        "SHOW server_version",
+                        connection.singleResultMapper(rs -> rs.getString("server_version"),
+                                "Could not fetch server_version"));
                 // check user for LOGIN and REPLICATION roles
-                if (!connection.queryAndMap(
-                        "SELECT r.rolcanlogin AS rolcanlogin, r.rolreplication AS rolreplication," +
-                        // for AWS the user might not have directly the rolreplication rights, but can be assigned
-                        // to one of those role groups: rds_superuser, rdsadmin or rdsrepladmin
-                                " CAST(array_position(ARRAY(SELECT b.rolname" +
-                                " FROM pg_catalog.pg_auth_members m" +
-                                " JOIN pg_catalog.pg_roles b ON (m.roleid = b.oid)" +
-                                " WHERE m.member = r.oid), 'rds_superuser') AS BOOL) IS TRUE AS aws_superuser" +
-                                ", CAST(array_position(ARRAY(SELECT b.rolname" +
-                                " FROM pg_catalog.pg_auth_members m" +
-                                " JOIN pg_catalog.pg_roles b ON (m.roleid = b.oid)" +
-                                " WHERE m.member = r.oid), 'rdsadmin') AS BOOL) IS TRUE AS aws_admin" +
-                                ", CAST(array_position(ARRAY(SELECT b.rolname" +
-                                " FROM pg_catalog.pg_auth_members m" +
-                                " JOIN pg_catalog.pg_roles b ON (m.roleid = b.oid)" +
-                                " WHERE m.member = r.oid), 'rdsrepladmin') AS BOOL) IS TRUE AS aws_repladmin" +
-                                " FROM pg_roles r WHERE r.rolname = current_user",
-                        connection.singleResultMapper(rs -> rs.getBoolean("rolcanlogin")
-                                && (rs.getBoolean("rolreplication")
-                                        || rs.getBoolean("aws_superuser")
-                                        || rs.getBoolean("aws_admin")
-                                        || rs.getBoolean("aws_repladmin")),
-                                "Could not fetch roles"))) {
-                    final String errorMessage = "Postgres roles LOGIN and REPLICATION are not assigned to user: " + connection.username();
-                    LOGGER.error(errorMessage);
+                if (ServerVersion.from(serverVersion).getVersionNum()
+                        >= ServerVersion.from(PostgresSqlConstant.PG_SERVER_V95).getVersionNum()) {
+                    if (!connection.queryAndMap(
+                            // for AWS the user might not have directly the rolreplication rights, but can be assigned
+                            // to one of those role groups: rds_superuser, rdsadmin or rdsrepladmin
+                            PostgresSqlConstant.REPLICATION_RIGHTS_SQL,
+                            connection.singleResultMapper(rs -> rs.getBoolean("rolcanlogin")
+                                    && (rs.getBoolean("rolreplication")
+                                            || rs.getBoolean("aws_superuser")
+                                            || rs.getBoolean("aws_admin")
+                                            || rs.getBoolean("aws_repladmin")),
+                                    "Could not fetch roles"))) {
+                        final String errorMessage = "Postgres roles LOGIN and REPLICATION are not assigned to user: "
+                                + connection.username();
+                        LOGGER.error(errorMessage);
+                    }
+                } else {
+                    if (!connection.queryAndMap(
+                            "SELECT r.rolcanlogin AS rolcanlogin, r.rolreplication AS rolreplication"
+                                    + " FROM pg_roles r WHERE r.rolname = current_user",
+                            connection.singleResultMapper(rs -> rs.getBoolean("rolcanlogin")
+                                    && (rs.getBoolean("rolreplication")), "Could not fetch roles"))) {
+                        final String errorMessage = "Postgres roles LOGIN and REPLICATION are not assigned to user: "
+                                + connection.username();
+                        LOGGER.error(errorMessage);
+                    }
                 }
             }
             catch (SQLException e) {

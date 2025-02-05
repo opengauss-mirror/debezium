@@ -19,10 +19,6 @@ import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.debezium.config.SinkConnectorConfig;
-import io.debezium.enums.ErrorCode;
-import io.debezium.relational.RelationalDatabaseConnectorConfig;
-
 /**
  * Description: BaseProcessCommitter
  *
@@ -130,8 +126,7 @@ public abstract class BaseProcessCommitter {
             }
         }
         catch (IOException exp) {
-            LOGGER.warn("{}Failed to create directors, please check file path.", ErrorCode.PROGRESS_COMMIT_EXCEPTION,
-                exp);
+            LOGGER.warn("Failed to create directors, please check file path.", exp);
         }
         return processFile;
     }
@@ -165,9 +160,8 @@ public abstract class BaseProcessCommitter {
                 fileWriter.write(string + Utils.NL);
             }
             catch (IOException exp) {
-                LOGGER.warn(
-                    "{}IO exception occurred while committing message, process or fail sql will not be committed",
-                    ErrorCode.PROGRESS_COMMIT_EXCEPTION, exp);
+                LOGGER.warn("IO exception occurred while committing message, process or fail sql will not be committed",
+                        exp);
             }
         }
     }
@@ -193,8 +187,8 @@ public abstract class BaseProcessCommitter {
                 in.read(fileContent);
             }
             catch (IOException exp) {
-                LOGGER.warn("{}IO exception occurred while reading source create count,"
-                        + " the overallPipe will always be 0", ErrorCode.PROGRESS_COMMIT_EXCEPTION, exp);
+                LOGGER.warn("IO exception occurred while reading source create count,"
+                        + " the overallPipe will always be 0", exp);
                 return -1L;
             }
             content = new String(fileContent, StandardCharsets.UTF_8);
@@ -256,8 +250,8 @@ public abstract class BaseProcessCommitter {
             fileWriter.write(System.currentTimeMillis() + ":" + number + "");
         }
         catch (IOException exp) {
-            LOGGER.warn("{}IO exception occurred while output source create count,"
-                    + " the overallPipe will always be 0", ErrorCode.PROGRESS_COMMIT_EXCEPTION, exp);
+            LOGGER.warn("IO exception occurred while output source create count,"
+                    + " the overallPipe will always be 0", exp);
         }
     }
 

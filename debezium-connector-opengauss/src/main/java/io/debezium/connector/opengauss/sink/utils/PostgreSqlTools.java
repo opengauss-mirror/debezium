@@ -376,7 +376,7 @@ public class PostgreSqlTools extends SqlTools {
         try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
             List<String> tableList = new ArrayList<>();
             while (rs.next()) {
-                tableList.add(rs.getString("ns.nspname") + "." + rs.getString("c.relname"));
+                tableList.add(rs.getString("nspname") + "." + rs.getString("relname"));
             }
             return tableList;
         } catch (SQLException e) {

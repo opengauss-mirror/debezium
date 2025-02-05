@@ -31,6 +31,13 @@ public abstract class RelationalChangeRecordEmitter extends AbstractChangeRecord
     public static final String PK_UPDATE_OLDKEY_FIELD = "__debezium.oldkey";
     public static final String PK_UPDATE_NEWKEY_FIELD = "__debezium.newkey";
 
+    private String idxDdl;
+
+    public RelationalChangeRecordEmitter(Partition partition, OffsetContext offsetContext, Clock clock, String idxDdl) {
+        super(partition, offsetContext, clock);
+        this.idxDdl = idxDdl;
+    }
+
     public RelationalChangeRecordEmitter(Partition partition, OffsetContext offsetContext, Clock clock) {
         super(partition, offsetContext, clock);
     }
@@ -43,6 +50,12 @@ public abstract class RelationalChangeRecordEmitter extends AbstractChangeRecord
         switch (operation) {
             case PATH:
                 emitPathRecord(receiver, tableSchema);
+                break;
+            case CREATE_INDEX:
+                emitCreateIndexRecord(receiver, tableSchema);
+                break;
+            case TABLE_SNAPSHOT:
+                emitSnapshotRecord(receiver, tableSchema);
                 break;
             case CREATE:
                 emitCreateRecord(receiver, tableSchema);
@@ -64,7 +77,13 @@ public abstract class RelationalChangeRecordEmitter extends AbstractChangeRecord
         }
     }
 
-    private void emitPathRecord(Receiver receiver, TableSchema tableSchema)
+    /**
+     * emit csv file path to kafka
+     *
+     * @param receiver Receiver
+     * @param tableSchema TableSchema
+     */
+    protected void emitPathRecord(Receiver receiver, TableSchema tableSchema)
             throws InterruptedException {
         Object[] values = getNewColumnValues();
         tableSchema.removeKeySchema();
@@ -74,9 +93,30 @@ public abstract class RelationalChangeRecordEmitter extends AbstractChangeRecord
         int length = value1.toString().split(",").length;
         Struct after = tableSchema.valueFromColumnData(new Object[length]);
         Struct envelope = tableSchema.getEnvelopeSchema().path(data, after, getOffset().getSourceInfo(),
-                getClock().currentTimeAsInstant());
+                getClock().currentTimeAsInstant(), null, null);
         receiver.changeRecord(getPartition(), tableSchema, Operation.PATH, null, envelope, getOffset(), null);
     }
+
+    /**
+     * emit table index info to kafka
+     *
+     * @param receiver Receiver
+     * @param tableSchema TableSchema
+     */
+    protected void emitCreateIndexRecord(Receiver receiver, TableSchema tableSchema) throws InterruptedException {
+        tableSchema.removeKeySchema();
+        Struct envelope = tableSchema.getEnvelopeSchema().index(getIdxDdl(), getOffset().getSourceInfo(),
+                getClock().currentTimeAsInstant());
+        receiver.changeRecord(getPartition(), tableSchema, Operation.CREATE_INDEX, null, envelope, getOffset(), null);
+    }
+
+    /**
+     * emit snapshot info to kafka
+     *
+     * @param receiver Receiver
+     * @param tableSchema TableSchema
+     */
+    protected void emitSnapshotRecord(Receiver receiver, TableSchema tableSchema) throws InterruptedException {};
 
     @Override
     protected void emitCreateRecord(Receiver receiver, TableSchema tableSchema)
@@ -168,5 +208,9 @@ public abstract class RelationalChangeRecordEmitter extends AbstractChangeRecord
      */
     protected boolean skipEmptyMessages() {
         return false;
+    }
+
+    public String getIdxDdl() {
+        return this.idxDdl;
     }
 }

@@ -25,7 +25,6 @@ import io.debezium.config.Configuration;
 import io.debezium.config.Field;
 import io.debezium.document.DocumentReader;
 import io.debezium.document.DocumentWriter;
-import io.debezium.enums.ErrorCode;
 import io.debezium.util.Collect;
 import io.debezium.util.FunctionalReadWriteLock;
 
@@ -118,8 +117,7 @@ public final class FileDatabaseHistory extends AbstractDatabaseHistory {
                         historyWriter.newLine();
                     }
                     catch (IOException e) {
-                        logger.error("{}Failed to add record to history at {}: {}", ErrorCode.IO_EXCEPTION, path,
-                            record, e);
+                        logger.error("Failed to add record to history at {}: {}", path, record, e);
                         return;
                     }
                 }
@@ -128,7 +126,7 @@ public final class FileDatabaseHistory extends AbstractDatabaseHistory {
                 }
             }
             catch (IOException e) {
-                logger.error("{}Failed to convert record to string: {}", ErrorCode.IO_EXCEPTION, record, e);
+                logger.error("Failed to convert record to string: {}", record, e);
             }
         });
     }
@@ -152,7 +150,7 @@ public final class FileDatabaseHistory extends AbstractDatabaseHistory {
                 }
             }
             catch (IOException e) {
-                logger.error("{}Failed to add recover records from history at {}", ErrorCode.IO_EXCEPTION, path, e);
+                logger.error("Failed to add recover records from history at {}", path, e);
             }
         });
     }

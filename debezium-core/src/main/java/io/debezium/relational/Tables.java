@@ -180,7 +180,17 @@ public final class Tables {
         });
     }
 
-    public Table overwriteTable(TableId tableId, List<Column> columns, List<String> primaryKeyColumnNames, String defaultCharsetName) {
+    /**
+     * overwrite table info
+     *
+     * @param tableId TableId
+     * @param columns List<Column>
+     * @param primaryKeyColumnNames List<String>
+     * @param defaultCharsetName String
+     * @return Table
+     */
+    public Table overwriteTable(TableId tableId, List<Column> columns, List<String> primaryKeyColumnNames,
+                                String defaultCharsetName) {
         return overwriteTable(tableId, columns, primaryKeyColumnNames, Collections.emptyList(), defaultCharsetName);
     }
 

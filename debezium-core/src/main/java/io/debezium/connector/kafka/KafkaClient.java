@@ -19,12 +19,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import com.google.common.base.Strings;
-import io.debezium.config.Configuration;
-import io.debezium.config.SinkConnectorConfig;
-import io.debezium.enums.ErrorCode;
-import io.debezium.relational.RelationalDatabaseConnectorConfig;
-import io.debezium.util.Collect;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.Config;
@@ -48,6 +42,13 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.base.Strings;
+
+import io.debezium.config.Configuration;
+import io.debezium.config.SinkConnectorConfig;
+import io.debezium.relational.RelationalDatabaseConnectorConfig;
+import io.debezium.util.Collect;
 
 /**
  * Description: Kafka client
@@ -349,7 +350,7 @@ public class KafkaClient {
                 LOGGER.info("Wait for source config ...");
                 Thread.sleep(1000);
             } catch (InterruptedException e) {
-                LOGGER.error("{}Interrupted exception occurred", ErrorCode.THREAD_INTERRUPTED_EXCEPTION, e);
+                LOGGER.error("Interrupted exception occurred", e);
             }
             result = readConfig();
         }
@@ -378,7 +379,7 @@ public class KafkaClient {
         if (!records.isEmpty()) {
             value = records.iterator().next().value();
         }
-        if(!Strings.isNullOrEmpty(value)){
+        if (!Strings.isNullOrEmpty(value)) {
             configConsumer.commitAsync();
             configConsumer.close();
         }

@@ -1263,7 +1263,6 @@ public interface Configuration {
         return defaultValueSupplier != null ? defaultValueSupplier.getAsDouble() : null;
     }
 
-
     /**
      * Get the boolean value associated with the given key, using the given supplier to obtain a default value if there is no such
      * key-value pair.

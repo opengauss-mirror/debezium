@@ -7,15 +7,23 @@
 package io.debezium.connector.postgresql.connection;
 
 import java.nio.charset.Charset;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.ResultSetMetaData;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Optional;
+
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.kafka.connect.errors.ConnectException;
 import org.postgresql.core.BaseConnection;
@@ -219,6 +227,66 @@ public class PostgresConnection extends JdbcConnection {
                     }
                 });
         return slot;
+    }
+
+    @Override
+    protected void readTableColumnMetadata(Tables tables, DatabaseMetaData metadata,
+                                           Map<TableId, List<Column>> columnsByTable) {
+        for (Map.Entry<TableId, List<Column>> tableEntry : columnsByTable.entrySet()) {
+            // Then define the table ...
+            List<Column> columns = tableEntry.getValue();
+            Collections.sort(columns);
+            tables.overwriteTable(tableEntry.getKey(),
+                    columns,
+                    Collections.emptyList(),
+                    null);
+        }
+        LOGGER.warn("finish query get table column other meta data");
+    }
+
+    private String getIntervalType(TableId tableId, String colName) throws SQLException {
+        AtomicReference<String> intervalType = new AtomicReference<>();
+        String sql = "select interval_type from information_schema.columns where table_schema = ? "
+                + " and table_name = ? and column_name = ?";
+        prepareQuery(sql, stmt -> {
+            stmt.setString(1, tableId.schema());
+            stmt.setString(2, tableId.table());
+            stmt.setString(3, colName);
+        }, rs -> {
+            while (rs.next()) {
+                String resultType = rs.getString(1);
+                intervalType.set(resultType);
+            }
+        });
+        return intervalType.get();
+    }
+
+    private HashMap<String, List<String>> getTablePkMap(List<String> schemaList) throws SQLException {
+        LOGGER.warn("schema is {}", schemaList);
+        String sql = "select c.relname tableName,ns.nspname schemaName,ns.oid,a.attname columnName from pg_class c "
+                + "left join pg_namespace ns on c.relnamespace=ns.oid left join pg_attribute a on c.oid=a.attrelid "
+                + "and a.attnum>0 and not a.attisdropped inner join pg_constraint cs on a.attrelid=cs.conrelid "
+                + "and a.attnum=any(cs.conkey) where ns.nspname= ? and (cs.contype='p' or cs.contype='u');";
+        LOGGER.warn(sql);
+        HashMap<String, List<String>> tablePkMap = new HashMap<>();
+        for (String schema : schemaList) {
+            prepareQuery(sql, stmt -> stmt.setString(1, schema), rs -> {
+                while (rs.next()) {
+                    String schemaName = rs.getString("schemaName");
+                    String tableName = rs.getString("tableName");
+                    String tableFullName = String.format("{%s}.{%s}", schemaName, tableName);
+                    String columnName = rs.getString("columnName");
+                    if (tablePkMap.containsKey(tableFullName)) {
+                        tablePkMap.get(tableFullName).add(columnName);
+                    } else {
+                        ArrayList<String> list = new ArrayList<>();
+                        list.add(columnName);
+                        tablePkMap.put(tableFullName, list);
+                    }
+                }
+            });
+        }
+        return tablePkMap;
     }
 
     /**
@@ -571,6 +639,12 @@ public class PostgresConnection extends JdbcConnection {
             if (defaultValueExpression != null && getDefaultValueConverter().supportConversion(column.typeName())) {
                 column.defaultValueExpression(defaultValueExpression);
             }
+            if ("interval".equals(column.typeName())) {
+                String intervalType = getIntervalType(tableId, columnName);
+                if (intervalType != null) {
+                    column.intervalType(intervalType);
+                }
+            }
 
             return Optional.of(column);
         }
@@ -646,6 +720,22 @@ public class PostgresConnection extends JdbcConnection {
             // not a known type
             return super.getColumnValue(rs, columnIndex, column, table, schema);
         }
+    }
+
+    /**
+     * @description: get statement for export data from postgres
+     *
+     * @param connectorConfig PostgresConnectorConfig
+     * @param connection Connection
+     * @return Statement
+     */
+    public Statement readTableStatementPostgres(PostgresConnectorConfig connectorConfig, Connection connection)
+            throws SQLException {
+        int fetchSize = connectorConfig.getSnapshotFetchSize();
+        final Statement statement = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE,
+                ResultSet.CONCUR_READ_ONLY); // the default cursor is FORWARD_ONLY
+        statement.setFetchSize(fetchSize);
+        return statement;
     }
 
     @FunctionalInterface

@@ -5,10 +5,10 @@
  */
 package io.debezium.schema;
 
-import java.util.Collections;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
+import java.util.Collections;
+import java.util.Objects;
 
 import org.apache.kafka.connect.data.Struct;
 
@@ -32,15 +32,26 @@ public class SchemaChangeEvent {
     private final Struct source;
     private final boolean isFromSnapshot;
     private TableChanges tableChanges = new TableChanges();
+    private String parentTables;
+    private String partitions;
 
     public SchemaChangeEvent(Map<String, ?> partition, Map<String, ?> offset, Struct source, String database, String schema, String ddl, Table table,
-                             SchemaChangeEventType type,
-                             boolean isFromSnapshot) {
-        this(partition, offset, source, database, schema, ddl, table != null ? Collections.singleton(table) : Collections.emptySet(), type, isFromSnapshot);
+                             SchemaChangeEventType type, boolean isFromSnapshot) {
+        this(partition, offset, source, database, schema, ddl,
+                table != null ? Collections.singleton(table) : Collections.emptySet(), type, isFromSnapshot);
     }
 
-    public SchemaChangeEvent(Map<String, ?> partition, Map<String, ?> offset, Struct source, String database, String schema, String ddl, Set<Table> tables,
-                             SchemaChangeEventType type,
+    public SchemaChangeEvent(Map<String, ?> partition, Map<String, ?> offset, Struct source, String database,
+                             String schema, String ddl, Table table, SchemaChangeEventType type, boolean isFromSnapshot,
+                             String parentTables, String partitions) {
+        this(partition, offset, source, database, schema, ddl,
+                table != null ? Collections.singleton(table) : Collections.emptySet(), type, isFromSnapshot);
+        this.parentTables = parentTables;
+        this.partitions = partitions;
+    }
+
+    public SchemaChangeEvent(Map<String, ?> partition, Map<String, ?> offset, Struct source, String database,
+                             String schema, String ddl, Set<Table> tables, SchemaChangeEventType type,
                              boolean isFromSnapshot) {
         this.partition = Objects.requireNonNull(partition, "partition must not be null");
         this.offset = Objects.requireNonNull(offset, "offset must not be null");
@@ -112,6 +123,14 @@ public class SchemaChangeEvent {
 
     public TableChanges getTableChanges() {
         return tableChanges;
+    }
+
+    public String getParentTables() {
+        return parentTables;
+    }
+
+    public String getPartitions() {
+        return partitions;
     }
 
     @Override

@@ -156,6 +156,13 @@ public interface Column extends Comparable<Column> {
     String comment();
 
     /**
+     * Get interval type of the column.
+     *
+     * @return String the interval type
+     */
+    String intervalType();
+
+    /**
     * get the modify of the column editor keys
     * @return this editor so callers can chain methods together
     */

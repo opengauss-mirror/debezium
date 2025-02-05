@@ -16,6 +16,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import io.debezium.migration.ObjectChangeEvent;
+import io.debezium.migration.ObjectEnum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,7 +50,7 @@ public class OracleSnapshotChangeEventSource extends RelationalSnapshotChangeEve
     public OracleSnapshotChangeEventSource(OracleConnectorConfig connectorConfig, OracleConnection jdbcConnection,
                                            OracleDatabaseSchema schema, EventDispatcher<TableId> dispatcher, Clock clock,
                                            SnapshotProgressListener snapshotProgressListener) {
-        super(connectorConfig, jdbcConnection, schema, dispatcher, clock, snapshotProgressListener);
+        super(connectorConfig, jdbcConnection, schema, dispatcher, clock, snapshotProgressListener, null);
 
         this.connectorConfig = connectorConfig;
         this.jdbcConnection = jdbcConnection;
@@ -324,6 +326,12 @@ public class OracleSnapshotChangeEventSource extends RelationalSnapshotChangeEve
                 table,
                 SchemaChangeEventType.CREATE,
                 true);
+    }
+
+    protected ObjectChangeEvent getCreateObjectEvent(
+            RelationalSnapshotContext<OraclePartition, OracleOffsetContext> snapshotContext,
+            String schema, String ddl, String objName, ObjectEnum objType) throws SQLException {
+        return null;
     }
 
     /**

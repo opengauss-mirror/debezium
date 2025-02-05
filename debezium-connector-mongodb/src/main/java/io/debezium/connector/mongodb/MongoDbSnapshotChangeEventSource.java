@@ -157,6 +157,13 @@ public class MongoDbSnapshotChangeEventSource extends AbstractSnapshotChangeEven
         return SnapshotResult.completed(snapshotContext.offset);
     }
 
+    /**
+     * do execute object snapshot
+     *
+     * @param snapshotContext SnapshotContext<MongoDbPartition, MongoDbOffsetContext>
+     */
+    protected void doExecuteObjectSnapShot(SnapshotContext<MongoDbPartition, MongoDbOffsetContext> snapshotContext) {}
+
     @Override
     protected SnapshottingTask getSnapshottingTask(MongoDbOffsetContext previousOffset) {
         if (previousOffset == null) {

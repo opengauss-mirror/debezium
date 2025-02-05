@@ -6,10 +6,15 @@
 
 package io.debezium.connector.postgresql;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.time.Duration;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Arrays;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.common.config.ConfigDef;
@@ -713,6 +718,12 @@ public class PostgresConnectorConfig extends RelationalDatabaseConnectorConfig {
             .withDescription("The name of the Postgres 10+ publication used for streaming changes from a plugin." +
                     "Defaults to '" + ReplicationConnection.Builder.DEFAULT_PUBLICATION_NAME + "'");
 
+    public static final Field XLOG_LOCATION = Field.create("xlog.location")
+            .withDisplayName("xlog location")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("xlog location");
+
     public enum AutoCreateMode implements EnumeratedValue {
         /**
          * No Publication will be created, it's expected the user
@@ -1071,6 +1082,24 @@ public class PostgresConnectorConfig extends RelationalDatabaseConnectorConfig {
             .withDefault(2)
             .withDescription("Number of fractional digits when money type is converted to 'precise' decimal number.");
 
+    public static final Field EXPORT_CSV_PATH = Field.create("export.csv.path")
+            .withDisplayName("export csv path")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("full data export csv path");
+
+    public static final Field EXPORT_FILE_SIZE = Field.create("export.file.size")
+            .withDisplayName("export file size")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("full data export file size");
+
+    public static final Field EXPORT_CSV_PATH_SIZE = Field.create("export.csv.path.size")
+            .withDisplayName("export csv path size")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("full data export csv path size");
+
     private final TruncateHandlingMode truncateHandlingMode;
     private final LogicalDecodingMessageFilter logicalDecodingMessageFilter;
     private final HStoreHandlingMode hStoreHandlingMode;
@@ -1109,12 +1138,53 @@ public class PostgresConnectorConfig extends RelationalDatabaseConnectorConfig {
         return getConfig().getString(DATABASE_NAME);
     }
 
+    private String user() {
+        return getConfig().getString(USER);
+    }
+
+    private String password() {
+        return getConfig().getString(PASSWORD);
+    }
+
+    /**
+     * get schema white list
+     *
+     * @return List<String>
+     */
+    public List<String> schemaWhiteList() {
+        String schemaWhiteStr = getConfig().getFallbackStringProperty(
+                RelationalDatabaseConnectorConfig.SCHEMA_INCLUDE_LIST,
+                RelationalDatabaseConnectorConfig.SCHEMA_WHITELIST);
+        return schemaWhiteStr == null ? Collections.emptyList() : Arrays.asList(schemaWhiteStr.split(","));
+    }
+
+    /**
+     * get table white list
+     *
+     * @return List<String>
+     */
+    public List<String> tableWhiteList() {
+        String tableWhiteStr = getConfig().getFallbackStringProperty(
+                RelationalDatabaseConnectorConfig.TABLE_INCLUDE_LIST,
+                RelationalDatabaseConnectorConfig.TABLE_WHITELIST);
+        return tableWhiteStr == null ? new ArrayList<>() : Arrays.asList(tableWhiteStr.split(","));
+    }
+
     protected LogicalDecoder plugin() {
         return LogicalDecoder.parse(getConfig().getString(PLUGIN_NAME));
     }
 
     protected String slotName() {
         return getConfig().getString(SLOT_NAME);
+    }
+
+    /**
+     * get xlog location in property file
+     *
+     * @return String
+     */
+    public String xlogLocation() {
+        return getConfig().getString(XLOG_LOCATION);
     }
 
     protected boolean dropSlotOnStop() {
@@ -1221,6 +1291,7 @@ public class PostgresConnectorConfig extends RelationalDatabaseConnectorConfig {
                     DATABASE_NAME,
                     PLUGIN_NAME,
                     SLOT_NAME,
+                    XLOG_LOCATION,
                     PUBLICATION_NAME,
                     PUBLICATION_AUTOCREATE_MODE,
                     DROP_SLOT_ON_STOP,
@@ -1236,7 +1307,10 @@ public class PostgresConnectorConfig extends RelationalDatabaseConnectorConfig {
                     SSL_SOCKET_FACTORY,
                     STATUS_UPDATE_INTERVAL_MS,
                     TCP_KEEPALIVE,
-                    XMIN_FETCH_INTERVAL)
+                    XMIN_FETCH_INTERVAL,
+                    EXPORT_CSV_PATH,
+                    EXPORT_FILE_SIZE,
+                    EXPORT_CSV_PATH_SIZE)
             .events(
                     INCLUDE_UNKNOWN_DATATYPES,
                     TOASTED_VALUE_PLACEHOLDER)
@@ -1325,6 +1399,50 @@ public class PostgresConnectorConfig extends RelationalDatabaseConnectorConfig {
         return 0;
     }
 
+    /**
+     * get postgresql jdbc connection
+     *
+     * @return Connection
+     */
+    public Connection getConnection() {
+        String sourceURL = "jdbc:postgresql://" + hostname() + ":" + port() + "/" + databaseName();
+
+        Connection connection = null;
+        try {
+            connection = DriverManager.getConnection(sourceURL, user(), password());
+        } catch (SQLException exp) {
+            LOGGER.error("Create postgresql connection failed.", exp);
+        }
+        return connection;
+    }
+
+    /**
+     * get source csv path
+     *
+     * @return String
+     */
+    public String getExportCsvPath() {
+        return getConfig().getString(EXPORT_CSV_PATH);
+    }
+
+    /**
+     * get source csv path size limit
+     *
+     * @return String
+     */
+    public String getExportCsvPathSize() {
+        return getConfig().getString(EXPORT_CSV_PATH_SIZE);
+    }
+
+    /**
+     * get csv file size limit
+     *
+     * @return String
+     */
+    public String getExportFileSize() {
+        return getConfig().getString(EXPORT_FILE_SIZE);
+    }
+
     @Override
     public String getContextName() {
         return Module.contextName();
@@ -1335,7 +1453,7 @@ public class PostgresConnectorConfig extends RelationalDatabaseConnectorConfig {
         return Module.name();
     }
 
-    private static class SystemTablesPredicate implements TableFilter {
+    public static class SystemTablesPredicate implements TableFilter {
         protected static final List<String> SYSTEM_SCHEMAS = Arrays.asList("pg_catalog", "information_schema");
 
         @Override

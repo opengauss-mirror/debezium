@@ -16,6 +16,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import io.debezium.migration.ObjectChangeEvent;
+import io.debezium.migration.ObjectEnum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,7 +49,7 @@ public class SqlServerSnapshotChangeEventSource extends RelationalSnapshotChange
     public SqlServerSnapshotChangeEventSource(SqlServerConnectorConfig connectorConfig, SqlServerConnection jdbcConnection,
                                               SqlServerDatabaseSchema schema, EventDispatcher<TableId> dispatcher, Clock clock,
                                               SnapshotProgressListener snapshotProgressListener) {
-        super(connectorConfig, jdbcConnection, schema, dispatcher, clock, snapshotProgressListener);
+        super(connectorConfig, jdbcConnection, schema, dispatcher, clock, snapshotProgressListener, null);
         this.connectorConfig = connectorConfig;
         this.jdbcConnection = jdbcConnection;
         this.sqlServerDatabaseSchema = schema;
@@ -235,6 +237,13 @@ public class SqlServerSnapshotChangeEventSource extends RelationalSnapshotChange
                 table,
                 SchemaChangeEventType.CREATE,
                 true);
+    }
+
+    protected ObjectChangeEvent getCreateObjectEvent(
+            RelationalSnapshotContext<SqlServerPartition, SqlServerOffsetContext> snapshotContext,
+            String schema, String ddl, String ObjName, ObjectEnum objType)
+            throws SQLException {
+        return null;
     }
 
     @Override

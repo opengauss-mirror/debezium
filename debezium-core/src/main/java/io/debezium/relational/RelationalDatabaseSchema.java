@@ -30,21 +30,51 @@ import io.debezium.schema.TopicSelector;
 public abstract class RelationalDatabaseSchema implements DatabaseSchema<TableId> {
     private final static Logger LOG = LoggerFactory.getLogger(RelationalDatabaseSchema.class);
 
-    private final TopicSelector<TableId> topicSelector;
-    private final TableSchemaBuilder schemaBuilder;
-    private final TableFilter tableFilter;
-    private final ColumnNameFilter columnFilter;
-    private final ColumnMappers columnMappers;
-    private final KeyMapper customKeysMapper;
+    /**
+     * builder for schema
+     */
+    protected final TableSchemaBuilder schemaBuilder;
 
-    private final String schemaPrefix;
-    private final SchemasByTableId schemasByTableId;
-    private final Tables tables;
+    /**
+     * table filter
+     */
+    protected final TableFilter tableFilter;
+
+    /**
+     * column filter
+     */
+    protected final ColumnNameFilter columnFilter;
+
+    /**
+     * column mapper
+     */
+    protected final ColumnMappers columnMappers;
+
+    /**
+     * custom keys mapper
+     */
+    protected final KeyMapper customKeysMapper;
+
+    /**
+     * schema prefix
+     */
+    protected final String schemaPrefix;
+
+    /**
+     * schema and tableId map
+     */
+    protected final SchemasByTableId schemasByTableId;
+
+    /**
+     * table infos
+     */
+    protected final Tables tables;
+
+    private final TopicSelector<TableId> topicSelector;
 
     protected RelationalDatabaseSchema(RelationalDatabaseConnectorConfig config, TopicSelector<TableId> topicSelector,
                                        TableFilter tableFilter, ColumnNameFilter columnFilter, TableSchemaBuilder schemaBuilder,
                                        boolean tableIdCaseInsensitive, KeyMapper customKeysMapper) {
-
         this.topicSelector = topicSelector;
         this.schemaBuilder = schemaBuilder;
         this.tableFilter = tableFilter;
@@ -141,15 +171,20 @@ public abstract class RelationalDatabaseSchema implements DatabaseSchema<TableId
         schemasByTableId.remove(id);
     }
 
-    private String getEnvelopeSchemaName(Table table) {
+    /**
+     * get envelop schema name by table
+     *
+     * @param table Table
+     * @return String
+     */
+    protected String getEnvelopeSchemaName(Table table) {
         return Envelope.schemaName(topicSelector.topicNameFor(table.id()));
     }
 
     /**
      * A map of schemas by table id. Table names are stored lower-case if required as per the config.
      */
-    private static class SchemasByTableId {
-
+    protected static class SchemasByTableId {
         private final boolean tableIdCaseInsensitive;
         private final ConcurrentMap<TableId, TableSchema> values;
 

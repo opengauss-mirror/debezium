@@ -16,6 +16,8 @@ import io.debezium.connector.opengauss.spi.SlotCreationResult;
 import io.debezium.connector.opengauss.spi.SlotState;
 import io.debezium.connector.opengauss.spi.Snapshotter;
 import io.debezium.enums.ErrorCode;
+import io.debezium.migration.ObjectChangeEvent;
+import io.debezium.migration.ObjectEnum;
 import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.source.spi.SnapshotProgressListener;
 import io.debezium.pipeline.spi.ChangeRecordEmitter;
@@ -111,7 +113,7 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
     public OpengaussSnapshotChangeEventSource(OpengaussConnectorConfig connectorConfig, Snapshotter snapshotter,
                                               OpengaussConnection jdbcConnection, OpengaussSchema schema, EventDispatcher<TableId> dispatcher, Clock clock,
                                               SnapshotProgressListener snapshotProgressListener, SlotCreationResult slotCreatedInfo, SlotState startingSlotInfo) {
-        super(connectorConfig, jdbcConnection, schema, dispatcher, clock, snapshotProgressListener);
+        super(connectorConfig, jdbcConnection, schema, dispatcher, clock, snapshotProgressListener, null);
         this.connectorConfig = connectorConfig;
         this.jdbcConnection = jdbcConnection;
         this.schema = schema;
@@ -298,6 +300,12 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
                 table,
                 SchemaChangeEventType.CREATE,
                 true);
+    }
+
+    protected ObjectChangeEvent getCreateObjectEvent(
+            RelationalSnapshotContext<OpengaussPartition, OpengaussOffsetContext> snapshotContext,
+            String schema, String ddl, String objName, ObjectEnum objType) throws SQLException {
+        return null;
     }
 
     /**

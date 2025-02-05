@@ -21,7 +21,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.annotation.Immutable;
-import io.debezium.enums.ErrorCode;
 import io.debezium.relational.Column;
 import io.debezium.relational.ValueConverter;
 
@@ -135,7 +134,7 @@ public class MaskStrings implements ColumnMapper {
                 }
                 catch (IOException e) {
                     if (LOGGER.isErrorEnabled()) {
-                        LOGGER.error("{}can't calculate hash", ErrorCode.IO_EXCEPTION, e);
+                        LOGGER.error("can't calculate hash", e);
                     }
                 }
             }

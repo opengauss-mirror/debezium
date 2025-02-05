@@ -10,6 +10,9 @@ import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.connect.errors.ConnectException;
@@ -27,10 +30,12 @@ import io.debezium.connector.postgresql.connection.PostgresConnection;
 import io.debezium.connector.postgresql.connection.PostgresConnection.PostgresValueConverterBuilder;
 import io.debezium.connector.postgresql.connection.PostgresDefaultValueConverter;
 import io.debezium.connector.postgresql.connection.ReplicationConnection;
+import io.debezium.connector.postgresql.process.PgProcessCommitter;
 import io.debezium.connector.postgresql.spi.SlotCreationResult;
 import io.debezium.connector.postgresql.spi.SlotState;
 import io.debezium.connector.postgresql.spi.Snapshotter;
 import io.debezium.heartbeat.Heartbeat;
+import io.debezium.migration.BaseMigrationConfig;
 import io.debezium.pipeline.ChangeEventSourceCoordinator;
 import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.pipeline.ErrorHandler;
@@ -49,9 +54,11 @@ import io.debezium.util.SchemaNameAdjuster;
  * @author Horia Chiorean (hchiorea@redhat.com)
  */
 public class PostgresConnectorTask extends BaseSourceTask<PostgresPartition, PostgresOffsetContext> {
-
     private static final Logger LOGGER = LoggerFactory.getLogger(PostgresConnectorTask.class);
     private static final String CONTEXT_NAME = "postgres-connector-task";
+
+    private final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(1, 1, 100,
+            TimeUnit.SECONDS, new LinkedBlockingQueue<>(1));
 
     private volatile PostgresTaskContext taskContext;
     private volatile ChangeEventQueue<DataChangeEvent> queue;
@@ -66,6 +73,13 @@ public class PostgresConnectorTask extends BaseSourceTask<PostgresPartition, Pos
         final TopicSelector<TableId> topicSelector = PostgresTopicSelector.create(connectorConfig);
         final Snapshotter snapshotter = connectorConfig.getSnapshotter();
         final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
+
+        if (connectorConfig.isCommitProcess()) {
+            connectorConfig.rectifyParameter();
+            if (threadPool.getActiveCount() < threadPool.getMaximumPoolSize()) {
+                statCommit(connectorConfig);
+            }
+        }
 
         if (snapshotter == null) {
             throw new ConnectException("Unable to load snapshotter, if using custom snapshot mode, double check your settings");
@@ -198,6 +212,14 @@ public class PostgresConnectorTask extends BaseSourceTask<PostgresPartition, Pos
                     schemaNameAdjuster,
                     jdbcConnection);
 
+            final BaseMigrationConfig baseMigrationConfig = new BaseMigrationConfig.Builder()
+                    .migrationType(config.getString(BaseMigrationConfig.DATA_MIGRATION_TYPE))
+                    .isMigrationFunc(config.getBoolean(BaseMigrationConfig.MIGRATION_FUNC))
+                    .isMigrationPorcedure(config.getBoolean(BaseMigrationConfig.MIGRATION_PROCEDURE))
+                    .isMigrationTrigger(config.getBoolean(BaseMigrationConfig.MIGRATION_TRIGGER))
+                    .isMigrationView(config.getBoolean(BaseMigrationConfig.MIGRATION_VIEW))
+                    .build();
+
             ChangeEventSourceCoordinator<PostgresPartition, PostgresOffsetContext> coordinator = new PostgresChangeEventSourceCoordinator(
                     previousOffsets,
                     errorHandler,
@@ -219,7 +241,8 @@ public class PostgresConnectorTask extends BaseSourceTask<PostgresPartition, Pos
                     dispatcher,
                     schema,
                     snapshotter,
-                    slotInfo);
+                    slotInfo,
+                    baseMigrationConfig);
 
             coordinator.start(taskContext, this.queue, metadataProvider);
 
@@ -311,5 +334,12 @@ public class PostgresConnectorTask extends BaseSourceTask<PostgresPartition, Pos
 
     public PostgresTaskContext getTaskContext() {
         return taskContext;
+    }
+
+    private void statCommit(PostgresConnectorConfig connectorConfig) {
+        threadPool.execute(() -> {
+            PgProcessCommitter processCommitter = new PgProcessCommitter(connectorConfig);
+            processCommitter.commitSourceProcessInfo();
+        });
     }
 }

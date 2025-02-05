@@ -5,12 +5,10 @@
  */
 package io.debezium.connector.process;
 
-import io.debezium.enums.ErrorCode;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Description: BaseSourceProcessCommitter
@@ -38,7 +36,8 @@ public class BaseSourceProcessInfo implements Cloneable {
     private long rest;
     private long speed;
 
-    private BaseSourceProcessInfo() {}
+    private BaseSourceProcessInfo() {
+    }
 
     /**
      * get timestamp
@@ -194,8 +193,7 @@ public class BaseSourceProcessInfo implements Cloneable {
                 return (BaseSourceProcessInfo) super.clone();
             }
         } catch (CloneNotSupportedException e) {
-            LOGGER.error("{}The process information object is not supported clone.",
-                ErrorCode.PROGRESS_COMMIT_EXCEPTION);
+            LOGGER.error("The process information object is not supported clone.");
         }
         return this;
     }

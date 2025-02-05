@@ -18,12 +18,14 @@ import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.source.spi.EventMetadataProvider;
 import io.debezium.pipeline.spi.ChangeEventCreator;
+import io.debezium.pipeline.spi.ChangeRecordEmitter;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Partition;
-import io.debezium.schema.DataCollectionFilters;
 import io.debezium.schema.DataCollectionId;
 import io.debezium.schema.DatabaseSchema;
 import io.debezium.schema.TopicSelector;
+import io.debezium.schema.DataCollectionFilters;
+import io.debezium.schema.DataCollectionSchema;
 import io.debezium.util.SchemaNameAdjuster;
 
 /**
@@ -73,6 +75,27 @@ public class PostgresEventDispatcher<T extends DataCollectionId> extends EventDi
         else {
             LOGGER.trace("Filtered data change event for logical decoding message with prefix{}", message.getPrefix());
         }
+    }
+
+    /**
+     * dispatch postgresql snapshot event to kafka
+     *
+     * @param dataCollectionId TableId
+     * @param changeRecordEmitter ChangeRecordEmitter
+     * @param receiver SnapshotReceiver
+     * @throws InterruptedException emit message to kafka may throw
+     */
+    public void dispatchSnapshotEvent(T dataCollectionId, ChangeRecordEmitter changeRecordEmitter,
+                                      SnapshotReceiver receiver) throws InterruptedException {
+        DataCollectionSchema dataCollectionSchema = schema.schemaFor(dataCollectionId);
+        if (dataCollectionSchema == null) {
+            errorOnMissingSchema(dataCollectionId, changeRecordEmitter);
+        }
+        changeRecordEmitter.emitChangeRecords(dataCollectionSchema,
+                (partition, schema, operation, key, value, offset, headers) -> {
+                    eventListener.onEvent(schema.id(), offset, key, value);
+                    receiver.changeRecord(partition, schema, operation, key, value, offset, headers);
+                });
     }
 
     private void enqueueLogicalDecodingMessage(SourceRecord record) throws InterruptedException {

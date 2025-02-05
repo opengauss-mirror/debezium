@@ -21,6 +21,7 @@ import io.debezium.annotation.ThreadSafe;
 import io.debezium.config.CommonConnectorConfig;
 import io.debezium.connector.base.ChangeEventQueueMetrics;
 import io.debezium.connector.common.CdcSourceTaskContext;
+import io.debezium.migration.BaseMigrationConfig;
 import io.debezium.pipeline.metrics.SnapshotChangeEventSourceMetrics;
 import io.debezium.pipeline.metrics.StreamingChangeEventSourceMetrics;
 import io.debezium.pipeline.metrics.spi.ChangeEventSourceMetricsFactory;
@@ -70,6 +71,11 @@ public class ChangeEventSourceCoordinator<P extends Partition, O extends OffsetC
 
     protected SnapshotChangeEventSourceMetrics snapshotMetrics;
     protected StreamingChangeEventSourceMetrics streamingMetrics;
+
+    /**
+     * base migration config
+     */
+    protected BaseMigrationConfig baseMigrationConfig = null;
 
     public ChangeEventSourceCoordinator(Offsets<P, O> previousOffsets, ErrorHandler errorHandler, Class<? extends SourceConnector> connectorType,
                                         CommonConnectorConfig connectorConfig,
@@ -131,12 +137,27 @@ public class ChangeEventSourceCoordinator<P extends Partition, O extends OffsetC
             throws InterruptedException {
         final P partition = previousOffsets.getTheOnlyPartition();
         final O previousOffset = previousOffsets.getTheOnlyOffset();
-
-        SnapshotResult<O> snapshotResult = doSnapshot(snapshotSource, context, partition, previousOffset);
-
-        if (running && snapshotResult.isCompletedOrSkipped()) {
-            previousLogContext.set(taskContext.configureLoggingContext("streaming"));
-            streamEvents(context, partition, snapshotResult.getOffset());
+        boolean isCompletedOrSkipped = true;
+        // openGauss -> mysql and mysql -> openGauss migration baseMigrationConfig is null
+        if (baseMigrationConfig == null) {
+            SnapshotResult<O> snapshotResult = doSnapshot(snapshotSource, context, partition, previousOffset);
+            doSnapshot(snapshotSource, context, partition, previousOffset);
+            if (running && snapshotResult.isCompletedOrSkipped()) {
+                previousLogContext.set(taskContext.configureLoggingContext("streaming"));
+                streamEvents(context, partition, snapshotResult.getOffset());
+            }
+        } else if (BaseMigrationConfig.MigrationType.FULL.equals(baseMigrationConfig.getMigrationType())) {
+            doSnapshot(snapshotSource, context, partition, previousOffset);
+        } else if (BaseMigrationConfig.MigrationType.INCREMENTAL.equals(baseMigrationConfig.getMigrationType())) {
+            if (running && isCompletedOrSkipped) {
+                previousLogContext.set(taskContext.configureLoggingContext("streaming"));
+                streamEvents(context, partition, null);
+            }
+        } else if (BaseMigrationConfig.MigrationType.OBJECT.equals(baseMigrationConfig.getMigrationType())) {
+            doObjectSnapshot(snapshotSource, context, partition, previousOffset);
+        } else {
+            throw new IllegalArgumentException("Unknown migration type: "
+                    + baseMigrationConfig.getMigrationType().code());
         }
     }
 
@@ -157,6 +178,20 @@ public class ChangeEventSourceCoordinator<P extends Partition, O extends OffsetC
             schema.assureNonEmptySchema();
         }
         return snapshotResult;
+    }
+
+    /**
+     * @description: do object snapshot, migration object(source)
+     *
+     * @param
+     */
+    protected void doObjectSnapshot(SnapshotChangeEventSource<P, O> snapshotSource, ChangeEventSourceContext context,
+                                    P partition, O previousOffset) {
+        try {
+            snapshotSource.executeObjectSnapShot(context, partition, previousOffset);
+        } catch (InterruptedException e) {
+            LOGGER.error("export object info interrupted", e);
+        }
     }
 
     protected CatchUpStreamingResult executeCatchUpStreaming(ChangeEventSourceContext context,
