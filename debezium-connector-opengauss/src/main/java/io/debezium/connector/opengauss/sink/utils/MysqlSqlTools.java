@@ -32,10 +32,17 @@ import java.util.Locale;
  */
 public class MysqlSqlTools extends SqlTools {
     private static final Logger LOGGER = LoggerFactory.getLogger(MysqlSqlTools.class);
+    private static final String LOAD_SQL = "LOAD DATA LOCAL INFILE 'sql.csv' "
+            + " INTO TABLE %s"
+            + " FIELDS TERMINATED BY ','"
+            + " enclosed by '\"'"
+            + " LINES TERMINATED BY '%s' ";
+
     private ConnectionInfo connectionInfo;
     private Connection connection;
     private boolean isConnection;
-    private List<String> binaryTypes = Arrays.asList("tinyblob", "mediumblob", "longblob", "binary", "varbinary");
+    private List<String> binaryTypes = Arrays.asList("tinyblob", "blob", "mediumblob",
+            "longblob", "binary", "varbinary");
 
     /**
      * Constructor
@@ -184,7 +191,7 @@ public class MysqlSqlTools extends SqlTools {
         List<String> result = new ArrayList<>();
         for (String datum : data) {
             StringBuilder sb = new StringBuilder();
-            String[] colDatas = datum.split(" \\| ");
+            String[] colDatas = datum.split("\\|");
             for (int i = 0; i < colDatas.length; i++) {
                 String colData = colDatas[i];
                 ColumnMetaData columnMetaData = columnList.get(i);
@@ -369,5 +376,15 @@ public class MysqlSqlTools extends SqlTools {
             LOGGER.error("{}SQL exception occurred, the sql statement is {}", ErrorCode.SQL_EXCEPTION, sql);
         }
         return isExistSql;
+    }
+
+    /**
+     * Get wrapped name
+     *
+     * @param tableFullName the name
+     * @return String the wrapped name
+     */
+    public String loadFullSql(String tableFullName) {
+        return String.format(Locale.ROOT, LOAD_SQL, tableFullName, System.lineSeparator());
     }
 }

@@ -23,7 +23,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @date 2022/11/04
  */
 public class ConnectionInfo {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ConnectionInfo.class);
+    /**
+     * The postgres JDBC driver class
+     */
+    public static final String POSTGRES_JDBC_DRIVER = "org.postgresql.Driver";
+
+    /**
+     * The mysql JDBC driver class
+     */
+    public static final String MYSQL_JDBC_DRIVER = "com.mysql.cj.jdbc.Driver";
 
     /**
      * The oracle JDBC driver class
@@ -33,14 +41,11 @@ public class ConnectionInfo {
     /**
      * The openGauss JDBC driver class
      */
-    private static final String OPENGAUSS_JDBC_DRIVER = "org.postgresql.Driver";
-
-    /**
-     * The mysql JDBC driver class
-     */
-    public static final String MYSQL_JDBC_DRIVER = "com.mysql.cj.jdbc.Driver";
+    private static final String OPENGAUSS_JDBC_DRIVER = "org.opengauss.Driver";
 
     private static final int DEFAULT_RECONNECT_INTERVAL = 5;
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ConnectionInfo.class);
 
     private Integer port;
     private final String username;
@@ -156,7 +161,7 @@ public class ConnectionInfo {
      * @return Connection the connection
      */
     public Connection createOpenGaussConnection() {
-        String url = String.format("jdbc:postgresql://%s:%s/%s?loggerLevel=OFF", ip, port, database);
+        String url = String.format("jdbc:opengauss://%s:%s/%s?loggerLevel=OFF", ip, port, database);
         String driver = OPENGAUSS_JDBC_DRIVER;
         Connection connection = null;
         try {
@@ -186,6 +191,54 @@ public class ConnectionInfo {
         } catch (ClassNotFoundException | SQLException exp) {
             exp.printStackTrace();
         }
+        return connection;
+    }
+
+    /**
+     * Create postgres connection
+     *
+     * @return Connection the connection
+     */
+    public Connection createPostgresConnection() {
+        String url = String.format("jdbc:postgresql://%s:%s/%s?loggerLevel=OFF", ip, port, database);
+        String driver = POSTGRES_JDBC_DRIVER;
+        Connection connection = null;
+        long reconnectCount = 0L;
+        long totalReconnectCount = waitTimeoutSecond % reconnectInterval == 0 ? waitTimeoutSecond / reconnectInterval
+                : waitTimeoutSecond / reconnectInterval + 1;
+        PreparedStatement ps = null;
+        while (true) {
+            try {
+                Class.forName(driver);
+                connection = DriverManager.getConnection(url, username, password);
+                isConnectionAlive.set(true);
+                ps = connection.prepareStatement("set statement_timeout = 0");
+                ps.execute();
+                return connection;
+            } catch (ClassNotFoundException | SQLException exp) {
+                isConnectionAlive.set(false);
+                reconnectCount++;
+                if (waitTimeoutSecond > 0) {
+                    if (reconnectInterval * reconnectCount >= waitTimeoutSecond) {
+                        break;
+                    }
+                    LOGGER.warn("The target database occurred an exception: {}, {} th reconnect,"
+                            + " will try up to {} times.", exp, reconnectCount, totalReconnectCount);
+                } else {
+                    LOGGER.warn("The target database occurred an exception: {}, {} th reconnect.", exp, reconnectCount);
+                }
+                MigrationProcessController.sleep(reconnectInterval * 1000L);
+            } finally {
+                if (ps != null) {
+                    try {
+                        ps.close();
+                    } catch (SQLException e) {
+                        LOGGER.error("{} Close preparedStatement failed, ", ErrorCode.DB_CONNECTION_EXCEPTION, e);
+                    }
+                }
+            }
+        }
+        LOGGER.error("{} Create openGauss connection failed.", ErrorCode.DB_CONNECTION_EXCEPTION);
         return connection;
     }
 }

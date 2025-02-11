@@ -12,10 +12,11 @@ import java.util.OptionalLong;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+import io.debezium.connector.opengauss.connection.ogoutput.OgOutputDdlReplicationMessage;
 import io.debezium.connector.process.BaseSourceProcessInfo;
 import org.apache.kafka.connect.errors.ConnectException;
-import org.postgresql.core.BaseConnection;
-import org.postgresql.replication.LogSequenceNumber;
+import org.opengauss.core.BaseConnection;
+import org.opengauss.replication.LogSequenceNumber;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -224,9 +225,8 @@ public class OpengaussStreamingChangeEventSource implements StreamingChangeEvent
         int noMessageIterations = 0;
         while (context.isRunning() && (offsetContext.getStreamingStoppingLsn() == null ||
                 (lastCompletelyProcessedLsn.compareTo(offsetContext.getStreamingStoppingLsn()) < 0))) {
-
             boolean receivedMessage = stream.readPending(message -> {
-                if (message instanceof OgOutputReplicationMessage
+                if (message instanceof OgOutputReplicationMessage || message instanceof OgOutputDdlReplicationMessage
                         || message instanceof ReplicationMessage.NoopMessage) {
                     BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreaseCreateCount(1);
                     if (message instanceof ReplicationMessage.NoopMessage) {
@@ -277,6 +277,22 @@ public class OpengaussStreamingChangeEventSource implements StreamingChangeEvent
                             offsetContext,
                             clock.currentTimeAsInstant().toEpochMilli(),
                             (LogicalDecodingMessage) message);
+
+                    maybeWarnAboutGrowingWalBacklog(true);
+                } else if (message instanceof OgOutputDdlReplicationMessage) {
+                    offsetContext.updateWalPosition(lsn, lastCompletelyProcessedLsn, message.getCommitTime(), toLong(message.getTransactionId()),
+                            taskContext.getSlotXmin(connection));
+
+                    // non-transactional message that will not be followed by a COMMIT message
+                    if (message.isLastEventForLsn()) {
+                        commitMessage(partition, offsetContext, lsn);
+                    }
+
+                    dispatcher.dispatchDdlReplicationMessage(
+                                    partition,
+                                    offsetContext,
+                                    clock.currentTimeAsInstant().toEpochMilli(),
+                                    (OgOutputDdlReplicationMessage) message);
 
                     maybeWarnAboutGrowingWalBacklog(true);
                 }

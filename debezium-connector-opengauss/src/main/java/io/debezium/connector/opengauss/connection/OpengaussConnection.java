@@ -28,12 +28,12 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.connect.errors.ConnectException;
-import org.postgresql.core.BaseConnection;
-import org.postgresql.jdbc.PgConnection;
-import org.postgresql.jdbc.TimestampUtils;
-import org.postgresql.replication.LogSequenceNumber;
-import org.postgresql.util.PGmoney;
-import org.postgresql.util.PSQLState;
+import org.opengauss.core.BaseConnection;
+import org.opengauss.jdbc.PgConnection;
+import org.opengauss.jdbc.TimestampUtils;
+import org.opengauss.replication.LogSequenceNumber;
+import org.opengauss.util.PGmoney;
+import org.opengauss.util.PSQLState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,12 +66,9 @@ import io.debezium.util.Metronome;
  * @author Horia Chiorean
  */
 public class OpengaussConnection extends JdbcConnection {
-
-    private static Logger LOGGER = LoggerFactory.getLogger(OpengaussConnection.class);
-
-    private static final String URL_PATTERN = "jdbc:postgresql://${" + JdbcConfiguration.HOSTNAME + "}:${"
-            + JdbcConfiguration.PORT + "}/${" + JdbcConfiguration.DATABASE + "}";
     protected static final ConnectionFactory FACTORY = getFactory();
+    private static final String URL_PATTERN = "jdbc:opengauss://${" + JdbcConfiguration.HOSTNAME + "}:${"
+            + JdbcConfiguration.PORT + "}/${" + JdbcConfiguration.DATABASE + "}";
 
     /**
      * Obtaining a replication slot may fail if there's a pending transaction. We're retrying to get a slot for 30 min.
@@ -79,6 +76,8 @@ public class OpengaussConnection extends JdbcConnection {
     private static final int MAX_ATTEMPTS_FOR_OBTAINING_REPLICATION_SLOT = 900;
 
     private static final Duration PAUSE_BETWEEN_REPLICATION_SLOT_RETRIEVAL_ATTEMPTS = Duration.ofSeconds(2);
+
+    private static Logger LOGGER = LoggerFactory.getLogger(OpengaussConnection.class);
 
     private final TypeRegistry typeRegistry;
     private final OpengaussDefaultValueConverter defaultValueConverter;
@@ -93,12 +92,12 @@ public class OpengaussConnection extends JdbcConnection {
             String standbyPorts = properties.getProperty(JdbcConfiguration.STANDBY_PORTS.toString());
 
             if (OpengaussConnectorConfig.isOpengaussClusterAvailable(isCluster, standbyHostnames, standbyPorts)) {
-                url_pattern = "jdbc:postgresql://${" + JdbcConfiguration.HOSTNAME + "}:${" + JdbcConfiguration.PORT + "}"
+                url_pattern = "jdbc:opengauss://${" + JdbcConfiguration.HOSTNAME + "}:${" + JdbcConfiguration.PORT + "}"
                         + OpengaussConnectorConfig.getUrlFragment(standbyHostnames, standbyPorts)
                         + "/${" + JdbcConfiguration.DATABASE + "}?targetServerType=master";
             }
 
-            return JdbcConnection.patternBasedFactory(url_pattern, org.postgresql.Driver.class.getName(),
+            return JdbcConnection.patternBasedFactory(url_pattern, org.opengauss.Driver.class.getName(),
                             OpengaussConnection.class.getClassLoader(),
                             JdbcConfiguration.PORT.withDefault(OpengaussConnectorConfig.PORT.defaultValueAsString()))
                     .connect(config);

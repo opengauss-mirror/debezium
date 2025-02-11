@@ -31,7 +31,7 @@ import io.debezium.connector.opengauss.OpengaussStreamingChangeEventSource;
 import io.debezium.connector.opengauss.OpengaussType;
 import io.debezium.connector.opengauss.TypeRegistry;
 import io.debezium.connector.opengauss.connection.*;
-import org.postgresql.replication.fluent.logical.ChainedLogicalStreamBuilder;
+import org.opengauss.replication.fluent.logical.ChainedLogicalStreamBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -82,6 +82,7 @@ public class OgOutputMessageDecoder extends AbstractMessageDecoder {
         INSERT,
         UPDATE,
         DELETE,
+        DDL,
         TYPE,
         ORIGIN,
         TRUNCATE,
@@ -110,6 +111,8 @@ public class OgOutputMessageDecoder extends AbstractMessageDecoder {
                     return TRUNCATE;
                 case 'M':
                     return LOGICAL_DECODING_MESSAGE;
+                case 'L':
+                    return DDL;
                 default:
                     LOGGER.warn("The new message type:{} is not processed for now", type);
                     return UNKNOWN_MESSAGE;
@@ -156,7 +159,7 @@ public class OgOutputMessageDecoder extends AbstractMessageDecoder {
                     LOGGER.trace("{} messages are always reprocessed", type);
                     return false;
                 default:
-                    // INSERT/UPDATE/DELETE/TRUNCATE/TYPE/ORIGIN/LOGICAL_DECODING_MESSAGE
+                    // INSERT/UPDATE/DELETE/TRUNCATE/TYPE/ORIGIN/LOGICAL_DECODING_MESSAGE/DDL
                     // These should be excluded based on the normal behavior, delegating to default method
                     return candidateForSkipping;
             }
@@ -212,6 +215,9 @@ public class OgOutputMessageDecoder extends AbstractMessageDecoder {
                 else {
                     LOGGER.trace("Message Type {} skipped, not processed.", messageType);
                 }
+                break;
+            case DDL:
+                decodeDDL(buffer, typeRegistry, processor);
                 break;
             default:
                 LOGGER.trace("Message Type {} skipped, not processed.", messageType);
@@ -585,6 +591,44 @@ public class OgOutputMessageDecoder extends AbstractMessageDecoder {
             default:
                 return null;
         }
+    }
+
+    /**
+     * Callback handler for the 'L' DDL replication stream message.
+     *
+     * @param buffer       The replication stream buffer
+     * @param typeRegistry The opengauss type registry
+     * @param processor    The replication message processor
+     */
+    private void decodeDDL(ByteBuffer buffer, TypeRegistry typeRegistry,
+                           ReplicationStream.ReplicationMessageProcessor processor)
+            throws SQLException, InterruptedException {
+        // Byte1 flags; currently unused.
+        // Int64 The LSN of the logical decoding message
+        // String The prefix of the logical decoding message.
+        // Int64 Length of the content.
+        // Byten The content of the logical decoding message.
+        byte flags = buffer.get();
+        long lsn = buffer.getLong();
+        String prefix = readString(buffer);
+        int length = (int) buffer.getLong();
+        byte[] content = new byte[length];
+        buffer.get(content);
+        String body = new String(content, Charset.forName("UTF-8")).trim();
+
+        LOGGER.trace("Event: {}", MessageType.DDL);
+        LOGGER.trace("Flags: {} (currently unused and most likely 0)", flags);
+        LOGGER.trace("Commit LSN: {}", lsn);
+        LOGGER.trace("Commit timestamp of transaction: {}", commitTimestamp);
+        LOGGER.trace("XID of transaction: {}", transactionId);
+        LOGGER.trace("Prefix: {}", prefix);
+
+        processor.process(new OgOutputDdlReplicationMessage(
+                ReplicationMessage.Operation.DDL,
+                commitTimestamp,
+                transactionId,
+                prefix,
+                body));
     }
 
     /**

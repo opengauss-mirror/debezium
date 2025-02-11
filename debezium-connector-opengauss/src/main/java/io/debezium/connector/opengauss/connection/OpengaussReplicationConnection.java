@@ -22,11 +22,11 @@ import io.debezium.relational.TableId;
 import io.debezium.util.Clock;
 import io.debezium.util.Metronome;
 import org.apache.kafka.connect.errors.ConnectException;
-import org.postgresql.core.BaseConnection;
-import org.postgresql.core.ServerVersion;
-import org.postgresql.replication.PGReplicationStream;
-import org.postgresql.replication.fluent.logical.ChainedLogicalStreamBuilder;
-import org.postgresql.util.PSQLException;
+import org.opengauss.core.BaseConnection;
+import org.opengauss.core.ServerVersion;
+import org.opengauss.replication.PGReplicationStream;
+import org.opengauss.replication.fluent.logical.ChainedLogicalStreamBuilder;
+import org.opengauss.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,6 +51,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static io.debezium.connector.opengauss.OpengaussConnectorConfig.AutoCreateMode.ALL_TABLES;
 import static io.debezium.connector.opengauss.OpengaussConnectorConfig.LogicalDecoder.MPPDB_DECODING;
 import static java.lang.Math.toIntExact;
 
@@ -149,7 +150,9 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
                                 case DISABLED:
                                     throw new ConnectException("Publication autocreation is disabled, please create one and restart the connector.");
                                 case ALL_TABLES:
-                                    createPublicationStmt = String.format("CREATE PUBLICATION %s FOR ALL TABLES;", publicationName);
+                                    createPublicationStmt = String.format("CREATE PUBLICATION %s FOR ALL TABLES "
+                                            + "WITH(publish='insert,update,delete,truncate',ddl='all');",
+                                            publicationName);
                                     LOGGER.info("Creating Publication with statement '{}'", createPublicationStmt);
                                     // Publication doesn't exist, create it.
                                     stmt.execute(createPublicationStmt);
@@ -192,7 +195,8 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
             if (tableFilterString.isEmpty()) {
                 throw new DebeziumException(String.format("No table filters found for filtered publication %s", publicationName));
             }
-            createPublicationStmt = String.format("CREATE PUBLICATION %s FOR TABLE %s;", publicationName, tableFilterString);
+            createPublicationStmt = String.format("CREATE PUBLICATION %s FOR TABLE %s WITH"
+                    + "(publish='insert,update,delete,truncate',ddl='table');", publicationName, tableFilterString);
             LOGGER.info("Creating Publication with statement '{}'", createPublicationStmt);
             // Publication doesn't exist, create it but restrict to the tableFilter.
             stmt.execute(createPublicationStmt);
@@ -751,12 +755,11 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
     }
 
     protected static class ReplicationConnectionBuilder implements Builder {
-
         private final OpengaussConnectorConfig config;
         private String slotName = DEFAULT_SLOT_NAME;
         private String publicationName = DEFAULT_PUBLICATION_NAME;
         private RelationalTableFilters tableFilter;
-        private OpengaussConnectorConfig.AutoCreateMode publicationAutocreateMode = OpengaussConnectorConfig.AutoCreateMode.FILTERED;
+        private OpengaussConnectorConfig.AutoCreateMode publicationAutocreateMode = ALL_TABLES;
         private OpengaussConnectorConfig.LogicalDecoder plugin = OpengaussConnectorConfig.LogicalDecoder.DECODERBUFS;
         private boolean dropSlotOnClose = DEFAULT_DROP_SLOT_ON_CLOSE;
         private Duration statusUpdateIntervalVal;

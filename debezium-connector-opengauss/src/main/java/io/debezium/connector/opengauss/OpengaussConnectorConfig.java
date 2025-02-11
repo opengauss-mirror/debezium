@@ -834,7 +834,7 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
     public static final Field PUBLICATION_AUTOCREATE_MODE = Field.create("publication.autocreate.mode")
             .withDisplayName("Publication Auto Create Mode")
             .withGroup(Field.createGroupEntry(Field.Group.CONNECTION_ADVANCED_REPLICATION, 9))
-            .withEnum(AutoCreateMode.class, AutoCreateMode.FILTERED)
+            .withEnum(AutoCreateMode.class, AutoCreateMode.ALL_TABLES)
             .withWidth(Width.MEDIUM)
             .withImportance(Importance.MEDIUM)
             .withDescription(
@@ -1033,7 +1033,7 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
     public static final Field INTERVAL_HANDLING_MODE = Field.create("interval.handling.mode")
             .withDisplayName("Interval Handling")
             .withGroup(Field.createGroupEntry(Field.Group.CONNECTOR, 21))
-            .withEnum(IntervalHandlingMode.class, IntervalHandlingMode.NUMERIC)
+            .withEnum(IntervalHandlingMode.class, IntervalHandlingMode.STRING)
             .withWidth(Width.MEDIUM)
             .withImportance(Importance.LOW)
             .withDescription("Specify how INTERVAL columns should be represented in change events, including:"
@@ -1567,9 +1567,10 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
     }
 
     public Connection getConnection(OpengaussConnectorConfig config) {
-        String sourceURL = "jdbc:postgresql://" + hostname() + ":" + port() + "/" + config.databaseName();
+        String sourceURL = "jdbc:opengauss://" + hostname() + ":" + port() + "/" + config.databaseName();
         if (isOpengaussClusterAvailable(iscluster(), standbyHostnames(), standbyPorts())) {
-            sourceURL = "jdbc:postgresql://" + hostname() + ":" + port() + getUrlFragment(standbyHostnames(), standbyPorts())
+            sourceURL = "jdbc:opengauss://" + hostname() + ":" + port()
+                    + getUrlFragment(standbyHostnames(), standbyPorts())
                     + "/" + config.databaseName() + "?targetServerType=master";
         }
 
@@ -1642,9 +1643,9 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
      * @throws SQLException get connection exception
      */
     public Connection testConnection() throws SQLException {
-        String sourceURL = "jdbc:postgresql://" + hostname() + ":" + port() + "/" + databaseName();
+        String sourceURL = "jdbc:opengauss://" + hostname() + ":" + port() + "/" + databaseName();
         if (isOpengaussClusterAvailable(iscluster(), standbyHostnames(), standbyPorts())) {
-            sourceURL = "jdbc:postgresql://" + hostname() + ":" + port()
+            sourceURL = "jdbc:opengauss://" + hostname() + ":" + port()
                     + getUrlFragment(standbyHostnames(), standbyPorts())
                     + "/" + databaseName() + "?targetServerType=master";
         }

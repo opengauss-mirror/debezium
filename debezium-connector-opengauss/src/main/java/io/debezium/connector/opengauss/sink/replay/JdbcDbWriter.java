@@ -15,6 +15,8 @@ import io.debezium.connector.opengauss.process.ProgressStatus;
 import io.debezium.connector.opengauss.process.TableInfo;
 import io.debezium.connector.opengauss.process.TotalInfo;
 import io.debezium.connector.opengauss.sink.object.ConnectionInfo;
+import io.debezium.connector.opengauss.sink.object.DataOperation;
+import io.debezium.connector.opengauss.sink.object.DdlOperation;
 import io.debezium.connector.opengauss.sink.object.DmlOperation;
 import io.debezium.connector.opengauss.sink.object.SinkRecordObject;
 import io.debezium.connector.opengauss.sink.object.SourceField;
@@ -23,11 +25,13 @@ import io.debezium.connector.opengauss.sink.task.OpengaussSinkConnectorConfig;
 import io.debezium.connector.opengauss.sink.utils.MysqlSqlTools;
 import io.debezium.connector.opengauss.sink.utils.OpengaussSqlTools;
 import io.debezium.connector.opengauss.sink.utils.OracleSqlTools;
+import io.debezium.connector.opengauss.sink.utils.PostgreSqlTools;
 import io.debezium.connector.opengauss.sink.utils.SqlTools;
 import io.debezium.data.Envelope;
 import io.debezium.enums.ErrorCode;
 
 import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -123,6 +127,8 @@ public class JdbcDbWriter {
             sqlTools = new MysqlSqlTools(databaseConnection);
         } else if ("oracle".equals(config.databaseType.toLowerCase(Locale.ROOT))) {
             sqlTools = new OracleSqlTools(databaseConnection.createOracleConnection());
+        } else if ("postgres".equals(config.databaseType.toLowerCase(Locale.ROOT))) {
+            sqlTools = new PostgreSqlTools(databaseConnection.createPostgresConnection());
         } else {
             sqlTools = new OpengaussSqlTools(databaseConnection.createOpenGaussConnection());
         }
@@ -258,26 +264,33 @@ public class JdbcDbWriter {
                 breakPointRecord.getReplayedOffset().add(sinkRecord.kafkaOffset());
                 continue;
             }
-            DmlOperation dmlOperation = new DmlOperation(value);
-            if (!TRUNCATE.equals(dmlOperation.getOperation()) && !PATH.equals(dmlOperation.getOperation())) {
+            DataOperation dataOperation;
+            try {
+                dataOperation = new DmlOperation(value);
+                if (!TRUNCATE.equals(dataOperation.getOperation()) && !PATH.equals(dataOperation.getOperation())) {
+                    OgSinkProcessInfo.SINK_PROCESS_INFO.autoIncreaseExtractCount();
+                }
+            } catch (DataException exception) {
+                dataOperation = new DdlOperation(value, schemaMappingMap, config.databaseType);
                 OgSinkProcessInfo.SINK_PROCESS_INFO.autoIncreaseExtractCount();
             }
             SourceField sourceField = new SourceField(value);
             Long lsn = sourceField.getLsn();
             Long kafkaOffset = sinkRecord.kafkaOffset();
-            SinkRecordObject sinkRecordObject = new SinkRecordObject();
-            sinkRecordObject.setDmlOperation(dmlOperation);
-            sinkRecordObject.setSourceField(sourceField);
-            sinkRecordObject.setKafkaOffset(kafkaOffset);
-            if (filterByDb(sinkRecord, lsn, kafkaOffset)) {
+            if (dataOperation.getIsDml() && filterByDb(sinkRecord, lsn, kafkaOffset)) {
                 continue;
             }
             addedQueueMap.put(sinkRecord.kafkaOffset(), lsn);
+            SinkRecordObject sinkRecordObject = new SinkRecordObject();
+            sinkRecordObject.setSourceField(sourceField);
+            sinkRecordObject.setKafkaOffset(kafkaOffset);
+            sinkRecordObject.setDataOperation(dataOperation);
             String schemaName = sourceField.getSchema();
-            if (schemaMappingMap.get(schemaName) == null) {
+            String targetSchemaName = schemaMappingMap.getOrDefault(schemaName, schemaName);
+            if (dataOperation instanceof DmlOperation && targetSchemaName == null) {
                 LOGGER.warn("Not specified schema [{}] mapping library relation.", schemaName);
                 sqlErrCount++;
-                String path = dmlOperation.getPath();
+                String path = ((DmlOperation) dataOperation).getPath();
                 if (!"".equals(path) && config.isDelCsv) {
                     if (!new File(path).delete()) {
                         LOGGER.warn("clear csv file failure.");
@@ -285,17 +298,21 @@ public class JdbcDbWriter {
                 }
                 continue;
             }
-            String tableName = sourceField.getTable();
             while (isWorkQueueBlock()) {
                 try {
                     Thread.sleep(50);
-                }
-                catch (InterruptedException exp) {
+                } catch (InterruptedException exp) {
                     LOGGER.warn("Receive interrupted exception while work queue block:{}", exp.getMessage());
                 }
             }
-            String tableFullName = schemaMappingMap.get(schemaName) + "." + tableName;
-            findProperWorkThread(tableFullName, sinkRecordObject);
+            String tableName = sourceField.getTable();
+            String tableFullName = targetSchemaName + "." + tableName;
+            if (dataOperation instanceof DdlOperation) {
+                DdlOperation ddlOperation = (DdlOperation) dataOperation;
+                findDdlThread(sinkRecordObject, ddlOperation);
+            } else {
+                findProperWorkThread(tableFullName, sinkRecordObject);
+            }
         }
     }
 
@@ -433,6 +450,19 @@ public class JdbcDbWriter {
         }
         runnableMap.put(tableFullName, runCount % threadCount);
         runCount++;
+    }
+
+    private void findDdlThread(SinkRecordObject sinkRecordObject, DdlOperation ddlOperation) {
+        if (ddlOperation.isTableSql()) {
+            findProperWorkThread(ddlOperation.getFullName(), sinkRecordObject);
+            return;
+        }
+        WorkThread workThread = threadList.get(0);
+        workThread.addData(sinkRecordObject);
+        if (runCount == 0) {
+            runCount++;
+            workThread.start();
+        }
     }
 
     private void monitorSinkQueueSize() {

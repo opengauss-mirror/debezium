@@ -41,12 +41,12 @@ import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.errors.ConnectException;
-import org.postgresql.PGStatement;
-import org.postgresql.geometric.PGpoint;
-import org.postgresql.jdbc.PgArray;
-import org.postgresql.util.HStoreConverter;
-import org.postgresql.util.PGInterval;
-import org.postgresql.util.PGobject;
+import org.opengauss.PGStatement;
+import org.opengauss.geometric.PGpoint;
+import org.opengauss.jdbc.PgArray;
+import org.opengauss.util.HStoreConverter;
+import org.opengauss.util.PGInterval;
+import org.opengauss.util.PGobject;
 
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
@@ -230,6 +230,9 @@ public class OpengaussValueConverter extends JdbcValueConverters {
                 return moneySchema();
             case OgOid.NUMERIC:
                 return numericSchema(column);
+            case OgOid.INT1:
+                // support unsigned byte
+                return SchemaBuilder.int16();
             case OgOid.BYTEA:
                 return binaryMode.getSchema();
             case OgOid.INT2_ARRAY:

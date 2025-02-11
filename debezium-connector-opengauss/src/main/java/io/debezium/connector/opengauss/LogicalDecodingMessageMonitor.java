@@ -11,6 +11,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Base64.Encoder;
 
+import io.debezium.connector.opengauss.connection.ogoutput.OgOutputDdlReplicationMessage;
+import io.debezium.connector.process.BaseSourceProcessInfo;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
@@ -45,6 +47,11 @@ public class LogicalDecodingMessageMonitor {
     public static final String DEBEZIUM_LOGICAL_DECODING_MESSAGE_PREFIX_KEY = "prefix";
     public static final String DEBEZIUM_LOGICAL_DECODING_MESSAGE_CONTENT_KEY = "content";
 
+    /**
+     * field name of schema
+     */
+    public static final String DEBEZIUM_LOGICAL_DECODING_MESSAGE_BODY_KEY = "ddl";
+
     private final SchemaNameAdjuster schemaNameAdjuster;
     private final BlockingConsumer<SourceRecord> sender;
     private final String topicName;
@@ -72,7 +79,7 @@ public class LogicalDecodingMessageMonitor {
         this.base64Encoder = Base64.getEncoder();
 
         this.keySchema = SchemaBuilder.struct()
-                .name(schemaNameAdjuster.adjust("io.debezium.connector.postgresql.MessageKey"))
+                .name(schemaNameAdjuster.adjust("io.debezium.connector.opengauss.MessageKey"))
                 .field(DEBEZIUM_LOGICAL_DECODING_MESSAGE_PREFIX_KEY, Schema.OPTIONAL_STRING_SCHEMA)
                 .build();
 
@@ -81,13 +88,14 @@ public class LogicalDecodingMessageMonitor {
         // schemas as optional, just in case we will receive null values for either
         // field at some point
         this.blockSchema = SchemaBuilder.struct()
-                .name(schemaNameAdjuster.adjust("io.debezium.connector.postgresql.Message"))
+                .name(schemaNameAdjuster.adjust("io.debezium.connector.opengauss.Message"))
                 .field(DEBEZIUM_LOGICAL_DECODING_MESSAGE_PREFIX_KEY, Schema.OPTIONAL_STRING_SCHEMA)
                 .field(DEBEZIUM_LOGICAL_DECODING_MESSAGE_CONTENT_KEY, binaryMode.getSchema().optional().build())
+                .field(DEBEZIUM_LOGICAL_DECODING_MESSAGE_BODY_KEY, Schema.OPTIONAL_STRING_SCHEMA)
                 .build();
 
         this.valueSchema = SchemaBuilder.struct()
-                .name(schemaNameAdjuster.adjust("io.debezium.connector.postgresql.MessageValue"))
+                .name(schemaNameAdjuster.adjust("io.debezium.connector.opengauss.MessageValue"))
                 .field(Envelope.FieldName.OPERATION, Schema.STRING_SCHEMA)
                 .field(Envelope.FieldName.TIMESTAMP, Schema.OPTIONAL_INT64_SCHEMA)
                 .field(Envelope.FieldName.SOURCE, connectorConfig.getSourceInfoStructMaker().schema())
@@ -114,6 +122,39 @@ public class LogicalDecodingMessageMonitor {
         sender.accept(new SourceRecord(partition.getSourcePartition(), offsetContext.getOffset(), topicName,
                 keySchema, key, value.schema(), value));
 
+        if (message.isLastEventForLsn()) {
+            offsetContext.getTransactionContext().endTransaction();
+        }
+    }
+
+    /**
+     * Build ddlReplicationMessageEvent.
+     *
+     * @param partition the partition
+     * @param offsetContext the offsetContext
+     * @param timestamp the timestamp
+     * @param message the message
+     * @throws InterruptedException if the calling thread is interrupted while blocking
+     */
+    public void ddlReplicationMessageEvent(Partition partition, OffsetContext offsetContext, Long timestamp,
+                                           OgOutputDdlReplicationMessage message) throws InterruptedException {
+        final Struct logicalMsgStruct = new Struct(blockSchema);
+        logicalMsgStruct.put(DEBEZIUM_LOGICAL_DECODING_MESSAGE_PREFIX_KEY, message.getPrefix());
+        logicalMsgStruct.put(DEBEZIUM_LOGICAL_DECODING_MESSAGE_BODY_KEY, message.getBody());
+
+        Struct key = new Struct(keySchema);
+        key.put(DEBEZIUM_LOGICAL_DECODING_MESSAGE_PREFIX_KEY, message.getPrefix());
+
+        final Struct value = new Struct(valueSchema);
+        value.put(Envelope.FieldName.OPERATION, Envelope.Operation.DDL.code());
+        value.put(Envelope.FieldName.TIMESTAMP, timestamp);
+        value.put(DEBEZIUM_LOGICAL_DECODING_MESSAGE_KEY, logicalMsgStruct);
+        value.put(Envelope.FieldName.SOURCE, offsetContext.getSourceInfo());
+
+        sender.accept(new SourceRecord(partition.getSourcePartition(), offsetContext.getOffset(), topicName,
+                keySchema, key, value.schema(), value));
+
+        BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreasePollCount(1);
         if (message.isLastEventForLsn()) {
             offsetContext.getTransactionContext().endTransaction();
         }

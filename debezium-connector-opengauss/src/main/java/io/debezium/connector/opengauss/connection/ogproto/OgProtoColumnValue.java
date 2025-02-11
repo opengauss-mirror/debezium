@@ -20,9 +20,9 @@ import java.util.Arrays;
 import io.debezium.connector.opengauss.*;
 import io.debezium.connector.opengauss.connection.AbstractColumnValue;
 import io.debezium.connector.opengauss.connection.wal2json.DateTimeFormat;
-import org.postgresql.geometric.PGpoint;
-import org.postgresql.jdbc.PgArray;
-import org.postgresql.util.PGmoney;
+import org.opengauss.geometric.PGpoint;
+import org.opengauss.jdbc.PgArray;
+import org.opengauss.util.PGmoney;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

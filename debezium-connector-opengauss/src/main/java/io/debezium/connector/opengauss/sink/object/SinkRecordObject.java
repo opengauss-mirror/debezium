@@ -13,7 +13,7 @@ package io.debezium.connector.opengauss.sink.object;
  */
 public class SinkRecordObject {
     private SourceField sourceField;
-    private DmlOperation dmlOperation;
+    private DataOperation dataOperation;
     private Long kafkaOffset;
 
     /**
@@ -55,19 +55,18 @@ public class SinkRecordObject {
     /**
      * Gets data operation
      *
-     * @return DmlOperation the dml operation
+     * @return DataOperation the data operation
      */
-    public DmlOperation getDmlOperation() {
-        return dmlOperation;
+    public DataOperation getDataOperation() {
+        return dataOperation;
     }
 
     /**
      * Sets data operation
      *
-     * @param dmlOperation DmlOperation the dml operation
+     * @param dataOperation DataOperation the data operation
      */
-    public void setDmlOperation(DmlOperation dmlOperation) {
-        this.dmlOperation = dmlOperation;
+    public void setDataOperation(DataOperation dataOperation) {
+        this.dataOperation = dataOperation;
     }
-
 }

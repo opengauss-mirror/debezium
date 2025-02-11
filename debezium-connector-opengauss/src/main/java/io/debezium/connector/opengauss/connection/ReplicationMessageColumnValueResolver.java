@@ -8,7 +8,7 @@ package io.debezium.connector.opengauss.connection;
 import io.debezium.connector.opengauss.OpengaussStreamingChangeEventSource;
 import io.debezium.connector.opengauss.OpengaussType;
 import io.debezium.connector.opengauss.TypeRegistry;
-import org.postgresql.util.PGmoney;
+import org.opengauss.util.PGmoney;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

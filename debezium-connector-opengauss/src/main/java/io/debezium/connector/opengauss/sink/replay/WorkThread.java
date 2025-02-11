@@ -11,8 +11,9 @@ import com.mysql.cj.jdbc.exceptions.CommunicationsException;
 import io.debezium.ThreadExceptionHandler;
 import io.debezium.connector.breakpoint.BreakPointObject;
 import io.debezium.connector.breakpoint.BreakPointRecord;
-import io.debezium.connector.opengauss.process.OgSinkProcessInfo;
 import io.debezium.connector.opengauss.sink.object.ColumnMetaData;
+import io.debezium.connector.opengauss.sink.object.DataOperation;
+import io.debezium.connector.opengauss.sink.object.DdlOperation;
 import io.debezium.connector.opengauss.sink.object.SourceField;
 import io.debezium.connector.opengauss.sink.object.SinkRecordObject;
 import io.debezium.connector.opengauss.sink.object.ConnectionInfo;
@@ -23,6 +24,8 @@ import io.debezium.enums.ErrorCode;
 
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.data.Struct;
+import org.postgresql.copy.CopyManager;
+import org.postgresql.core.BaseConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,11 +66,6 @@ public class WorkThread extends Thread {
     private static final String DELETE = "d";
     private static final String TRUNCATE = "t";
     private static final String PATH = "p";
-    private static final String LOAD_SQL = "LOAD DATA LOCAL INFILE 'sql.csv' "
-            + " INTO TABLE %s"
-            + " FIELDS TERMINATED BY ','"
-            + " enclosed by '\\''"
-            + " LINES TERMINATED BY '%s' ";
     private static final String DELIMITER = System.lineSeparator();
 
     private final DateTimeFormatter sqlPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH:mm:ss.SSS");
@@ -89,6 +87,7 @@ public class WorkThread extends Thread {
     private SinkRecordObject threadSinkRecordObject = null;
     private boolean isFreeBlock = true;
     private ClientPreparedStatement clientPreparedStatement;
+    private CopyManager copyManager;
     private boolean isClearFile;
     private boolean isTransaction;
     private boolean isConnection = true;
@@ -137,9 +136,7 @@ public class WorkThread extends Thread {
                     replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
                     continue;
                 }
-                if (clientPreparedStatement != null) {
-                    clientPreparedStatement.close();
-                    clientPreparedStatement = null;
+                if (clientPreparedStatement != null || copyManager != null) {
                     updateConnectionAndExecuteSql(sql, sinkRecordObject);
                     continue;
                 }
@@ -186,9 +183,14 @@ public class WorkThread extends Thread {
      */
     public String constructSql(SinkRecordObject sinkRecordObject) {
         SourceField sourceField = sinkRecordObject.getSourceField();
-        DmlOperation dmlOperation = sinkRecordObject.getDmlOperation();
-        String operation = dmlOperation.getOperation();
-        String schemaName = schemaMappingMap.get(sourceField.getSchema());
+        DataOperation dataOperation = sinkRecordObject.getDataOperation();
+        if (dataOperation instanceof DdlOperation) {
+            DdlOperation ddlOperation = (DdlOperation) dataOperation;
+            String fullName = ddlOperation.getFullName();
+            oldTableMap.remove(fullName);
+            return ddlOperation.getDdl();
+        }
+        String schemaName = schemaMappingMap.getOrDefault(sourceField.getSchema(), sourceField.getSchema());
         String tableFullName = schemaName + "." + sourceField.getTable();
         TableMetaData tableMetaData;
         if (oldTableMap.containsKey(tableFullName)) {
@@ -204,6 +206,8 @@ public class WorkThread extends Thread {
                     + " check the database status or connection", ErrorCode.DB_CONNECTION_EXCEPTION);
             return sql;
         }
+        String operation = dataOperation.getOperation();
+        DmlOperation dmlOperation = (DmlOperation) dataOperation;
         switch (operation) {
             case TRUNCATE:
                 processFullPrefix(tableMetaData, sinkRecordObject);
@@ -266,19 +270,26 @@ public class WorkThread extends Thread {
     private void processFullData(DmlOperation dmlOperation, String tableFullName, TableMetaData tableMetaData,
                                  SinkRecordObject sinkRecordObject) {
         String columnString = dmlOperation.getColumnString();
-        String loadSql = String.format(Locale.ROOT, LOAD_SQL, tableFullName, System.lineSeparator());
+        String loadSql = sqlTools.loadFullSql(tableFullName);
+        if (loadSql == null) {
+            return;
+        }
         loadSql = sqlTools.sqlAddBitCast(tableMetaData, columnString, loadSql);
-        if (clientPreparedStatement == null) {
-            try {
+        try {
+            PreparedStatement preparedStatement = connection.prepareStatement(loadSql);
+            if (clientPreparedStatement == null
+                    && preparedStatement.isWrapperFor(com.mysql.cj.jdbc.JdbcStatement.class)) {
                 statement.execute("set session SQL_LOG_BIN=0;");
                 statement.execute("set session UNIQUE_CHECKS=0;");
-                PreparedStatement preparedStatement = connection.prepareStatement(loadSql);
-                if (preparedStatement.isWrapperFor(com.mysql.cj.jdbc.JdbcStatement.class)) {
-                    clientPreparedStatement = preparedStatement.unwrap(ClientPreparedStatement.class);
-                }
-            } catch (SQLException e) {
-                LOGGER.error("{}workthread exception", ErrorCode.SQL_EXCEPTION, e);
+                clientPreparedStatement = preparedStatement.unwrap(ClientPreparedStatement.class);
+            } else if (copyManager == null
+                    && preparedStatement.isWrapperFor(org.postgresql.jdbc.PgStatement.class)) {
+                copyManager = new CopyManager((BaseConnection) connection);
+            } else {
+                LOGGER.info("Type for preparedStatement is {}", preparedStatement);
             }
+        } catch (SQLException e) {
+            LOGGER.error("{}workthread exception", ErrorCode.SQL_EXCEPTION, e);
         }
         List<String> lineList = new ArrayList<>();
         String path = dmlOperation.getPath();
@@ -319,8 +330,14 @@ public class WorkThread extends Thread {
         int count = processRecordMap.computeIfAbsent(tableName, k -> 0);
         try {
             connection.setAutoCommit(false);
-            clientPreparedStatement.setLocalInfileInputStream(inputStream);
-            clientPreparedStatement.executeUpdate(sql);
+            if (clientPreparedStatement != null) {
+                clientPreparedStatement.setLocalInfileInputStream(inputStream);
+                clientPreparedStatement.executeUpdate(sql);
+            } else if (copyManager != null) {
+                copyManager.copyIn(sql, inputStream);
+            } else {
+                LOGGER.error("Unknown statement type '{}' for loadData.", statement);
+            }
             connection.commit();
             fullSuccessCount++;
             processRecordMap.put(tableName, count + list.size());
@@ -333,7 +350,7 @@ public class WorkThread extends Thread {
             if (isConnection) {
                 processRecordMap.put(tableName, count + list.size());
             }
-        } catch (SQLException e) {
+        } catch (SQLException | IOException e) {
             if (!connectionInfo.checkConnectionStatus(connection)) {
                 return;
             }
@@ -359,10 +376,14 @@ public class WorkThread extends Thread {
                 clientPreparedStatement.setLocalInfileInputStream(ins);
                 clientPreparedStatement.executeUpdate();
                 fullSuccessCount++;
+            } else if (preparedStatement.isWrapperFor(org.postgresql.jdbc.PgStatement.class)) {
+                copyManager.copyIn(sql, ins);
+            } else {
+                LOGGER.info("Type for preparedStatement is {}", preparedStatement);
             }
             replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
             savedBreakPointInfo(sinkRecordObject, false);
-        } catch (SQLException e) {
+        } catch (SQLException | IOException e) {
             if (!connectionInfo.checkConnectionStatus(connection)) {
                 return;
             }
@@ -422,6 +443,13 @@ public class WorkThread extends Thread {
 
     private void updateConnectionAndExecuteSql(String sql, SinkRecordObject sinkRecordObject) {
         try {
+            if (clientPreparedStatement != null) {
+                clientPreparedStatement.close();
+                clientPreparedStatement = null;
+            }
+            if (copyManager != null) {
+                copyManager = null;
+            }
             statement.close();
             connection.close();
             connection = createConnection();
@@ -438,7 +466,7 @@ public class WorkThread extends Thread {
         }
     }
 
-    private void printSqlException(String data, SQLException exp, String sql) {
+    private void printSqlException(String data, Exception exp, String sql) {
         failSqlList.add("-- "
                 + sqlPattern.format(LocalDateTime.now())
                 + ": "
@@ -556,6 +584,8 @@ public class WorkThread extends Thread {
             return connectionInfo.createMysqlConnection();
         } else if ("oracle".equals(connectionInfo.getDatabaseType().toLowerCase(Locale.ROOT))) {
             return connectionInfo.createOracleConnection();
+        } else if ("postgres".equals(connectionInfo.getDatabaseType().toLowerCase(Locale.ROOT))) {
+            return connectionInfo.createPostgresConnection();
         } else {
             return connectionInfo.createOpenGaussConnection();
         }

@@ -50,11 +50,10 @@ import io.debezium.schema.DataCollectionSchema;
  */
 @Immutable
 public class TableSchema implements DataCollectionSchema {
-
     private static final Logger LOGGER = LoggerFactory.getLogger(TableSchema.class);
 
     private final TableId id;
-    private final Schema keySchema;
+    private Schema keySchema;
     private final Envelope envelopeSchema;
     private final Schema valueSchema;
     private final StructGenerator keyGenerator;
@@ -161,5 +160,9 @@ public class TableSchema implements DataCollectionSchema {
     @Override
     public String toString() {
         return "{ key : " + SchemaUtil.asString(keySchema()) + ", value : " + SchemaUtil.asString(valueSchema()) + " }";
+    }
+
+    public void removeKeySchema() {
+        keySchema = null;
     }
 }

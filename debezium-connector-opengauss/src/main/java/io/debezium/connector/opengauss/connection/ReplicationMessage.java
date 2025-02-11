@@ -16,13 +16,13 @@ import java.util.OptionalLong;
 import io.debezium.connector.opengauss.OpengaussStreamingChangeEventSource;
 import io.debezium.connector.opengauss.OpengaussType;
 import io.debezium.connector.opengauss.TypeRegistry;
-import org.postgresql.geometric.PGbox;
-import org.postgresql.geometric.PGcircle;
-import org.postgresql.geometric.PGline;
-import org.postgresql.geometric.PGpath;
-import org.postgresql.geometric.PGpoint;
-import org.postgresql.geometric.PGpolygon;
-import org.postgresql.util.PGmoney;
+import org.opengauss.geometric.PGbox;
+import org.opengauss.geometric.PGcircle;
+import org.opengauss.geometric.PGline;
+import org.opengauss.geometric.PGpath;
+import org.opengauss.geometric.PGpoint;
+import org.opengauss.geometric.PGpolygon;
+import org.opengauss.util.PGmoney;
 
 /**
  * An abstract representation of a replication message that is sent by a PostgreSQL logical decoding plugin and
@@ -43,6 +43,7 @@ public interface ReplicationMessage {
         UPDATE,
         DELETE,
         TRUNCATE,
+        DDL,
         MESSAGE,
         BEGIN,
         COMMIT,

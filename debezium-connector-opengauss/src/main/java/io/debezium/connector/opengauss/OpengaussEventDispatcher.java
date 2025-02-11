@@ -6,6 +6,7 @@
 
 package io.debezium.connector.opengauss;
 
+import io.debezium.connector.opengauss.connection.ogoutput.OgOutputDdlReplicationMessage;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,6 +74,20 @@ public class OpengaussEventDispatcher<T extends DataCollectionId> extends EventD
         else {
             LOGGER.trace("Filtered data change event for logical decoding message with prefix{}", message.getPrefix());
         }
+    }
+
+    /**
+     * Dispatch ddl message
+     *
+     * @param partition partition of the message
+     * @param offsetContext offsetContext of the message
+     * @param decodeTimestamp timestamp
+     * @param message ddl message
+     * @throws InterruptedException if the calling thread is interrupted while blocking
+     */
+    public void dispatchDdlReplicationMessage(Partition partition, OffsetContext offsetContext, Long decodeTimestamp,
+                                              OgOutputDdlReplicationMessage message) throws InterruptedException {
+        logicalDecodingMessageMonitor.ddlReplicationMessageEvent(partition, offsetContext, decodeTimestamp, message);
     }
 
     private void enqueueLogicalDecodingMessage(SourceRecord record) throws InterruptedException {
