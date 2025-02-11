@@ -25,7 +25,6 @@ import io.debezium.annotation.Immutable;
 import io.debezium.annotation.ThreadSafe;
 import io.debezium.data.Envelope;
 import io.debezium.data.SchemaUtil;
-import io.debezium.enums.ErrorCode;
 import io.debezium.relational.Key.KeyMapper;
 import io.debezium.relational.Tables.ColumnNameFilter;
 import io.debezium.relational.mapping.ColumnMapper;
@@ -226,8 +225,8 @@ public class TableSchemaBuilder {
                         }
                         catch (DataException e) {
                             Column col = columns.get(i);
-                            LOGGER.error("{}Failed to properly convert key value for '{}.{}' of type {} for row {}:",
-                                ErrorCode.DATA_CONVERT_EXCEPTION, columnSetName, col.name(), col.typeName(), row, e);
+                            LOGGER.error("Failed to properly convert key value for '{}.{}' of type {} for row {}:",
+                                    columnSetName, col.name(), col.typeName(), row, e);
                         }
                     }
                 }
@@ -240,25 +239,22 @@ public class TableSchemaBuilder {
     private void validateIncomingRowToInternalMetadata(int[] recordIndexes, Field[] fields, ValueConverter[] converters,
                                                        Object[] row, int position) {
         if (position >= converters.length) {
-            LOGGER.error("{}Error requesting a converter, converters: {}, requested index: {}",
-                ErrorCode.DATA_CONVERT_EXCEPTION, converters.length, position);
+            LOGGER.error("Error requesting a converter, converters: {}, requested index: {}",
+                    converters.length, position);
             throw new ConnectException(
-                "Column indexing array is larger than number of converters, internal schema representation is "
-                    + "probably out of sync with real database schema");
+                    "Column indexing array is larger than number of converters, internal schema representation is "
+                            + "probably out of sync with real database schema");
         }
         if (position >= fields.length) {
-            LOGGER.error("{}Error requesting a field, fields: {}, requested index: {}",
-                ErrorCode.DATA_CONVERT_EXCEPTION, fields.length, position);
-            throw new ConnectException(
-                "Too few schema fields, internal schema representation is probably out of sync with real database "
-                    + "schema");
+            LOGGER.error("Error requesting a field, fields: {}, requested index: {}", fields.length, position);
+            throw new ConnectException("Too few schema fields, internal schema representation is probably out "
+                    + "of sync with real database schema");
         }
         if (recordIndexes[position] >= row.length) {
-            LOGGER.error("{}Error requesting a row value, row: {}, requested index: {} at position {}",
-                ErrorCode.DATA_CONVERT_EXCEPTION, row.length, recordIndexes[position], position);
-            throw new ConnectException(
-                "Data row is smaller than a column index, internal schema representation is probably out of sync with"
-                    + " real database schema");
+            LOGGER.error("Error requesting a row value, row: {}, requested index: {} at position {}", row.length,
+                    recordIndexes[position], position);
+            throw new ConnectException("Data row is smaller than a column index, internal schema representation is"
+                    + " probably out of sync with real database schema");
         }
     }
 
@@ -309,13 +305,13 @@ public class TableSchemaBuilder {
                         }
                         catch (DataException | IllegalArgumentException e) {
                             Column col = columns.get(i);
-                            LOGGER.error("{}Failed to properly convert data value for '{}.{}' of type {} for row {}:",
-                                    ErrorCode.DATA_CONVERT_EXCEPTION, tableId, col.name(), col.typeName(), row, e);
+                            LOGGER.error("Failed to properly convert data value for '{}.{}' of type {} for row {}:",
+                                    tableId, col.name(), col.typeName(), row, e);
                         }
                         catch (final Exception e) {
                             Column col = columns.get(i);
-                            LOGGER.error("{}Failed to properly convert data value for '{}.{}' of type {} for row {}:",
-                                    ErrorCode.DATA_CONVERT_EXCEPTION, tableId, col.name(), col.typeName(), row, e);
+                            LOGGER.error("Failed to properly convert data value for '{}.{}' of type {} for row {}:",
+                                    tableId, col.name(), col.typeName(), row, e);
                         }
                     }
                 }

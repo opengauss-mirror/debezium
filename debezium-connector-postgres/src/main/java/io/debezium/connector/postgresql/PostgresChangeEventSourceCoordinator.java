@@ -15,6 +15,7 @@ import io.debezium.DebeziumException;
 import io.debezium.config.CommonConnectorConfig;
 import io.debezium.connector.postgresql.spi.SlotState;
 import io.debezium.connector.postgresql.spi.Snapshotter;
+import io.debezium.migration.BaseMigrationConfig;
 import io.debezium.pipeline.ChangeEventSourceCoordinator;
 import io.debezium.pipeline.ErrorHandler;
 import io.debezium.pipeline.EventDispatcher;
@@ -43,11 +44,13 @@ public class PostgresChangeEventSourceCoordinator extends ChangeEventSourceCoord
                                                 PostgresChangeEventSourceFactory changeEventSourceFactory,
                                                 ChangeEventSourceMetricsFactory changeEventSourceMetricsFactory,
                                                 EventDispatcher<?> eventDispatcher, DatabaseSchema<?> schema,
-                                                Snapshotter snapshotter, SlotState slotInfo) {
+                                                Snapshotter snapshotter, SlotState slotInfo,
+                                                BaseMigrationConfig baseMigrationConfig) {
         super(previousOffsets, errorHandler, connectorType, connectorConfig, changeEventSourceFactory,
                 changeEventSourceMetricsFactory, eventDispatcher, schema);
         this.snapshotter = snapshotter;
         this.slotInfo = slotInfo;
+        this.baseMigrationConfig = baseMigrationConfig;
     }
 
     @Override

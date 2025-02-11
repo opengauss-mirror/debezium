@@ -23,6 +23,8 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import io.debezium.migration.ObjectChangeEvent;
+import io.debezium.migration.ObjectEnum;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.slf4j.Logger;
@@ -66,7 +68,7 @@ public class MySqlSnapshotChangeEventSource extends RelationalSnapshotChangeEven
                                           MySqlDatabaseSchema schema, EventDispatcher<TableId> dispatcher, Clock clock,
                                           MySqlSnapshotChangeEventSourceMetrics metrics,
                                           BlockingConsumer<Function<SourceRecord, SourceRecord>> lastEventProcessor) {
-        super(connectorConfig, connection, schema, dispatcher, clock, metrics);
+        super(connectorConfig, connection, schema, dispatcher, clock, metrics, null);
         this.connectorConfig = connectorConfig;
         this.connection = connection;
         this.filters = connectorConfig.getTableFilters();
@@ -426,6 +428,12 @@ public class MySqlSnapshotChangeEventSource extends RelationalSnapshotChangeEven
     protected void complete(SnapshotContext<MySqlPartition, MySqlOffsetContext> snapshotContext) {
     }
 
+    protected ObjectChangeEvent getCreateObjectEvent(
+            RelationalSnapshotContext<MySqlPartition, MySqlOffsetContext> snapshotContext,
+            String schema, String ddl, String objName, ObjectEnum objType) throws SQLException {
+        return null;
+    }
+
     /**
      * Generate a valid MySQL query string for the specified table and columns
      *
@@ -558,7 +566,7 @@ public class MySqlSnapshotChangeEventSource extends RelationalSnapshotChangeEven
     @Override
     protected void createSchemaChangeEventsForTables(ChangeEventSourceContext sourceContext,
                                                      RelationalSnapshotContext<MySqlPartition, MySqlOffsetContext> snapshotContext,
-                                                     SnapshottingTask snapshottingTask)
+                                                     SnapshottingTask snapshottingTask, Connection connection)
             throws Exception {
         tryStartingSnapshot(snapshotContext);
 

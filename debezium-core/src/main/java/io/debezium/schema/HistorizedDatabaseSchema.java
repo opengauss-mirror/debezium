@@ -32,8 +32,6 @@ public interface HistorizedDatabaseSchema<I extends DataCollectionId> extends Da
         };
     }
 
-    void applySchemaChange(SchemaChangeEvent schemaChange);
-
     default void recover(Partition partition, OffsetContext offset) {
         recover(Offsets.of(partition, offset));
     }
@@ -41,6 +39,8 @@ public interface HistorizedDatabaseSchema<I extends DataCollectionId> extends Da
     void recover(Offsets<?, ?> offsets);
 
     void initializeStorage();
+
+    void applySchemaChange(SchemaChangeEvent schemaChange);
 
     default boolean storeOnlyCapturedTables() {
         return false;

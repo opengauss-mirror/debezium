@@ -58,6 +58,41 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
     protected static final String TABLE_WHITELIST_NAME = "table.whitelist";
     protected static final String TABLE_INCLUDE_LIST_NAME = "table.include.list";
 
+    /**
+     * the name of the configuration property for the data migration type
+     */
+    protected static final String DATA_MIGRATION_TYPE_NAME = "migration.type";
+
+    /**
+     * the name of the configuration property for the source workers number
+     */
+    protected static final String MIGRATION_WORKERS_NAME = "migration.workers";
+
+    /**
+     * the name of the configuration property for the export page number
+     */
+    protected static final String EXPORT_PAGE_NUMBER_NAME = "export.page.number";
+
+    /**
+     * the name of the configuration property for the miogration view
+     */
+    protected static final String MIGRATION_VIEW_NAME = "migration.view";
+
+    /**
+     * the name of the configuration property for the data migration func
+     */
+    protected static final String MIGRATION_FUNC_NAME = "migration.func";
+
+    /**
+     * the name of the configuration property for the data migration trigger
+     */
+    protected static final String MIGRATION_TRIGGER_NAME = "migration.trigger";
+
+    /**
+     * the name of the configuration property for the data migration procedure
+     */
+    protected static final String MIGRATION_PROCEDURE_NAME = "migration.procedure";
+
     protected static final Pattern SERVER_NAME_PATTERN = Pattern.compile("^[a-zA-Z0-9_.\\-]+$");
 
     public static final String TABLE_INCLUDE_LIST_ALREADY_SPECIFIED_ERROR_MSG = "\"table.include.list\" is already specified";
@@ -223,6 +258,55 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
             .withImportance(Importance.HIGH)
             .withValidation(Field::isListOfRegex)
             .withDescription("The tables for which changes are to be captured");
+
+    public static final Field DATA_MIGRATION_TYPE = Field.create(DATA_MIGRATION_TYPE_NAME)
+            .withDisplayName("Data Migration Type")
+            .withType(Type.STRING)
+            .withDefault("ONLINE")
+            .withImportance(Importance.MEDIUM)
+            .withDescription("Data Migration Type, FULL, INCREMENTAL OR OBJECT");
+
+    public static final Field MIGRATION_WORKERS = Field.create(MIGRATION_WORKERS_NAME)
+            .withDisplayName("migration worker number")
+            .withType(Type.INT)
+            .withDefault(8)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("workThread number");
+
+    public static final Field EXPORT_PAGE_NUMBER = Field.create(EXPORT_PAGE_NUMBER_NAME)
+            .withDisplayName("Export page number")
+            .withType(Type.INT)
+            .withDefault(50)
+            .withImportance(Importance.HIGH)
+            .withDescription("page number once query from source database");
+
+    public static final Field MIGRATION_VIEW = Field.create(MIGRATION_VIEW_NAME)
+            .withDisplayName("Migrate view")
+            .withType(Type.BOOLEAN)
+            .withDefault(true)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("Migrate view or not");
+
+    public static final Field MIGRATION_FUNC = Field.create(MIGRATION_FUNC_NAME)
+            .withDisplayName("Migrate function")
+            .withType(Type.BOOLEAN)
+            .withDefault(true)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("Migrate function or not");
+
+    public static final Field MIGRATION_TRIGGER = Field.create(MIGRATION_TRIGGER_NAME)
+            .withDisplayName("Migrate trigger")
+            .withType(Type.BOOLEAN)
+            .withDefault(true)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("Migrate trigger or not");
+
+    public static final Field MIGRATION_PROCEDURE = Field.create(MIGRATION_PROCEDURE_NAME)
+            .withDisplayName("Migrate procedure")
+            .withType(Type.BOOLEAN)
+            .withDefault(true)
+            .withImportance(Importance.MEDIUM)
+            .withDescription("Migrate procedure or not");
 
     /**
      * Old, backwards-compatible "whitelist" property.
@@ -758,7 +842,13 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
                     PROPAGATE_COLUMN_SOURCE_TYPE,
                     PROPAGATE_DATATYPE_SOURCE_TYPE,
                     SNAPSHOT_FULL_COLUMN_SCAN_FORCE,
-                    DatabaseHeartbeatImpl.HEARTBEAT_ACTION_QUERY)
+                    DatabaseHeartbeatImpl.HEARTBEAT_ACTION_QUERY,
+                    DATA_MIGRATION_TYPE,
+                    MIGRATION_WORKERS,
+                    MIGRATION_VIEW,
+                    MIGRATION_FUNC,
+                    MIGRATION_TRIGGER,
+                    MIGRATION_PROCEDURE)
             .create();
 
     private final RelationalTableFilters tableFilters;
@@ -868,6 +958,69 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
 
     public String tableIncludeList() {
         return getConfig().getFallbackStringProperty(TABLE_INCLUDE_LIST, TABLE_WHITELIST);
+    }
+
+    /**
+     * get export page number from configuration file
+     *
+     * @return String
+     */
+    public Integer exportPageNumber() {
+        return getConfig().getInteger(EXPORT_PAGE_NUMBER);
+    }
+
+    /**
+     * get migration type from configuration file
+     *
+     * @return String
+     */
+    public String migrationType() {
+        return getConfig().getString(DATA_MIGRATION_TYPE);
+    }
+
+    /**
+     * get migration.view from configuration file
+     *
+     * @return Boolean
+     */
+    public Boolean migrationView() {
+        return getConfig().getBoolean(MIGRATION_VIEW);
+    }
+
+    /**
+     * get migration.workers from configuration file
+     *
+     * @return Integer
+     */
+    public Integer migrationWorkers() {
+        return getConfig().getInteger(MIGRATION_WORKERS);
+    }
+
+    /**
+     * get migration.func from configuration file
+     *
+     * @return Boolean
+     */
+    public Boolean migrationFunc() {
+        return getConfig().getBoolean(MIGRATION_FUNC);
+    }
+
+    /**
+     * get migration.trigger from configuration file
+     *
+     * @return Boolean
+     */
+    public Boolean migrationTrigger() {
+        return getConfig().getBoolean(MIGRATION_TRIGGER);
+    }
+
+    /**
+     * get migration.procedure from configuration file
+     *
+     * @return Boolean
+     */
+    public Boolean migrationProcedure() {
+        return getConfig().getBoolean(MIGRATION_PROCEDURE);
     }
 
     public ColumnNameFilter getColumnFilter() {

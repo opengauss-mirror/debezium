@@ -259,6 +259,14 @@ public interface ColumnEditor {
     ColumnEditor defaultValueExpression(String defaultValueExpression);
 
     /**
+     * Set the interval type of the column;
+     *
+     * @param intervalType the interval type of the column
+     * @return this editor so callers can chain methods together
+     */
+    ColumnEditor intervalType(String intervalType);
+
+    /**
      * Set the list of enumeration values.
      *
      * @param enumValues the enumeration values

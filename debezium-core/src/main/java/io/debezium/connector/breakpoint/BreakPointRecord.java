@@ -27,8 +27,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import io.debezium.config.SinkConnectorConfig;
-import io.debezium.connector.kafka.KafkaClient;
+import io.debezium.enums.ErrorCode;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.DeleteRecordsResult;
 import org.apache.kafka.clients.admin.DeletedRecords;
@@ -46,7 +45,8 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.Queues;
 
 import io.debezium.config.Field;
-import io.debezium.enums.ErrorCode;
+import io.debezium.config.SinkConnectorConfig;
+import io.debezium.connector.kafka.KafkaClient;
 
 /**
  * Description: BreakPointRecord
@@ -211,8 +211,7 @@ public class BreakPointRecord {
                         ++numRecordsProcessed;
                     }
                     catch (NumberFormatException e) {
-                        LOGGER.error("{}NumberFormat exception while processing record '{}'",
-                            ErrorCode.BREAKPOINT_MESSAGE_HANDLE_EXCEPTION, record, e);
+                        LOGGER.error("NumberFormat exception while processing record '{}'", record, e);
                     }
                 }
                 if (numRecordsProcessed == 0) {
@@ -471,8 +470,7 @@ public class BreakPointRecord {
                 lowWatermark = Math.min(entry.getValue().get().lowWatermark(), lowWatermark);
             }
             catch (InterruptedException | ExecutionException e) {
-                LOGGER.error("{}Deleting the breakpoint kafka offset occur exception.",
-                    ErrorCode.BREAKPOINT_MESSAGE_HANDLE_EXCEPTION);
+                LOGGER.error("Deleting the breakpoint kafka offset occur exception");
             }
         }
         LOGGER.info("deleted lowWatermark is {}", lowWatermark);

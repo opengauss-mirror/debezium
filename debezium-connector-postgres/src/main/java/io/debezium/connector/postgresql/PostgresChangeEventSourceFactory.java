@@ -9,6 +9,7 @@ import java.util.Optional;
 
 import io.debezium.connector.postgresql.connection.PostgresConnection;
 import io.debezium.connector.postgresql.connection.ReplicationConnection;
+import io.debezium.connector.postgresql.migration.PostgresObjectDdlFactory;
 import io.debezium.connector.postgresql.spi.SlotCreationResult;
 import io.debezium.connector.postgresql.spi.SlotState;
 import io.debezium.connector.postgresql.spi.Snapshotter;
@@ -66,7 +67,8 @@ public class PostgresChangeEventSourceFactory implements ChangeEventSourceFactor
                 clock,
                 snapshotProgressListener,
                 slotCreatedInfo,
-                startingSlotInfo);
+                startingSlotInfo,
+                new PostgresObjectDdlFactory());
     }
 
     @Override

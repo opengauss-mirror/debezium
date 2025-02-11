@@ -1257,8 +1257,8 @@ public class JdbcConnection implements AutoCloseable {
         return new HashSet<>();
     }
 
-    protected void readTableColumnMetadata(Tables tables, DatabaseMetaData metadata, Map<TableId,
-            List<Column>> columnsByTable) throws SQLException {
+    protected void readTableColumnMetadata(Tables tables, DatabaseMetaData metadata,
+                                           Map<TableId, List<Column>> columnsByTable) throws SQLException {
         // Read the metadata for the primary keys ...
         for (Entry<TableId, List<Column>> tableEntry : columnsByTable.entrySet()) {
             // First get the primary key information, which must be done for *each* table ...

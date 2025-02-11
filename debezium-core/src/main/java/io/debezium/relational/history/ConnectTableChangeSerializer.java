@@ -60,6 +60,7 @@ public class ConnectTableChangeSerializer implements TableChanges.TableChangesSe
     public static final String AUTO_INCREMENTED_KEY = "autoIncremented";
     public static final String GENERATED_KEY = "generated";
     public static final String COMMENT_KEY = "comment";
+    public static final String INTERVALTYPE_KEY = "intervalType";
     public static final String MODIFY_KEYS_KEY = "modifyKeys";
     public static final String CHANGE_COLUMN = "changeColumns";
     public static final String COLUMN_EXPR = "columnExpr";
@@ -98,6 +99,7 @@ public class ConnectTableChangeSerializer implements TableChanges.TableChangesSe
             .field(AUTO_INCREMENTED_KEY, Schema.OPTIONAL_BOOLEAN_SCHEMA)
             .field(GENERATED_KEY, Schema.OPTIONAL_BOOLEAN_SCHEMA)
             .field(COMMENT_KEY, Schema.OPTIONAL_STRING_SCHEMA)
+            .field(INTERVALTYPE_KEY, Schema.OPTIONAL_STRING_SCHEMA)
             .field(MODIFY_KEYS_KEY, SchemaBuilder.array(Schema.STRING_SCHEMA).optional().build())
             .build();
     private static final Schema INDEX_COLUMN_EXPR = SchemaBuilder.struct()
@@ -261,6 +263,7 @@ public class ConnectTableChangeSerializer implements TableChanges.TableChangesSe
         struct.put(AUTO_INCREMENTED_KEY, column.isAutoIncremented());
         struct.put(GENERATED_KEY, column.isGenerated());
         struct.put(COMMENT_KEY, column.comment());
+        struct.put(INTERVALTYPE_KEY, column.intervalType());
 
         List<String> modifyKeys = column.modifyKeys();
         if (modifyKeys != null && modifyKeys.size() > 0) {

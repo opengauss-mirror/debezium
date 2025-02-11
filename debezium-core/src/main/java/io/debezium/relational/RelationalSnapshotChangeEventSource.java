@@ -9,23 +9,30 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.HashSet;
-import java.util.Iterator;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Iterator;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.ArrayList;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import io.debezium.migration.NotifyEvent;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.DebeziumException;
 import io.debezium.jdbc.JdbcConnection;
+import io.debezium.migration.ObjectChangeEvent;
+import io.debezium.migration.ObjectDdlFactory;
+import io.debezium.migration.ObjectEnum;
 import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.EventDispatcher.SnapshotReceiver;
 import io.debezium.pipeline.source.AbstractSnapshotChangeEventSource;
@@ -63,10 +70,13 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
     protected final EventDispatcher<TableId> dispatcher;
     protected final Clock clock;
     private final SnapshotProgressListener snapshotProgressListener;
+    private final ObjectDdlFactory objectDdlFactory;
 
     public RelationalSnapshotChangeEventSource(RelationalDatabaseConnectorConfig connectorConfig,
                                                JdbcConnection jdbcConnection, RelationalDatabaseSchema schema,
-                                               EventDispatcher<TableId> dispatcher, Clock clock, SnapshotProgressListener snapshotProgressListener) {
+                                               EventDispatcher<TableId> dispatcher, Clock clock,
+                                               SnapshotProgressListener snapshotProgressListener,
+                                               ObjectDdlFactory objectDdlFactory) {
         super(connectorConfig, snapshotProgressListener);
         this.connectorConfig = connectorConfig;
         this.jdbcConnection = jdbcConnection;
@@ -74,6 +84,7 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
         this.dispatcher = dispatcher;
         this.clock = clock;
         this.snapshotProgressListener = snapshotProgressListener;
+        this.objectDdlFactory = objectDdlFactory;
     }
 
     /**
@@ -106,7 +117,7 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
 
             // Note that there's a minor race condition here: a new table matching the filters could be created between
             // this call and the determination of the initial snapshot position below; this seems acceptable, though
-            determineCapturedTables(ctx);
+            determineCapturedTables(ctx, connection);
             snapshotProgressListener.monitoredDataCollectionsDetermined(ctx.capturedTables);
 
             LOGGER.info("Snapshot step 3 - Locking captured tables {}", ctx.capturedTables);
@@ -124,7 +135,7 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
             if (snapshottingTask.snapshotSchema()) {
                 LOGGER.info("Snapshot step 6 - Persisting schema history");
 
-                createSchemaChangeEventsForTables(context, ctx, snapshottingTask);
+                createSchemaChangeEventsForTables(context, ctx, snapshottingTask, connection);
 
                 // if we've been interrupted before, the TX rollback will cause any locks to be released
                 releaseSchemaSnapshotLocks(ctx);
@@ -144,6 +155,7 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
                 ctx.offset.postSnapshotCompletion();
             }
 
+            dispatchNotifyMessage(ctx);
             postSnapshot();
             dispatcher.alwaysDispatchHeartbeatEvent(ctx.partition, ctx.offset);
             return SnapshotResult.completed(ctx.offset);
@@ -151,6 +163,108 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
         finally {
             rollbackTransaction(connection);
         }
+    }
+
+    @Override
+    protected void doExecuteObjectSnapShot(SnapshotContext<P, O> snapshotContext) throws Exception {
+        Connection connection = null;
+        final RelationalSnapshotContext<P, O> ctx = (RelationalSnapshotContext) snapshotContext;
+        try {
+            connection = createSnapshotConnection();
+            determineSnapshotOffset(ctx, null);
+            executeObjectSnapShot(ctx, connection);
+            dispatchNotifyMessage(ctx);
+        } finally {
+            rollbackTransaction(connection);
+        }
+    }
+
+    /**
+     * @description: execute object snapshot
+     *
+     * @param snapshotContext RelationalSnapshotContext<P, O>
+     * @param connection Connection
+     */
+    protected void executeObjectSnapShot(RelationalSnapshotContext<P, O> snapshotContext, Connection connection) {
+
+    }
+
+    /**
+     * get view ddl to map
+     *
+     * @param schema String
+     * @param connection Connection
+     * @return Map<String,String>
+     */
+    protected Map<String, String> addViewDdls(String schema, Connection connection) {
+        Map<String, String> viewDdls = new HashMap<>();
+        if (connectorConfig.migrationView()) {
+            viewDdls.putAll(objectDdlFactory.generateObjectDdl(schema, ObjectEnum.VIEW, connection));
+        }
+        return viewDdls;
+    }
+
+    /**
+     * get function ddl to map
+     *
+     * @param schema String
+     * @param connection Connection
+     * @return Map<String,String>
+     */
+    protected Map<String, String> addFuncDdls(String schema, Connection connection) {
+        Map<String, String> funcDdls = new HashMap<>();
+        if (connectorConfig.migrationFunc()) {
+            funcDdls.putAll(objectDdlFactory.generateObjectDdl(schema, ObjectEnum.FUNCTION, connection));
+        }
+        return funcDdls;
+    }
+
+    /**
+     * get trigger ddl to map
+     *
+     * @param schema String
+     * @param connection Connection
+     * @return Map<String,String>
+     */
+    protected Map<String, String> addTriggerDdls(String schema, Connection connection) {
+        Map<String, String> triggerDdls = new HashMap<>();
+        if (connectorConfig.migrationTrigger()) {
+            triggerDdls.putAll(objectDdlFactory.generateObjectDdl(schema, ObjectEnum.TRIGGER, connection));
+        }
+        return triggerDdls;
+    }
+
+    /**
+     * get procedure ddl to map
+     *
+     * @param schema String
+     * @param connection Connection
+     * @return Map<String,String>
+     */
+    protected Map<String, String> addProcedureDdls(String schema, Connection connection) {
+        Map<String, String> procedureDdls = new HashMap<>();
+        if (connectorConfig.migrationProcedure()) {
+            procedureDdls.putAll(objectDdlFactory.generateObjectDdl(schema, ObjectEnum.PROCEDURE, connection));
+        }
+        return procedureDdls;
+    }
+
+    /**
+     * switch schema
+     *
+     * @param schema String database schema
+     * @param connection Connection
+     */
+    public void switchSchema(String schema, Connection connection) {
+
+    }
+
+    /**
+     * @description: dispatch EOF message
+     *
+     * @param ctx RelationalSnapshotContext<P, O>
+     */
+    protected void dispatchNotifyMessage(RelationalSnapshotContext<P, O> ctx) {
     }
 
     public Connection createSnapshotConnection() throws SQLException {
@@ -186,7 +300,13 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
-    private void determineCapturedTables(RelationalSnapshotContext<P, O> ctx) throws Exception {
+    /**
+     * @description: determine captured tables for migration
+     *
+     * @param ctx RelationalSnapshotContext<P, O>
+     * @param conn Connection
+     */
+    protected void determineCapturedTables(RelationalSnapshotContext<P, O> ctx, Connection conn) throws Exception {
         Set<TableId> allTableIds = determineDataCollectionsToBeSnapshotted(getAllTableIds(ctx)).collect(Collectors.toSet());
         Set<TableId> allTableIdsExcludeSystemSchema = filterSystemSchemaTable(allTableIds);
 
@@ -212,6 +332,16 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
                 .stream()
                 .sorted()
                 .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    /**
+     * @description: determine captured schemas for migration
+     *
+     * @param conn Connection
+     * @return List<String>
+     */
+    protected List<String> determineCapturedSchemas(Connection conn) {
+        return new ArrayList<>();
     }
 
     /**
@@ -257,7 +387,7 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
 
     protected void createSchemaChangeEventsForTables(ChangeEventSourceContext sourceContext,
                                                      RelationalSnapshotContext<P, O> snapshotContext,
-                                                     SnapshottingTask snapshottingTask)
+                                                     SnapshottingTask snapshottingTask, Connection connection)
             throws Exception {
         tryStartingSnapshot(snapshotContext);
         for (Iterator<TableId> iterator = snapshotContext.capturedTables.iterator(); iterator.hasNext();) {
@@ -296,6 +426,40 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
     protected abstract SchemaChangeEvent getCreateTableEvent(RelationalSnapshotContext<P, O> snapshotContext,
                                                              Table table)
             throws Exception;
+
+    protected SchemaChangeEvent getCreateTableEvent(RelationalSnapshotContext<P, O> snapshotContext,
+                                                             Table table, String parentTables, String partititonDdl) {
+        return null;
+    }
+
+    /**
+     * Create object change event
+     *
+     * @param snapshotContext RelationalSnapshotContext
+     * @param schema String
+     * @param ddl String
+     * @param objName String
+     * @param objType ObjectEnum
+     * @return ObjectChangeEvent
+     * @throws Exception base function, may catch unknown exception
+     */
+    protected abstract ObjectChangeEvent getCreateObjectEvent(RelationalSnapshotContext<P, O> snapshotContext,
+                                                              String schema, String ddl, String objName,
+                                                              ObjectEnum objType)
+            throws Exception;
+
+    /**
+     * Create EOF notify event
+     *
+     * @param snapshotContext RelationalSnapshotContext
+     * @return NotifyEvent
+     */
+    protected NotifyEvent getNotifyEvent(RelationalSnapshotContext<P, O> snapshotContext) {
+        return new NotifyEvent(snapshotContext.partition.getSourcePartition(),
+                snapshotContext.offset.getOffset(),
+                snapshotContext.offset.getSourceInfo(),
+                snapshotContext.catalogName);
+    }
 
     protected void createDataEvents(ChangeEventSourceContext sourceContext,
                                     RelationalSnapshotContext<P, O> snapshotContext)

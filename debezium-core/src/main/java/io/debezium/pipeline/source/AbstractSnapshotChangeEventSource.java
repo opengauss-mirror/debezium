@@ -5,6 +5,7 @@
  */
 package io.debezium.pipeline.source;
 
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Collection;
@@ -12,8 +13,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
-import io.debezium.enums.ErrorCode;
-import io.debezium.relational.TableId;
+import io.debezium.relational.RelationalSnapshotChangeEventSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,6 +25,7 @@ import io.debezium.pipeline.source.spi.SnapshotProgressListener;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Partition;
 import io.debezium.pipeline.spi.SnapshotResult;
+import io.debezium.relational.TableId;
 import io.debezium.schema.DataCollectionId;
 import io.debezium.util.Clock;
 import io.debezium.util.Metronome;
@@ -68,7 +69,7 @@ public abstract class AbstractSnapshotChangeEventSource<P extends Partition, O e
             ctx = prepare(partition);
         }
         catch (Exception e) {
-            LOGGER.error("{}Failed to initialize snapshot context.", ErrorCode.MESSAGE_HANDLE_EXCEPTION, e);
+            LOGGER.error("Failed to initialize snapshot context.", e);
             throw new RuntimeException(e);
         }
 
@@ -97,6 +98,24 @@ public abstract class AbstractSnapshotChangeEventSource<P extends Partition, O e
             else {
                 snapshotProgressListener.snapshotAborted();
             }
+        }
+    }
+
+    /**
+     * @description: execute get object snapshot
+     *
+     * @param context ChangeEventSourceContext
+     * @param partition P
+     * @param previousOffset O
+     */
+    public void executeObjectSnapShot(ChangeEventSourceContext context, P partition, O previousOffset) {
+        final SnapshotContext<P, O> ctx;
+        try {
+            ctx = prepare(partition);
+            doExecuteObjectSnapShot(ctx);
+        } catch (Exception e) {
+            LOGGER.error("Failed to initialize snapshot context.", e);
+            throw new DebeziumException(e);
         }
     }
 
@@ -154,6 +173,13 @@ public abstract class AbstractSnapshotChangeEventSource<P extends Partition, O e
                                                    SnapshotContext<P, O> snapshotContext,
                                                    SnapshottingTask snapshottingTask)
             throws Exception;
+
+    /**
+     * do execute object snapshot, get object info from source database
+     *
+     * @param snapshotContext SnapshotContext<P, O>
+     */
+    protected abstract void doExecuteObjectSnapShot(SnapshotContext<P, O> snapshotContext) throws Exception;
 
     /**
      * Returns the snapshotting task based on the previous offset (if available) and the connector's snapshotting mode.

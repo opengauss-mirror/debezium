@@ -16,11 +16,10 @@ import io.debezium.util.Clock;
  * @author Jiri Pechanec
  */
 public class SnapshotChangeRecordEmitter extends RelationalChangeRecordEmitter {
-
     private final Object[] row;
 
     public SnapshotChangeRecordEmitter(Partition partition, OffsetContext offset, Object[] row, Clock clock) {
-        super(partition, offset, clock);
+        super(partition, offset, clock, null);
 
         this.row = row;
     }

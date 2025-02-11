@@ -8,6 +8,7 @@ package io.debezium.relational.history;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import io.debezium.data.Envelope;
 import io.debezium.document.Array;
 import io.debezium.document.Document;
 import io.debezium.relational.history.TableChanges.TableChangesSerializer;
@@ -19,8 +20,37 @@ public class HistoryRecord {
         public static final String POSITION = "position";
         public static final String DATABASE_NAME = "databaseName";
         public static final String SCHEMA_NAME = "schemaName";
-        public static final String DDL_STATEMENTS = "ddl";
         public static final String TABLE_CHANGES = "tableChanges";
+
+        /**
+         * sql statement of object
+         */
+        public static final String DDL_STATEMENTS = "ddl";
+
+        /**
+         * object name
+         */
+        public static final String OBJECT_NAME = "objectName";
+
+        /**
+         * object type
+         */
+        public static final String OBJECT_TYPE = "objType";
+
+        /**
+         * message type
+         */
+        public static final String MESSAGE_TYPE = Envelope.FieldName.MSGTYPE;
+
+        /**
+         * parent tables
+         */
+        public static final String PARENT_TABLES = "parentTables";
+
+        /**
+         * table partition info
+         */
+        public static final String PARTITION_INFO = "tablePartition";
     }
 
     private final Document doc;

@@ -6,7 +6,10 @@
 
 package io.debezium.connector.postgresql;
 
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -23,11 +26,13 @@ import io.debezium.connector.postgresql.connection.PostgresConnection;
 import io.debezium.connector.postgresql.connection.PostgresDefaultValueConverter;
 import io.debezium.connector.postgresql.connection.ServerInfo;
 import io.debezium.jdbc.JdbcConnection;
-import io.debezium.relational.RelationalDatabaseSchema;
-import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
-import io.debezium.relational.TableSchemaBuilder;
+import io.debezium.relational.Table;
 import io.debezium.relational.Tables;
+import io.debezium.relational.RelationalDatabaseSchema;
+import io.debezium.relational.TableSchema;
+import io.debezium.relational.TableSchemaBuilder;
+import io.debezium.schema.SchemaChangeEvent;
 import io.debezium.schema.TopicSelector;
 import io.debezium.util.SchemaNameAdjuster;
 
@@ -58,8 +63,8 @@ public class PostgresSchema extends RelationalDatabaseSchema {
      */
     protected PostgresSchema(PostgresConnectorConfig config, TypeRegistry typeRegistry, PostgresDefaultValueConverter defaultValueConverter,
                              TopicSelector<TableId> topicSelector, PostgresValueConverter valueConverter) {
-        super(config, topicSelector, new Filters(config).tableFilter(),
-                config.getColumnFilter(), getTableSchemaBuilder(config, valueConverter, defaultValueConverter),
+        super(config, topicSelector, new Filters(config).tableFilter(), config.getColumnFilter(),
+                getTableSchemaBuilder(config, valueConverter, defaultValueConverter),
                 false, config.getKeyMapper());
 
         this.typeRegistry = typeRegistry;
@@ -85,10 +90,23 @@ public class PostgresSchema extends RelationalDatabaseSchema {
      */
     protected PostgresSchema refresh(PostgresConnection connection, boolean printReplicaIdentityInfo) throws SQLException {
         // read all the information from the DB
-        connection.readSchema(tables(), null, null, getTableFilter(), null, true);
+        connection.readSchema(tables(), null, null,
+                new PostgresConnectorConfig.SystemTablesPredicate(), null, true);
+        List<String> schemaList = connection.queryAndMap("SELECT pn.oid AS schema_oid, iss.catalog_name, "
+                + "iss.schema_owner,iss.schema_name FROM information_schema.schemata iss "
+                + "INNER JOIN pg_namespace pn ON pn.nspname = iss.schema_name "
+                + "where iss.schema_name = 'public' or "
+                + "(pn.oid > 16384 and pn.nspname != 'performance_schema')", rs -> {
+                    List<String> schemas = new ArrayList<>();
+                    while (rs.next()) {
+                        schemas.add(rs.getString("schema_name"));
+                    }
+                    return schemas;
+                });
         if (printReplicaIdentityInfo) {
             // print out all the replica identity info
-            tableIds().forEach(tableId -> printReplicaIdentityInfo(connection, tableId));
+            tableIds().stream().filter(o -> schemaList.contains(o.schema()))
+                    .forEach(tableId -> printReplicaIdentityInfo(connection, tableId));
         }
         // and then refresh the schemas
         refreshSchemas();
@@ -98,12 +116,44 @@ public class PostgresSchema extends RelationalDatabaseSchema {
         return this;
     }
 
+    /**
+     * get Table by TableId
+     *
+     * @param id TableId
+     * @return Table
+     */
+    public Table tableFor(TableId id) {
+        if (tableFilter == null) {
+            return tables.forTable(id);
+        }
+        return tableFilter.isIncluded(id) ? tables.forTable(id) : null;
+    }
+
+    /**
+     * build and register schema by table
+     *
+     * @param table Table
+     */
+    protected void buildAndRegisterSchema(Table table) {
+        TableSchema schema = schemaBuilder.create(schemaPrefix, getEnvelopeSchemaName(table), table, columnFilter,
+                columnMappers, customKeysMapper);
+        schemasByTableId.put(table.id(), schema);
+    }
+
     private void printReplicaIdentityInfo(PostgresConnection connection, TableId tableId) {
         try {
             ServerInfo.ReplicaIdentity replicaIdentity = connection.readReplicaIdentityInfo(tableId);
+            boolean isEmpty = tables.forTable(tableId).primaryKeyColumns().isEmpty();
+            if (isEmpty && !"FULL".equals(replicaIdentity.toString())) {
+                try (Statement stmt = connection.connection().createStatement()) {
+                    String sql = String.format("ALTER TABLE %s REPLICA IDENTITY FULL", tableId.toDoubleQuotedString());
+                    stmt.execute(sql);
+                    LOGGER.info("REPLICA IDENTITY for '{}' is changed to  FULL, UPDATE AND DELETE events will contain"
+                            + " the previous values of all the columns", tableId);
+                }
+            }
             LOGGER.info("REPLICA IDENTITY for '{}' is '{}'; {}", tableId, replicaIdentity, replicaIdentity.description());
-        }
-        catch (SQLException e) {
+        } catch (SQLException e) {
             LOGGER.warn("Cannot determine REPLICA IDENTITY info for '{}'", tableId);
         }
     }
@@ -259,5 +309,38 @@ public class PostgresSchema extends RelationalDatabaseSchema {
     public boolean tableInformationComplete() {
         // PostgreSQL does not support HistorizedDatabaseSchema - so no tables are recovered
         return false;
+    }
+
+    /**
+     * apply shcema change
+     *
+     * @param schemaChange SchemaChangeEvent
+     */
+    public void applySchemaChange(SchemaChangeEvent schemaChange) {
+        switch (schemaChange.getType()) {
+            case CREATE:
+            case ALTER:
+                schemaChange.getTableChanges().forEach(x -> buildAndRegisterSchema(x.getTable()));
+                break;
+            case DROP:
+                schemaChange.getTableChanges().forEach(x -> removeSchema(x.getId()));
+                break;
+            default:
+        }
+    }
+
+    private void autoEnableReplicaIdentity(PostgresConnection connection) throws SQLException {
+        String enableReplicaStatement = "alter table %s replica identity full;";
+        Connection conn = connection.connection();
+        DatabaseMetaData metaData = conn.getMetaData();
+        for (TableId tableId : tableIds()) {
+            List<String> primaryKeyNames = connection.readPrimaryKeyNames(metaData, tableId);
+            if (primaryKeyNames.isEmpty()) {
+                String sql = String.format(enableReplicaStatement, tableId.identifier());
+                LOGGER.warn("Table '{}' does not has a primary key, will enable replica identity full",
+                        tableId.identifier());
+                connection.execute(sql);
+            }
+        }
     }
 }

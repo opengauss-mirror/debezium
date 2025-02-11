@@ -16,6 +16,7 @@ import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 
+import io.debezium.migration.BaseMigrationConfig;
 import io.debezium.pipeline.txmetadata.TransactionMonitor;
 
 /**
@@ -66,7 +67,15 @@ public final class Envelope {
         /**
          * An operation that resulted in a generic message
          */
-        MESSAGE("m");
+        MESSAGE("m"),
+        /**
+         * An operation that resulted in a creating index event.
+         */
+        CREATE_INDEX("i"),
+        /**
+         * An operation that carry snapshot.
+         */
+        TABLE_SNAPSHOT("ts");
 
         private final String code;
 
@@ -117,6 +126,26 @@ public final class Envelope {
          * This type passes the location where the csv file is stored.
          */
         public static final String CSV = "csv";
+        /**
+         * This type distinguish messageType, full data, incremental data, metadata and eof.
+         */
+        public static final String MSGTYPE = "msgType";
+        /**
+         * This type carries index ddl
+         */
+        public static final String INDEX = "index";
+        /**
+         * This type carries total slices of a table
+         */
+        public static final String SLICES = "totalSlice";
+        /**
+         * This type carries bytes per slice
+         */
+        public static final String SLICESPACE = "sliceSize";
+        /**
+         * This type carries table snapshot
+         */
+        public static final String SNAPSHOT = "snapshot";
         /**
          * The {@code ts_ms} field is used to store the information about the local time at which the connector
          * processed/generated the event. The timestamp values are the number of milliseconds past epoch (January 1, 1970), and
@@ -240,14 +269,24 @@ public final class Envelope {
             public Envelope build() {
                 builder.field(FieldName.OPERATION, OPERATION_REQUIRED ? Schema.STRING_SCHEMA : Schema.OPTIONAL_STRING_SCHEMA);
                 builder.field(FieldName.CSV, Schema.OPTIONAL_STRING_SCHEMA);
+                builder.field(FieldName.SLICES, Schema.OPTIONAL_INT32_SCHEMA);
+                builder.field(FieldName.SLICESPACE, Schema.OPTIONAL_FLOAT64_SCHEMA);
                 builder.field(FieldName.TIMESTAMP, Schema.OPTIONAL_INT64_SCHEMA);
                 builder.field(FieldName.TRANSACTION, TransactionMonitor.TRANSACTION_BLOCK_SCHEMA);
+                builder.field(FieldName.MSGTYPE, Schema.OPTIONAL_STRING_SCHEMA);
+                builder.field(FieldName.INDEX, Schema.OPTIONAL_STRING_SCHEMA);
+                builder.field(FieldName.SNAPSHOT, Schema.OPTIONAL_STRING_SCHEMA);
                 checkFieldIsDefined(FieldName.OPERATION);
                 checkFieldIsDefined(FieldName.CSV);
+                checkFieldIsDefined(FieldName.SLICES);
+                checkFieldIsDefined(FieldName.SLICESPACE);
                 checkFieldIsDefined(FieldName.BEFORE);
                 checkFieldIsDefined(FieldName.AFTER);
                 checkFieldIsDefined(FieldName.SOURCE);
                 checkFieldIsDefined(FieldName.TRANSACTION);
+                checkFieldIsDefined(FieldName.MSGTYPE);
+                checkFieldIsDefined(FieldName.INDEX);
+                checkFieldIsDefined(FieldName.SNAPSHOT);
                 if (!missingFields.isEmpty()) {
                     throw new IllegalStateException("The envelope schema is missing field(s) " + String.join(", ", missingFields));
                 }
@@ -309,13 +348,65 @@ public final class Envelope {
      * @param after Source end data object; may not be null
      * @param source the information about the source that was path; may be null
      * @param timestamp the timestamp for this message; may be null
-     * @return the read message; never null
+     * @return the path message; never null
      */
-    public Struct path(Object record, Object after, Struct source, Instant timestamp) {
+    public Struct path(Object record, Object after, Struct source, Instant timestamp, Object slices,
+                       Object sliceSpace) {
         Struct struct = new Struct(schema);
         struct.put(FieldName.OPERATION, Operation.PATH.code());
         struct.put(FieldName.AFTER, after);
         struct.put(FieldName.CSV, record);
+        struct.put(FieldName.MSGTYPE, BaseMigrationConfig.MessageType.FULLDATA.toString());
+        if (slices != null) {
+            struct.put(FieldName.SLICES, slices);
+        }
+        if (sliceSpace != null) {
+            struct.put(FieldName.SLICESPACE, sliceSpace);
+        }
+        if (source != null) {
+            struct.put(FieldName.SOURCE, source);
+        }
+        if (timestamp != null) {
+            struct.put(FieldName.TIMESTAMP, timestamp.toEpochMilli());
+        }
+        return struct;
+    }
+
+    /**
+     * Generate a {@link Operation#CREATE_INDEX index} message with the given information.
+     *
+     * @param record the state of the record as path; may not be null
+     * @param source the information about the source that was path; may be null
+     * @param timestamp the timestamp for this message; may be null
+     * @return the index message; never null
+     */
+    public Struct index(Object record, Struct source, Instant timestamp) {
+        Struct struct = new Struct(schema);
+        struct.put(FieldName.OPERATION, Operation.CREATE_INDEX.code());
+        struct.put(FieldName.INDEX, record);
+        struct.put(FieldName.MSGTYPE, BaseMigrationConfig.MessageType.FULLDATA.toString());
+        if (source != null) {
+            struct.put(FieldName.SOURCE, source);
+        }
+        if (timestamp != null) {
+            struct.put(FieldName.TIMESTAMP, timestamp.toEpochMilli());
+        }
+        return struct;
+    }
+
+    /**
+     * Generate a {@link Operation#TABLE_SNAPSHOT snapshot} message with the given information.
+     *
+     * @param record the state of the record as path; may not be null
+     * @param source the information about the source that was path; may be null
+     * @param timestamp the timestamp for this message; may be null
+     * @return the snapshot message; never null
+     */
+    public Struct snapshot(Object record, Struct source, Instant timestamp) {
+        Struct struct = new Struct(schema);
+        struct.put(FieldName.OPERATION, Operation.TABLE_SNAPSHOT.code());
+        struct.put(FieldName.SNAPSHOT, record);
+        struct.put(FieldName.MSGTYPE, BaseMigrationConfig.MessageType.FULLDATA.toString());
         if (source != null) {
             struct.put(FieldName.SOURCE, source);
         }
@@ -337,6 +428,7 @@ public final class Envelope {
         Struct struct = new Struct(schema);
         struct.put(FieldName.OPERATION, Operation.CREATE.code());
         struct.put(FieldName.AFTER, record);
+        struct.put(FieldName.MSGTYPE, BaseMigrationConfig.MessageType.INCREMENTALDATA.toString());
         if (source != null) {
             struct.put(FieldName.SOURCE, source);
         }
@@ -358,6 +450,7 @@ public final class Envelope {
     public Struct update(Object before, Struct after, Struct source, Instant timestamp) {
         Struct struct = new Struct(schema);
         struct.put(FieldName.OPERATION, Operation.UPDATE.code());
+        struct.put(FieldName.MSGTYPE, BaseMigrationConfig.MessageType.INCREMENTALDATA.toString());
         if (before != null) {
             struct.put(FieldName.BEFORE, before);
         }
@@ -382,6 +475,7 @@ public final class Envelope {
     public Struct delete(Object before, Struct source, Instant timestamp) {
         Struct struct = new Struct(schema);
         struct.put(FieldName.OPERATION, Operation.DELETE.code());
+        struct.put(FieldName.MSGTYPE, BaseMigrationConfig.MessageType.INCREMENTALDATA.toString());
         if (before != null) {
             struct.put(FieldName.BEFORE, before);
         }
@@ -406,6 +500,7 @@ public final class Envelope {
         struct.put(FieldName.OPERATION, Operation.TRUNCATE.code());
         struct.put(FieldName.SOURCE, source);
         struct.put(FieldName.TIMESTAMP, timestamp.toEpochMilli());
+        struct.put(FieldName.MSGTYPE, BaseMigrationConfig.MessageType.FULLDATA.toString());
         return struct;
     }
 

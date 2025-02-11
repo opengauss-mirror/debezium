@@ -29,8 +29,18 @@ public interface SnapshotChangeEventSource<P extends Partition, O extends Offset
      * @param previousOffset
      *            previous offset restored from Kafka
      * @return an indicator to the position at which the snapshot was taken
-     * @throws InterruptedException
-     *             in case the snapshot was aborted before completion
+     * @throws InterruptedException in case the snapshot was aborted before completion
      */
     SnapshotResult<O> execute(ChangeEventSourceContext context, P partition, O previousOffset) throws InterruptedException;
+
+    /**
+     * execute object snapshot
+     *
+     * @param context ChangeEventSourceContext
+     * @param partition the source partition from which the snapshot should be taken
+     * @param previousOffset previous offset restored from Kafka
+     * @throws InterruptedException emit message to kafka may throw
+     */
+    void executeObjectSnapShot(ChangeEventSourceContext context, P partition, O previousOffset)
+            throws InterruptedException;
 }

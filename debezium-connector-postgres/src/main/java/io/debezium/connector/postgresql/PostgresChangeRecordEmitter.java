@@ -9,12 +9,12 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
+import java.util.Iterator;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.connect.data.Struct;
@@ -62,7 +62,7 @@ public class PostgresChangeRecordEmitter extends RelationalChangeRecordEmitter {
     public PostgresChangeRecordEmitter(Partition partition, OffsetContext offset, Clock clock, PostgresConnectorConfig connectorConfig, PostgresSchema schema,
                                        PostgresConnection connection, TableId tableId,
                                        ReplicationMessage message) {
-        super(partition, offset, clock);
+        super(partition, offset, clock, null);
 
         this.schema = schema;
         this.message = message;
@@ -99,6 +99,7 @@ public class PostgresChangeRecordEmitter extends RelationalChangeRecordEmitter {
 
     @Override
     protected void emitTruncateRecord(Receiver receiver, TableSchema tableSchema) throws InterruptedException {
+        tableSchema.removeKeySchema();
         Struct envelope = tableSchema.getEnvelopeSchema().truncate(getOffset().getSourceInfo(), getClock().currentTimeAsInstant());
         receiver.changeRecord(getPartition(), tableSchema, Operation.TRUNCATE, null, envelope, getOffset(), null);
     }

@@ -1036,6 +1036,34 @@ public final class Strings {
     }
 
     /**
+     * Quotes the given string.
+     */
+    public static String toDoubleQuotedString(String str) {
+        return quote(str, '"');
+    }
+
+    private static String quote(String identifierPart, char quotingChar) {
+        if (identifierPart == null) {
+            return null;
+        }
+
+        String newIdentifierPart = identifierPart;
+        char newQuotingChar = quotingChar;
+        if (newIdentifierPart.isEmpty()) {
+            return String.valueOf(newQuotingChar) + newQuotingChar;
+        }
+
+        if (newIdentifierPart.charAt(0) != newQuotingChar
+                && newIdentifierPart.charAt(newIdentifierPart.length() - 1) != newQuotingChar) {
+            String repeatQuotingChar = String.valueOf(newQuotingChar) + newQuotingChar;
+            newIdentifierPart = newIdentifierPart.replace(newQuotingChar + "", repeatQuotingChar);
+            newIdentifierPart = newQuotingChar + newIdentifierPart + newQuotingChar;
+        }
+
+        return newIdentifierPart;
+    }
+
+    /**
      * Restores a byte array that is encoded as a hex string.
      */
     public static byte[] hexStringToByteArray(String hexString) {

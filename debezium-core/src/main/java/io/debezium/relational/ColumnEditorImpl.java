@@ -34,6 +34,7 @@ final class ColumnEditorImpl implements ColumnEditor {
     private List<String> enumValues;
     private List<String> modifyKeys = new ArrayList<String>();
     private String comment;
+    private String intervalType;
 
     protected ColumnEditorImpl() {
     }
@@ -221,6 +222,12 @@ final class ColumnEditorImpl implements ColumnEditor {
     }
 
     @Override
+    public ColumnEditor intervalType(String intervalType) {
+        this.intervalType = intervalType;
+        return this;
+    }
+
+    @Override
     public ColumnEditor unsetDefaultValueExpression() {
         this.hasDefaultValue = false;
         this.defaultValueExpression = null;
@@ -248,8 +255,9 @@ final class ColumnEditorImpl implements ColumnEditor {
 
     @Override
     public Column create() {
-        return new ColumnImpl(name, position, jdbcType, nativeType, typeName, typeExpression, charsetName, tableCharsetName,
-                length, scale, enumValues, optional, autoIncremented, generated, defaultValueExpression, hasDefaultValue, comment, modifyKeys);
+        return new ColumnImpl(name, position, jdbcType, nativeType, typeName, typeExpression, charsetName,
+                tableCharsetName, length, scale, enumValues, optional, autoIncremented, generated,
+                defaultValueExpression, hasDefaultValue, comment, modifyKeys, intervalType);
     }
 
     @Override
