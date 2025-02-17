@@ -48,6 +48,7 @@ public class PostgresMetadataReplayWorkThread extends ReplayWorkThread {
         {
             put("line", "varchar");
             put("pg_lsn", "varchar");
+            put("macaddr8", "varchar");
         }
     };
 
