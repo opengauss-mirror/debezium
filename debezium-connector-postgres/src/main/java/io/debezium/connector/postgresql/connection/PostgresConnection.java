@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Optional;
+import java.util.Locale;
 
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -35,6 +36,7 @@ import org.postgresql.util.PSQLState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.debezium.migration.BaseMigrationConfig;
 import io.debezium.DebeziumException;
 import io.debezium.annotation.VisibleForTesting;
 import io.debezium.config.Configuration;
@@ -81,6 +83,24 @@ public class PostgresConnection extends JdbcConnection {
 
     private final TypeRegistry typeRegistry;
     private final PostgresDefaultValueConverter defaultValueConverter;
+
+    private BaseMigrationConfig.MigrationType migrationType;
+
+    /**
+     * Creates a Postgres connection using the supplied configuration.
+     * If necessary this connection is able to resolve data type mappings.
+     * Such a connection requires a {@link PostgresValueConverter}, and will provide its own {@link TypeRegistry}.
+     * Usually only one such connection per connector is needed.
+     *
+     * @param config {@link Configuration} instance, may not be null.
+     * @param valueConverterBuilder supplies a configured {@link PostgresValueConverter} for a given {@link TypeRegistry}
+     * @param migrationType migration Type
+     */
+    public PostgresConnection(Configuration config, PostgresValueConverterBuilder valueConverterBuilder,
+                              String migrationType) {
+        this(config, valueConverterBuilder);
+        this.migrationType = BaseMigrationConfig.MigrationType.valueOf(migrationType.toUpperCase(Locale.ROOT));
+    }
 
     /**
      * Creates a Postgres connection using the supplied configuration.
@@ -683,7 +703,7 @@ public class PostgresConnection extends JdbcConnection {
                 case PgOid.MONEY:
                     // TODO author=Horia Chiorean date=14/11/2016 description=workaround for https://github.com/pgjdbc/pgjdbc/issues/100
                     final String sMoney = rs.getString(columnIndex);
-                    if (sMoney == null) {
+                    if (sMoney == null || BaseMigrationConfig.MigrationType.FULL.equals(migrationType)) {
                         return sMoney;
                     }
                     if (sMoney.startsWith("-")) {
