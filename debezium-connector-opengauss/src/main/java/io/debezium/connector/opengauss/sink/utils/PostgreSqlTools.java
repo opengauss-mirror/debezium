@@ -308,8 +308,13 @@ public class PostgreSqlTools extends SqlTools {
     public String getReadSql(TableMetaData tableMetaData, Struct struct, Envelope.Operation operation) {
         StringBuilder sb = new StringBuilder();
         sb.append("select * from ").append(getTableFullName(tableMetaData)).append(" where ");
-        List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
-        List<String> valueList = getValueList(columnMetaDataList, struct, Envelope.Operation.READ);
+        List<String> valueList;
+        if (Envelope.Operation.DELETE.equals(operation)) {
+            valueList = getWhereConditionList(tableMetaData, struct, Envelope.Operation.READ);
+        } else {
+            List<ColumnMetaData> columnMetaDataList = tableMetaData.getColumnList();
+            valueList = getValueList(columnMetaDataList, struct, Envelope.Operation.READ);
+        }
         sb.append(String.join(" and ", valueList));
         sb.append(";");
         return sb.toString();
