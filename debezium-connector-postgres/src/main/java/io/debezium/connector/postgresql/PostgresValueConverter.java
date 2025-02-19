@@ -89,16 +89,25 @@ import io.debezium.util.Strings;
  * @author Horia Chiorean (hchiorea@redhat.com)
  */
 public class PostgresValueConverter extends JdbcValueConverters {
-
     public static final Timestamp POSITIVE_INFINITY_TIMESTAMP = new Timestamp(PGStatement.DATE_POSITIVE_INFINITY);
     public static final Instant POSITIVE_INFINITY_INSTANT = Conversions.toInstantFromMicros(PGStatement.DATE_POSITIVE_INFINITY);
     public static final LocalDateTime POSITIVE_INFINITY_LOCAL_DATE_TIME = LocalDateTime.ofInstant(POSITIVE_INFINITY_INSTANT, ZoneOffset.UTC);
+
+    /**
+     * The maximum value of a {@link LocalDate}
+     */
+    public static final LocalDate POSITIVE_INFINITY_LOCAL_DATE = POSITIVE_INFINITY_LOCAL_DATE_TIME.toLocalDate();
     public static final OffsetDateTime POSITIVE_INFINITY_OFFSET_DATE_TIME = OffsetDateTime.ofInstant(Conversions.toInstantFromMillis(PGStatement.DATE_POSITIVE_INFINITY),
             ZoneOffset.UTC);
 
     public static final Timestamp NEGATIVE_INFINITY_TIMESTAMP = new Timestamp(PGStatement.DATE_NEGATIVE_INFINITY);
     public static final Instant NEGATIVE_INFINITY_INSTANT = Conversions.toInstantFromMicros(PGStatement.DATE_NEGATIVE_INFINITY);
     public static final LocalDateTime NEGATIVE_INFINITY_LOCAL_DATE_TIME = LocalDateTime.ofInstant(NEGATIVE_INFINITY_INSTANT, ZoneOffset.UTC);
+
+    /**
+     * The minimum value of a {@link LocalDate}
+     */
+    public static final LocalDate NEGATIVE_INFINITY_LOCAL_DATE = NEGATIVE_INFINITY_LOCAL_DATE_TIME.toLocalDate();
     public static final OffsetDateTime NEGATIVE_INFINITY_OFFSET_DATE_TIME = OffsetDateTime.ofInstant(Conversions.toInstantFromMillis(PGStatement.DATE_NEGATIVE_INFINITY),
             ZoneOffset.UTC);
 

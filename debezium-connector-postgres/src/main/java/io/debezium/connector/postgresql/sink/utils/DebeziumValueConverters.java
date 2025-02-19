@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
+import io.debezium.connector.postgresql.PostgresValueConverter;
 import io.debezium.data.Bits;
 import io.debezium.time.Date;
 import io.debezium.time.MicroTime;
@@ -97,7 +98,7 @@ public final class DebeziumValueConverters {
             put("geometry", (columnName, value) -> convertPoint(columnName, value));
             put("time without time zone", (columnName, value) -> convertTime(columnName, value));
             put("real", ((columnName, value) -> convertNumberType(columnName, value)));
-            put("bytea", ((columnName, value) -> convertByte(columnName, value)));
+            put("bytea", ((columnName, value) -> convertBytea(columnName, value)));
             put("timestamp without time zone", ((columnName, value) -> convertDatetimeAndTimestamp(columnName, value)));
             put("lseg", ((columnName, value) -> convertByte(columnName, value)));
             put("box", ((columnName, value) -> convertByte(columnName, value)));
@@ -109,7 +110,7 @@ public final class DebeziumValueConverters {
             put("tsvector", ((columnName, value) -> convertByte(columnName, value)));
             put("tsquery", ((columnName, value) -> convertByte(columnName, value)));
             put("ARRAY", ((columnName, value) -> convertArray(columnName, value)));
-            put("USER-DEFINED", ((columnName, value) -> convertByte(columnName, value)));
+            put("USER-DEFINED", ((columnName, value) -> convertUserDefined(columnName, value)));
         }
     };
 
@@ -163,7 +164,12 @@ public final class DebeziumValueConverters {
     private static String convertNumberType(String columnName, Struct valueStruct) {
         Object object = valueStruct.get(columnName);
         if (object != null) {
-            return object.toString();
+            String valueStr = object.toString();
+            if (!isNumeric(valueStr)) {
+                // case of NaN, Infinity
+                return addingSingleQuotation(valueStr);
+            }
+            return valueStr;
         }
         return null;
     }
@@ -195,6 +201,12 @@ public final class DebeziumValueConverters {
             return null;
         }
         Instant instant = convertDbzDateTime(object, schemaName);
+        if (PostgresValueConverter.POSITIVE_INFINITY_INSTANT.equals(instant)) {
+            return addingSingleQuotation(PostgresValueConverter.POSITIVE_INFINITY);
+        }
+        if (PostgresValueConverter.NEGATIVE_INFINITY_INSTANT.equals(instant)) {
+            return addingSingleQuotation(PostgresValueConverter.NEGATIVE_INFINITY);
+        }
         DateTimeFormatter dateTimeFormatter;
         if (ZonedTimestamp.SCHEMA_NAME.equals(schemaName)) {
             dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS")
@@ -213,6 +225,13 @@ public final class DebeziumValueConverters {
             return null;
         }
         Instant instant = convertDbzDateTime(object, schemaName);
+        LocalDate localDate = instant.atZone(ZoneOffset.UTC).toLocalDate();
+        if (PostgresValueConverter.POSITIVE_INFINITY_LOCAL_DATE.equals(localDate)) {
+            return addingSingleQuotation(PostgresValueConverter.POSITIVE_INFINITY);
+        }
+        if (PostgresValueConverter.NEGATIVE_INFINITY_LOCAL_DATE.equals(localDate)) {
+            return addingSingleQuotation(PostgresValueConverter.NEGATIVE_INFINITY);
+        }
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
                 .withZone(ZoneId.of("Asia/Shanghai"));
         return addingSingleQuotation(dateTimeFormatter.format(instant));
@@ -236,7 +255,7 @@ public final class DebeziumValueConverters {
             }
         }
         Instant instant = convertDbzDateTime(object, schemaName);
-        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneOffset.UTC);
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss.SSSSSS").withZone(ZoneOffset.UTC);
         return addingSingleQuotation(dateTimeFormatter.format(instant));
     }
 
@@ -335,6 +354,31 @@ public final class DebeziumValueConverters {
         if (bytes != null) {
             String byteStr = new String(bytes, StandardCharsets.UTF_8);
             return addingSingleQuotation(byteStr);
+        }
+        return null;
+    }
+
+    private static String convertUserDefined(String columnName, Struct valueStruct) {
+        Object object = valueStruct.get(columnName);
+        if (object == null) {
+            return null;
+        }
+        if (object instanceof byte[]) {
+            byte[] bytes = (byte[]) object;
+            String byteStr = new String(bytes, StandardCharsets.UTF_8);
+            return addingSingleQuotation(byteStr);
+        }
+        if (object instanceof String) {
+            return addingSingleQuotation(object);
+        }
+        return null;
+    }
+
+    private static String convertBytea(String columnName, Struct valueStruct) {
+        byte[] bytes = valueStruct.getBytes(columnName);
+        if (bytes != null) {
+            String hexStr = convertHexString(bytes);
+            return SINGLE_QUOTE + "\\x" + hexStr + SINGLE_QUOTE;
         }
         return null;
     }
@@ -485,6 +529,10 @@ public final class DebeziumValueConverters {
             return null;
         }
         String valueStr = object.toString();
+        if (!isNumeric(valueStr)) {
+            // case of NaN, Infinity
+            return addingSingleQuotation(valueStr);
+        }
         String decimalStr = valueStr.substring(valueStr.indexOf(".") + 1);
         if (scale == -1) {
             return object.toString();
@@ -495,6 +543,19 @@ public final class DebeziumValueConverters {
             return result.toString();
         }
         return object.toString();
+    }
+
+    private static boolean isNumeric(final String str) {
+        if (str.isEmpty()) {
+            return false;
+        }
+        final int len = str.length();
+        for (int i = 0; i < len; i++) {
+            if (!Character.isDigit(str.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static String addingSingleQuotation(Object originValue) {

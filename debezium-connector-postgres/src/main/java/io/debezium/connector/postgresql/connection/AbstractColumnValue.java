@@ -36,11 +36,16 @@ import io.debezium.connector.postgresql.connection.wal2json.DateTimeFormat;
  * @author Chris Cranford
  */
 public abstract class AbstractColumnValue<T> implements ReplicationMessage.ColumnValue<T> {
-
     private static final Logger LOGGER = LoggerFactory.getLogger(AbstractColumnValue.class);
 
     @Override
     public LocalDate asLocalDate() {
+        if ("infinity".equalsIgnoreCase(asString())) {
+            return PostgresValueConverter.POSITIVE_INFINITY_LOCAL_DATE;
+        }
+        if ("-infinity".equalsIgnoreCase(asString())) {
+            return PostgresValueConverter.NEGATIVE_INFINITY_LOCAL_DATE;
+        }
         return DateTimeFormat.get().date(asString());
     }
 
