@@ -722,6 +722,10 @@ public class PostgresConnection extends JdbcConnection {
 
                     Optional<SpecialValueDecimal> value = PostgresValueConverter.toSpecialValue(s);
                     return value.isPresent() ? value.get() : new SpecialValueDecimal(rs.getBigDecimal(columnIndex));
+                case PgOid.XML:
+                case PgOid.DATE:
+                case PgOid.TIMESTAMP:
+                case PgOid.TIMESTAMPTZ:
                 case PgOid.TIME:
                     // To handle time 24:00:00 supported by TIME columns, read the column as a string.
                 case PgOid.TIMETZ:
