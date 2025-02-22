@@ -84,7 +84,9 @@ public class NonStreamingWal2JsonMessageDecoder extends AbstractMessageDecoder {
     @Override
     public ChainedLogicalStreamBuilder optionsWithMetadata(ChainedLogicalStreamBuilder builder, Function<Integer, Boolean> hasMinimumServerVersion) {
         return optionsWithoutMetadata(builder, hasMinimumServerVersion)
-                .withSlotOption("include-not-null", "true");
+                .withSlotOption("include-not-null", "true")
+                // Support Infinity and NaN for the numeric type.
+                .withSlotOption("numeric-data-types-as-string", "true");
     }
 
     @Override

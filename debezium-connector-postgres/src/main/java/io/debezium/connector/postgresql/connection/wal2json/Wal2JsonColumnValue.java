@@ -16,6 +16,9 @@ import io.debezium.util.Strings;
  * @author Chris Cranford
  */
 class Wal2JsonColumnValue extends AbstractColumnValue<Value> {
+    private static final String NAN = "NaN";
+    private static final String POSITIVE_INFINITY = "infinity";
+    private static final String NEGATIVE_INFINITY = "-infinity";
 
     private Value value;
 
@@ -98,7 +101,17 @@ class Wal2JsonColumnValue extends AbstractColumnValue<Value> {
         else if (value.isBigInteger()) {
             return new SpecialValueDecimal(new BigDecimal(value.asBigInteger()));
         }
-        return SpecialValueDecimal.valueOf(value.asString());
+        String valueStr = value.asString();
+        if (valueStr.equalsIgnoreCase(NAN)) {
+            return SpecialValueDecimal.NOT_A_NUMBER;
+        }
+        if (valueStr.equalsIgnoreCase(POSITIVE_INFINITY)) {
+            return SpecialValueDecimal.POSITIVE_INF;
+        }
+        if (valueStr.equalsIgnoreCase(NEGATIVE_INFINITY)) {
+            return SpecialValueDecimal.NEGATIVE_INF;
+        }
+        return SpecialValueDecimal.valueOf(valueStr);
     }
 
     @Override
