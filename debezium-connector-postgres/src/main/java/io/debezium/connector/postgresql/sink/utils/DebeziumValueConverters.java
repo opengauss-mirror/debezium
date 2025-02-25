@@ -17,6 +17,7 @@ package io.debezium.connector.postgresql.sink.utils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -111,6 +112,7 @@ public final class DebeziumValueConverters {
             put("tsquery", ((columnName, value) -> convertByte(columnName, value)));
             put("ARRAY", ((columnName, value) -> convertArray(columnName, value)));
             put("USER-DEFINED", ((columnName, value) -> convertUserDefined(columnName, value)));
+            put("oid", ((columnName, value) -> convertOid(columnName, value)));
         }
     };
 
@@ -150,7 +152,13 @@ public final class DebeziumValueConverters {
 
     private static String convertChar(String columnName, Struct value) {
         Object object = value.get(columnName);
-        return object == null ? null : addingSingleQuotation(object);
+        if (object == null) {
+            return null;
+        }
+        if (object instanceof ByteBuffer) {
+            return convertByte(columnName, value);
+        }
+        return addingSingleQuotation(object);
     }
 
     private static String convertArray(String columnName, Struct value) {
@@ -356,6 +364,22 @@ public final class DebeziumValueConverters {
             return addingSingleQuotation(byteStr);
         }
         return null;
+    }
+
+    private static String convertOid(String columnName, Struct valueStruct) {
+        Object object = valueStruct.get(columnName);
+        if (object == null) {
+            return null;
+        }
+        if (object instanceof Number) {
+            return String.valueOf(object);
+        }
+        if (object instanceof byte[]) {
+            byte[] bytes = (byte[]) object;
+            String byteStr = new String(bytes, StandardCharsets.UTF_8);
+            return addingSingleQuotation(byteStr);
+        }
+        return object.toString();
     }
 
     private static String convertUserDefined(String columnName, Struct valueStruct) {
