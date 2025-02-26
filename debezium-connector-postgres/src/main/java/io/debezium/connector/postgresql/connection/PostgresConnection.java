@@ -23,6 +23,7 @@ import java.util.Collections;
 import java.util.Optional;
 import java.util.Locale;
 
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -85,6 +86,7 @@ public class PostgresConnection extends JdbcConnection {
     private final PostgresDefaultValueConverter defaultValueConverter;
 
     private BaseMigrationConfig.MigrationType migrationType;
+    private Map<TableId, Map<String, Integer>> tableColumnDimension = new HashMap<>();
 
     /**
      * Creates a Postgres connection using the supplied configuration.
@@ -262,6 +264,43 @@ public class PostgresConnection extends JdbcConnection {
                     null);
         }
         LOGGER.warn("finish query get table column other meta data");
+    }
+
+    /**
+     * Reads the column dimension of a table
+     *
+     * @param schemaNamePattern schemaNamePattern
+     * @param tableName tableName
+     * @throws SQLException exception
+     */
+    public void readTableColumnDimension(String schemaNamePattern, String tableName) throws SQLException {
+        String sql = "SELECT "
+                + "n.nspname, c.relname, a.attname, a.attndims "
+                + "FROM "
+                + "pg_catalog.pg_attribute a "
+                + "JOIN pg_catalog.pg_class c ON a.attrelid = c.oid "
+                + "JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid "
+                + "JOIN pg_catalog.pg_type t ON a.atttypid = t.oid "
+                + "WHERE ";
+        if (schemaNamePattern != null) {
+            sql = sql + "n.nspname like '" + schemaNamePattern + "' AND ";
+        }
+        if (tableName != null) {
+            sql = sql + "c.relname like '" + tableName + "' AND ";
+        }
+        sql = sql + "a.attnum > 0 "
+                + "AND NOT a.attisdropped "
+                + "AND n.nspname NOT IN ('pg_catalog', 'information_schema');";
+        prepareQuery(sql, stmt -> {}, rs -> {
+            while (rs.next()) {
+                String schema = rs.getString("nspname");
+                String table = rs.getString("relname");
+                String columnName = rs.getString("attname");
+                int dimension = rs.getInt("attndims");
+                TableId tableId = new TableId(null, schema, table);
+                tableColumnDimension.computeIfAbsent(tableId, id -> new HashMap<>()).put(columnName, dimension);
+            }
+        });
     }
 
     private String getIntervalType(TableId tableId, String colName) throws SQLException {
@@ -604,6 +643,36 @@ public class PostgresConnection extends JdbcConnection {
     }
 
     @Override
+    protected Map<TableId, List<Column>> getColumnsDetails(String databaseCatalog, String schemaNamePattern,
+                                                           String tableName, Tables.TableFilter tableFilter,
+                                                           Tables.ColumnNameFilter columnFilter,
+                                                           DatabaseMetaData metadata, final Set<TableId> viewIds)
+            throws SQLException {
+        Map<TableId, List<Column>> columnsByTable = new HashMap<>();
+        readTableColumnDimension(schemaNamePattern, tableName);
+        try (ResultSet columnMetadata = metadata.getColumns(databaseCatalog, schemaNamePattern, tableName, null)) {
+            while (columnMetadata.next()) {
+                String catalogName = resolveCatalogName(columnMetadata.getString(1));
+                String schemaName = columnMetadata.getString(2);
+                String metaTableName = columnMetadata.getString(3);
+                TableId tableId = new TableId(catalogName, schemaName, metaTableName);
+
+                // exclude views and non-captured tables
+                if (viewIds.contains(tableId) || (tableFilter != null && !tableFilter.isIncluded(tableId))) {
+                    continue;
+                }
+
+                // add all included columns
+                readTableColumn(columnMetadata, tableId, columnFilter).ifPresent(column -> {
+                    columnsByTable.computeIfAbsent(tableId, t -> new ArrayList<>())
+                            .add(column.create());
+                });
+            }
+        }
+        return columnsByTable;
+    }
+
+    @Override
     protected Optional<ColumnEditor> readTableColumn(ResultSet columnMetadata, TableId tableId, Tables.ColumnNameFilter columnFilter) throws SQLException {
         return doReadTableColumn(columnMetadata, tableId, columnFilter);
     }
@@ -615,7 +684,9 @@ public class PostgresConnection extends JdbcConnection {
 
     private Optional<ColumnEditor> doReadTableColumn(ResultSet columnMetadata, TableId tableId, Tables.ColumnNameFilter columnFilter)
             throws SQLException {
+        Map<String, Integer> columnDimensions = tableColumnDimension.get(tableId);
         final String columnName = columnMetadata.getString(4);
+        Integer dimension = columnDimensions.get(columnName);
         if (columnFilter == null || columnFilter.matches(tableId.catalog(), tableId.schema(), tableId.table(), columnName)) {
             final ColumnEditor column = Column.editor().name(columnName);
             column.type(columnMetadata.getString(6));
@@ -630,7 +701,7 @@ public class PostgresConnection extends JdbcConnection {
             column.optional(isNullable(columnMetadata.getInt(11)));
             column.position(columnMetadata.getInt(17));
             column.autoIncremented("YES".equalsIgnoreCase(columnMetadata.getString(23)));
-
+            column.dimension(dimension);
             String autogenerated = null;
             try {
                 autogenerated = columnMetadata.getString(24);

@@ -163,6 +163,13 @@ public interface Column extends Comparable<Column> {
     String intervalType();
 
     /**
+     * Get dimension of the column.
+     *
+     * @return String the dimension
+     */
+    Integer dimension();
+
+    /**
     * get the modify of the column editor keys
     * @return this editor so callers can chain methods together
     */

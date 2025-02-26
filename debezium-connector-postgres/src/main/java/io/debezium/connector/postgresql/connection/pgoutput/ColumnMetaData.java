@@ -26,6 +26,7 @@ public class ColumnMetaData {
     private final int length;
     private final int scale;
     private final String typeName;
+    private final int dimension;
 
     /**
      * Create a metadata structure representing a column.
@@ -37,15 +38,17 @@ public class ColumnMetaData {
      * @param hasDefaultValue {@code true} if the column has a default value specified, {@code false} otherwise
      * @param defaultValueExpression the parsed default value literal for the column
      * @param typeModifier the attribute type modifier
+     * @param dimension dimension of the column
      */
     ColumnMetaData(String columnName, PostgresType postgresType, boolean key, boolean optional, boolean hasDefaultValue, String defaultValueExpression,
-                   int typeModifier) {
+                   int typeModifier, int dimension) {
         this.columnName = columnName;
         this.postgresType = postgresType;
         this.key = key;
         this.optional = optional;
         this.hasDefaultValue = hasDefaultValue;
         this.defaultValueExpression = defaultValueExpression;
+        this.dimension = dimension;
 
         // todo: investigate whether this can be removed and PostgresType updated to always delegate
         // Currently PostgresType only delegates calls to length and scale with an attribute modifier
@@ -103,5 +106,14 @@ public class ColumnMetaData {
 
     public String getTypeName() {
         return typeName;
+    }
+
+    /**
+     * Returns the dimension of the column.
+     *
+     * @return the dimension of the column
+     */
+    public int getDimension() {
+        return dimension;
     }
 }

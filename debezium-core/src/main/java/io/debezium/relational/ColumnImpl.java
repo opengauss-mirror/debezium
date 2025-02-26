@@ -34,13 +34,14 @@ final class ColumnImpl implements Column, Comparable<Column> {
     private List<String> modifyKeys;
     private final String comment;
     private final String intervalType;
+    private final Integer dimension;
 
     protected ColumnImpl(String columnName, int position, int jdbcType, int componentType, String typeName, String typeExpression,
                          String charsetName, String defaultCharsetName, int columnLength, Integer columnScale,
                          boolean optional, boolean autoIncremented, boolean generated) {
         this(columnName, position, jdbcType, componentType, typeName, typeExpression, charsetName,
                 defaultCharsetName, columnLength, columnScale, null, optional, autoIncremented, generated, null, false,
-                null, null, null);
+                null, null, null, null);
     }
 
     protected ColumnImpl(String columnName, int position, int jdbcType, int nativeType, String typeName, String typeExpression,
@@ -48,14 +49,14 @@ final class ColumnImpl implements Column, Comparable<Column> {
                          boolean optional, boolean autoIncremented, boolean generated, String defaultValueExpression, boolean hasDefaultValue) {
         this(columnName, position, jdbcType, nativeType, typeName, typeExpression, charsetName,
                 defaultCharsetName, columnLength, columnScale, null, optional, autoIncremented, generated,
-                defaultValueExpression, hasDefaultValue, null, null, null);
+                defaultValueExpression, hasDefaultValue, null, null, null, null);
     }
 
     protected ColumnImpl(String columnName, int position, int jdbcType, int nativeType, String typeName,
                          String typeExpression, String charsetName, String defaultCharsetName, int columnLength,
                          Integer columnScale, List<String> enumValues, boolean optional, boolean autoIncremented,
                          boolean generated, String defaultValueExpression, boolean hasDefaultValue, String comment,
-                         List<String> modifyKeys, String intervalType) {
+                         List<String> modifyKeys, String intervalType, Integer dimension) {
         this.name = columnName;
         this.position = position;
         this.jdbcType = jdbcType;
@@ -79,6 +80,7 @@ final class ColumnImpl implements Column, Comparable<Column> {
         this.modifyKeys = modifyKeys == null ? new ArrayList<>() : modifyKeys;
         this.comment = comment;
         this.intervalType = intervalType;
+        this.dimension = dimension;
         assert this.length >= -1;
     }
 
@@ -173,6 +175,11 @@ final class ColumnImpl implements Column, Comparable<Column> {
     }
 
     @Override
+    public Integer dimension() {
+        return dimension;
+    }
+
+    @Override
     public int hashCode() {
         return name.hashCode();
     }
@@ -261,7 +268,8 @@ final class ColumnImpl implements Column, Comparable<Column> {
                 .enumValues(enumValues)
                 .modifyKeys(modifyKeys)
                 .comment(comment)
-                .intervalType(intervalType);
+                .intervalType(intervalType)
+                .dimension(dimension);
         if (hasDefaultValue()) {
             editor.defaultValueExpression(defaultValueExpression().orElse(null));
         }

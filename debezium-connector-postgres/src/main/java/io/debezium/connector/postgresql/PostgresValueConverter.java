@@ -244,10 +244,19 @@ public class PostgresValueConverter extends JdbcValueConverters {
             case PgOid.BYTEA:
                 return binaryMode.getSchema();
             case PgOid.INT2_ARRAY:
+                if (column.dimension() != null && column.dimension() > 1) {
+                    return SchemaBuilder.string();
+                }
                 return SchemaBuilder.array(SchemaBuilder.OPTIONAL_INT16_SCHEMA);
             case PgOid.INT4_ARRAY:
+                if (column.dimension() != null && column.dimension() > 1) {
+                    return SchemaBuilder.string();
+                }
                 return SchemaBuilder.array(SchemaBuilder.OPTIONAL_INT32_SCHEMA);
             case PgOid.INT8_ARRAY:
+                if (column.dimension() != null && column.dimension() > 1) {
+                    return SchemaBuilder.string();
+                }
                 return SchemaBuilder.array(SchemaBuilder.OPTIONAL_INT64_SCHEMA);
             case PgOid.CHAR_ARRAY:
             case PgOid.VARCHAR_ARRAY:
@@ -263,12 +272,24 @@ public class PostgresValueConverter extends JdbcValueConverters {
             case PgOid.INT4RANGE_ARRAY:
             case PgOid.NUM_RANGE_ARRAY:
             case PgOid.INT8RANGE_ARRAY:
+                if (column.dimension() != null && column.dimension() > 1) {
+                    return SchemaBuilder.string();
+                }
                 return SchemaBuilder.array(SchemaBuilder.OPTIONAL_STRING_SCHEMA);
             case PgOid.NUMERIC_ARRAY:
+                if (column.dimension() != null && column.dimension() > 1) {
+                    return SchemaBuilder.string();
+                }
                 return SchemaBuilder.array(numericSchema(column).optional().build());
             case PgOid.FLOAT4_ARRAY:
+                if (column.dimension() != null && column.dimension() > 1) {
+                    return SchemaBuilder.string();
+                }
                 return SchemaBuilder.array(Schema.OPTIONAL_FLOAT32_SCHEMA);
             case PgOid.FLOAT8_ARRAY:
+                if (column.dimension() != null && column.dimension() > 1) {
+                    return SchemaBuilder.string();
+                }
                 return SchemaBuilder.array(Schema.OPTIONAL_FLOAT64_SCHEMA);
             case PgOid.BOOL_ARRAY:
                 return SchemaBuilder.array(SchemaBuilder.OPTIONAL_BOOLEAN_SCHEMA);
@@ -281,6 +302,9 @@ public class PostgresValueConverter extends JdbcValueConverters {
                 return SchemaBuilder.array(Uuid.builder().optional().build());
             case PgOid.JSONB_ARRAY:
             case PgOid.JSON_ARRAY:
+                if (column.dimension() != null && column.dimension() > 1) {
+                    return SchemaBuilder.string();
+                }
                 return SchemaBuilder.array(Json.builder().optional().build());
             case PgOid.TIME_ARRAY:
                 return SchemaBuilder.array(MicroTime.builder().optional().build());
@@ -966,12 +990,17 @@ public class PostgresValueConverter extends JdbcValueConverters {
             }
             else if (data instanceof PgArray) {
                 try {
-                    final Object[] values = (Object[]) ((PgArray) data).getArray();
-                    final List<Object> converted = new ArrayList<>(values.length);
-                    for (Object value : values) {
-                        converted.add(elementConverter.convert(resolveArrayValue(value, elementType)));
+                    // If the dimension of the array is greater than 1, convert it to a string.
+                    if (column.dimension() != null && column.dimension() > 1) {
+                        r.deliver(((PgArray) data).toString());
+                    } else {
+                        final Object[] values = (Object[]) ((PgArray) data).getArray();
+                        final List<Object> converted = new ArrayList<>(values.length);
+                        for (Object value : values) {
+                            converted.add(elementConverter.convert(resolveArrayValue(value, elementType)));
+                        }
+                        r.deliver(converted);
                     }
-                    r.deliver(converted);
                 }
                 catch (SQLException e) {
                     throw new ConnectException("Failed to read value of array " + column.name());

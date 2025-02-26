@@ -36,6 +36,7 @@ import java.util.concurrent.TimeUnit;
 
 import io.debezium.connector.postgresql.PostgresValueConverter;
 import io.debezium.data.Bits;
+import io.debezium.data.Json;
 import io.debezium.time.Date;
 import io.debezium.time.MicroTime;
 import io.debezium.time.MicroTimestamp;
@@ -71,10 +72,13 @@ public final class DebeziumValueConverters {
     private static final long NANOSECOND_OF_DAY = 86400000000000L;
     private static final String INVALID_TIME_FORMAT_STRING = "HH:mm:ss.SSSSSSSSS";
     private static final String SINGLE_QUOTE = "'";
-    private static final String BACKSLASH = "\\\\";
+    private static final String DOUBLE_QUOTE = "\"";
+    private static final String DOUBLE_BACKSLASH = "\\\\";
+    private static final String SINGLE_BACKSLASH = "\\";
     private static final byte DOT = 46;
     private static final byte ZERO = 48;
     private static final byte NINE = 57;
+    private static final String JSONB_SUFFIX = "::jsonb";
 
     private DebeziumValueConverters() {
     }
@@ -162,11 +166,35 @@ public final class DebeziumValueConverters {
     }
 
     private static String convertArray(String columnName, Struct value) {
-        String arrayStr = convertChar(columnName, value);
-        if (arrayStr == null) {
+        Object object = value.get(columnName);
+        if (object == null) {
             return null;
         }
-        return arrayStr.replace("[", "{").replace("]", "}");
+        if (object instanceof String) {
+            return addingSingleQuotation(object);
+        }
+        Field field = value.schema().field(columnName);
+        String schemaName = field.schema().valueSchema().name();
+        List<Object> jsonArray = value.getArray(columnName);
+        if (Json.LOGICAL_NAME.equals(schemaName)) {
+            StringBuilder sb = new StringBuilder("ARRAY[");
+            for (int i = 0; i < jsonArray.size(); i++) {
+                sb.append(addingSingleQuotation(jsonArray.get(i))).append(JSONB_SUFFIX);
+                if (i != jsonArray.size() - 1) {
+                    sb.append(",");
+                }
+            }
+            return sb.append("]").toString();
+        }
+        StringBuilder sb = new StringBuilder("{");
+        for (int i = 0; i < jsonArray.size(); i++) {
+            sb.append(escapeSpecialChar(jsonArray.get(i).toString()));
+            if (i != jsonArray.size() - 1) {
+                sb.append(",");
+            }
+        }
+        sb.append("}");
+        return SINGLE_QUOTE + sb + SINGLE_QUOTE;
     }
 
     private static String convertNumberType(String columnName, Struct valueStruct) {
@@ -582,9 +610,16 @@ public final class DebeziumValueConverters {
         return true;
     }
 
+    private static String escapeSpecialChar(String data) {
+        String escapeStr = data.replace(SINGLE_QUOTE, SINGLE_QUOTE + SINGLE_QUOTE)
+                .replace(SINGLE_BACKSLASH, DOUBLE_BACKSLASH)
+                .replace(DOUBLE_QUOTE, SINGLE_BACKSLASH + DOUBLE_QUOTE);
+        return DOUBLE_QUOTE + escapeStr + DOUBLE_QUOTE;
+    }
+
     private static String addingSingleQuotation(Object originValue) {
         return SINGLE_QUOTE + originValue.toString()
                 .replaceAll(SINGLE_QUOTE, SINGLE_QUOTE + SINGLE_QUOTE)
-                .replaceAll(BACKSLASH, BACKSLASH + BACKSLASH) + SINGLE_QUOTE;
+                .replaceAll(DOUBLE_BACKSLASH, DOUBLE_BACKSLASH + DOUBLE_BACKSLASH) + SINGLE_QUOTE;
     }
 }

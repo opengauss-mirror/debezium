@@ -267,6 +267,14 @@ public interface ColumnEditor {
     ColumnEditor intervalType(String intervalType);
 
     /**
+     * Set the dimension of the column;
+     *
+     * @param dimension the dimension of the column
+     * @return this editor so callers can chain methods together
+     */
+    ColumnEditor dimension(Integer dimension);
+
+    /**
      * Set the list of enumeration values.
      *
      * @param enumValues the enumeration values

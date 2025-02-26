@@ -35,6 +35,7 @@ final class ColumnEditorImpl implements ColumnEditor {
     private List<String> modifyKeys = new ArrayList<String>();
     private String comment;
     private String intervalType;
+    private Integer dimension;
 
     protected ColumnEditorImpl() {
     }
@@ -228,6 +229,12 @@ final class ColumnEditorImpl implements ColumnEditor {
     }
 
     @Override
+    public ColumnEditor dimension(Integer dimension) {
+        this.dimension = dimension;
+        return this;
+    }
+
+    @Override
     public ColumnEditor unsetDefaultValueExpression() {
         this.hasDefaultValue = false;
         this.defaultValueExpression = null;
@@ -257,7 +264,7 @@ final class ColumnEditorImpl implements ColumnEditor {
     public Column create() {
         return new ColumnImpl(name, position, jdbcType, nativeType, typeName, typeExpression, charsetName,
                 tableCharsetName, length, scale, enumValues, optional, autoIncremented, generated,
-                defaultValueExpression, hasDefaultValue, comment, modifyKeys, intervalType);
+                defaultValueExpression, hasDefaultValue, comment, modifyKeys, intervalType, dimension);
     }
 
     @Override

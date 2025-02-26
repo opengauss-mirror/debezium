@@ -300,6 +300,9 @@ public class PgOutputMessageDecoder extends AbstractMessageDecoder {
             primaryKeyColumns = connection.readTableUniqueIndices(databaseMetadata, tableId);
         }
 
+        Map<String, Integer> columnDimension = readColumns.stream()
+                .collect(toMap(column -> column.name(), column -> column.dimension(),
+                (duplicateKey, newValue) -> newValue));
         List<ColumnMetaData> columns = new ArrayList<>();
         Set<String> columnNames = new HashSet<>();
         for (short i = 0; i < columnCount; ++i) {
@@ -319,8 +322,9 @@ public class PgOutputMessageDecoder extends AbstractMessageDecoder {
 
             final boolean hasDefault = columnDefaults.containsKey(columnName);
             final String defaultValueExpression = columnDefaults.getOrDefault(columnName, Optional.empty()).orElse(null);
-
-            columns.add(new ColumnMetaData(columnName, postgresType, key, optional, hasDefault, defaultValueExpression, attypmod));
+            Integer dimension = columnDimension.getOrDefault(columnName, 0);
+            columns.add(new ColumnMetaData(columnName, postgresType, key, optional, hasDefault,
+                    defaultValueExpression, attypmod, dimension));
             columnNames.add(columnName);
         }
 
@@ -349,6 +353,7 @@ public class PgOutputMessageDecoder extends AbstractMessageDecoder {
             throws SQLException {
         List<io.debezium.relational.Column> readColumns = new ArrayList<>();
         try {
+            connection.readTableColumnDimension(tableId.schema(), tableId.table());
             try (ResultSet columnMetadata = databaseMetadata.getColumns(null, tableId.schema(), tableId.table(), null)) {
                 while (columnMetadata.next()) {
                     connection.readColumnForDecoder(columnMetadata, tableId, decoderContext.getConfig().getColumnFilter())
@@ -645,6 +650,7 @@ public class PgOutputMessageDecoder extends AbstractMessageDecoder {
                     .optional(columnMetadata.isOptional())
                     .type(columnMetadata.getPostgresType().getName(), columnMetadata.getTypeName())
                     .length(columnMetadata.getLength())
+                    .dimension(columnMetadata.getDimension())
                     .scale(columnMetadata.getScale());
 
             if (columnMetadata.hasDefaultValue()) {
