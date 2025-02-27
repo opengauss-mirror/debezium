@@ -19,6 +19,23 @@ Debezium是一个开源项目，为捕获数据更改(change data capture,CDC)�
 
 [debezium介绍](https://gitee.com/opengauss/debezium/blob/master/README_ZH.md)
 
+## 迁移插件下载
+当前Debezium mysql connector和Debezium opengauss connector作为openGauss数据迁移平台的组件，可在[官网下载页面](https://opengauss.org/zh/download/)的openGauss Tools部分下载各版本的发布包。
+- replicate-mysql2openGauss
+基于Debezium mysql connector构建，支持对MySQL增量数据的同步
+
+- replicate-openGauss2mysql
+基于Debezium opengauss connector构建，支持对openGauss全量数据和增量数据的同步
+
+获取软件包后，需对其完整性进行校验，操作步骤如下：
+
+1. 计算下载包的sha256值（以replicate-mysql2openGauss_6.0.0为例，其他版本操作相同）
+~~~
+sha256sum replicate-mysql2openGauss-6.0.0.tar.gz
+~~~
+
+2. 在[官网下载页面](https://opengauss.org/zh/download/)的openGauss Tools部分中复制对应软件包的sha256值，与步骤1计算出的sha256值做对比，如果一致则可以确认下载下来的包是完整的，否则需要重新下载。
+
 ## 构建Debezium
 
 ### 软件依赖
