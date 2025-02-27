@@ -987,12 +987,12 @@ public class PostgresConnectorConfig extends RelationalDatabaseConnectorConfig {
     public static final Field INTERVAL_HANDLING_MODE = Field.create("interval.handling.mode")
             .withDisplayName("Interval Handling")
             .withGroup(Field.createGroupEntry(Field.Group.CONNECTOR, 21))
-            .withEnum(IntervalHandlingMode.class, IntervalHandlingMode.NUMERIC)
+            .withEnum(IntervalHandlingMode.class, IntervalHandlingMode.STRING)
             .withWidth(Width.MEDIUM)
             .withImportance(Importance.LOW)
             .withDescription("Specify how INTERVAL columns should be represented in change events, including:"
-                    + "'string' represents values as an exact ISO formatted string"
-                    + "'numeric' (default) represents values using the inexact conversion into microseconds");
+                    + "'string' (default) represents values as an exact ISO formatted string"
+                    + "'numeric' represents values using the inexact conversion into microseconds");
 
     public static final Field STATUS_UPDATE_INTERVAL_MS = Field.create("status.update.interval.ms")
             .withDisplayName("Status update interval (ms)")
