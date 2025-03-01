@@ -150,12 +150,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
                                 case DISABLED:
                                     throw new ConnectException("Publication autocreation is disabled, please create one and restart the connector.");
                                 case ALL_TABLES:
-                                    createPublicationStmt = String.format("CREATE PUBLICATION %s FOR ALL TABLES "
-                                            + "WITH(publish='insert,update,delete,truncate',ddl='all');",
-                                            publicationName);
-                                    LOGGER.info("Creating Publication with statement '{}'", createPublicationStmt);
-                                    // Publication doesn't exist, create it.
-                                    stmt.execute(createPublicationStmt);
+                                    appointAllTableCreatePublication(stmt);
                                     break;
                                 case FILTERED:
                                     appointTableCreatePublication(stmt);
@@ -177,6 +172,22 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
         }
     }
 
+    private void appointAllTableCreatePublication(Statement stmt) throws SQLException {
+        String createPublicationStmt = String.format("CREATE PUBLICATION %s FOR ALL TABLES "
+                + "WITH(publish='insert,update,delete,truncate',ddl='all');",
+                publicationName);
+        LOGGER.info("Creating Publication with statement '{}'", createPublicationStmt);
+        try {
+            // Publication doesn't exist, create it.
+            stmt.execute(createPublicationStmt);
+        } catch (SQLException e) {
+            createPublicationStmt = String.format("CREATE PUBLICATION %s FOR ALL TABLES;", publicationName);
+            LOGGER.info("Create Publication with publish parameter failed, "
+                    + "Attempt to create Publication with statement '{}'", createPublicationStmt);
+            stmt.execute(createPublicationStmt);
+        }
+    }
+
     private void appointTableCreatePublication(Statement stmt) {
         String tableFilterString = null;
         String createPublicationStmt;
@@ -195,8 +206,8 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
             if (tableFilterString.isEmpty()) {
                 throw new DebeziumException(String.format("No table filters found for filtered publication %s", publicationName));
             }
-            createPublicationStmt = String.format("CREATE PUBLICATION %s FOR TABLE %s WITH"
-                    + "(publish='insert,update,delete,truncate',ddl='table');", publicationName, tableFilterString);
+            createPublicationStmt = String.format("CREATE PUBLICATION %s FOR TABLE %s;",
+                    publicationName, tableFilterString);
             LOGGER.info("Creating Publication with statement '{}'", createPublicationStmt);
             // Publication doesn't exist, create it but restrict to the tableFilter.
             stmt.execute(createPublicationStmt);
