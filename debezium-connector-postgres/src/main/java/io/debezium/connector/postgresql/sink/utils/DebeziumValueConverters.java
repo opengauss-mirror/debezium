@@ -22,9 +22,14 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.Year;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.TextStyle;
+import java.time.temporal.ChronoField;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAccessor;
 import java.util.ArrayList;
@@ -105,6 +110,7 @@ public final class DebeziumValueConverters {
             put("real", ((columnName, value) -> convertNumberType(columnName, value)));
             put("bytea", ((columnName, value) -> convertBytea(columnName, value)));
             put("timestamp without time zone", ((columnName, value) -> convertDatetimeAndTimestamp(columnName, value)));
+            put("timestamp with time zone", ((columnName, value) -> convertTimestampTz(columnName, value)));
             put("lseg", ((columnName, value) -> convertByte(columnName, value)));
             put("box", ((columnName, value) -> convertByte(columnName, value)));
             put("path", ((columnName, value) -> convertByte(columnName, value)));
@@ -229,6 +235,29 @@ public final class DebeziumValueConverters {
         return null;
     }
 
+    private static String convertTimestampTz(String columnName, Struct valueStruct) {
+        Field field = valueStruct.schema().field(columnName);
+        String schemaName = field.schema().name();
+        Object value = valueStruct.get(columnName);
+        if (value == null) {
+            return null;
+        }
+        if (ZonedTimestamp.SCHEMA_NAME.equals(schemaName)) {
+            String timeStr = valueStruct.getString(columnName);
+            ZonedDateTime bcDateTime = ZonedDateTime.parse(timeStr);
+            ZonedDateTime zonedDateTime = bcDateTime.withZoneSameInstant(ZoneId.of("Asia/Shanghai"));
+            DateTimeFormatter bcFormatter = new DateTimeFormatterBuilder()
+                    .appendValue(ChronoField.YEAR_OF_ERA)
+                    .appendLiteral('-')
+                    .appendPattern("MM-dd HH:mm:ss")
+                    .appendLiteral(' ')
+                    .appendText(ChronoField.ERA, TextStyle.SHORT)
+                    .toFormatter(Locale.ENGLISH);
+            return addingSingleQuotation(bcFormatter.format(zonedDateTime));
+        }
+        return addingSingleQuotation(value);
+    }
+
     private static String convertDatetimeAndTimestamp(String columnName, Struct valueStruct) {
         Field field = valueStruct.schema().field(columnName);
         String schemaName = field.schema().name();
@@ -237,11 +266,17 @@ public final class DebeziumValueConverters {
             return null;
         }
         Instant instant = convertDbzDateTime(object, schemaName);
+        if (instant == null) {
+            return null;
+        }
         if (PostgresValueConverter.POSITIVE_INFINITY_INSTANT.equals(instant)) {
             return addingSingleQuotation(PostgresValueConverter.POSITIVE_INFINITY);
         }
         if (PostgresValueConverter.NEGATIVE_INFINITY_INSTANT.equals(instant)) {
             return addingSingleQuotation(PostgresValueConverter.NEGATIVE_INFINITY);
+        }
+        if (isBeforeChrist(instant)) {
+            return addingSingleQuotation(resolveTimestampBeforeChrist(instant, schemaName));
         }
         DateTimeFormatter dateTimeFormatter;
         if (ZonedTimestamp.SCHEMA_NAME.equals(schemaName)) {
@@ -253,6 +288,29 @@ public final class DebeziumValueConverters {
         return addingSingleQuotation(dateTimeFormatter.format(instant));
     }
 
+    // -4712-01-01 00:00:00 -> 4713-01-01 00:00:00 BC
+    private static String resolveTimestampBeforeChrist(Instant instant, String schemaName) {
+        DateTimeFormatter bcFormatter = new DateTimeFormatterBuilder()
+                .appendValue(ChronoField.YEAR_OF_ERA)
+                .appendLiteral('-')
+                .appendPattern("MM-dd HH:mm:ss.SSSSSS")
+                .appendLiteral(' ')
+                .appendText(ChronoField.ERA, TextStyle.SHORT)
+                .toFormatter(Locale.ENGLISH);
+        if (ZonedTimestamp.SCHEMA_NAME.equals(schemaName)) {
+            bcFormatter = bcFormatter.withZone(ZoneId.of("Asia/Shanghai"));
+        } else {
+            bcFormatter = bcFormatter.withZone(ZoneOffset.UTC);
+        }
+        return bcFormatter.format(instant);
+    }
+
+    private static boolean isBeforeChrist(Instant instant) {
+        Year year = Year.from(instant.atZone(ZoneOffset.UTC));
+        // If the year is less than or equal to 0, it is BC (Before Christ).
+        return year.getValue() <= 0;
+    }
+
     private static String convertDate(String columnName, Struct valueStruct) {
         Field field = valueStruct.schema().field(columnName);
         String schemaName = field.schema().name();
@@ -261,6 +319,12 @@ public final class DebeziumValueConverters {
             return null;
         }
         Instant instant = convertDbzDateTime(object, schemaName);
+        if (instant == null) {
+            return null;
+        }
+        if (isBeforeChrist(instant)) {
+            return addingSingleQuotation(resolveDateBeforeChrist(instant));
+        }
         LocalDate localDate = instant.atZone(ZoneOffset.UTC).toLocalDate();
         if (PostgresValueConverter.POSITIVE_INFINITY_LOCAL_DATE.equals(localDate)) {
             return addingSingleQuotation(PostgresValueConverter.POSITIVE_INFINITY);
@@ -270,7 +334,23 @@ public final class DebeziumValueConverters {
         }
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
                 .withZone(ZoneId.of("Asia/Shanghai"));
-        return addingSingleQuotation(dateTimeFormatter.format(instant));
+        String formatDate = dateTimeFormatter.format(instant);
+        if (formatDate.startsWith("+")) {
+            formatDate = formatDate.substring(1);
+        }
+        return addingSingleQuotation(formatDate);
+    }
+
+    // -4712-01-01 -> 4713-01-01 BC
+    private static String resolveDateBeforeChrist(Instant instant) {
+        DateTimeFormatter bcFormatter = new DateTimeFormatterBuilder()
+                .appendValue(ChronoField.YEAR_OF_ERA)
+                .appendLiteral('-')
+                .appendPattern("MM-dd")
+                .appendLiteral(' ')
+                .appendText(ChronoField.ERA, TextStyle.SHORT)
+                .toFormatter(Locale.ENGLISH);
+        return bcFormatter.withZone(ZoneId.of("Asia/Shanghai")).format(instant);
     }
 
     private static String convertTime(String columnName, Struct valueStruct) {
@@ -415,6 +495,10 @@ public final class DebeziumValueConverters {
         if (object == null) {
             return null;
         }
+        if (object instanceof ByteBuffer) {
+            byte[] bytes = valueStruct.getBytes(columnName);
+            return addingSingleQuotation(new String(bytes, StandardCharsets.UTF_8));
+        }
         if (object instanceof byte[]) {
             byte[] bytes = (byte[]) object;
             String byteStr = new String(bytes, StandardCharsets.UTF_8);
@@ -423,7 +507,7 @@ public final class DebeziumValueConverters {
         if (object instanceof String) {
             return addingSingleQuotation(object);
         }
-        return null;
+        return object.toString();
     }
 
     private static String convertBytea(String columnName, Struct valueStruct) {
