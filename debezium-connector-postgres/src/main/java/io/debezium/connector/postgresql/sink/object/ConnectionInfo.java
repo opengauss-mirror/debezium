@@ -21,6 +21,8 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import io.debezium.enums.ErrorCode;
+import io.debezium.util.MigrationProcessController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -117,22 +119,41 @@ public class ConnectionInfo {
         String driver = OPENGAUSS_JDBC_DRIVER;
         Connection connection = null;
         PreparedStatement ps = null;
-        try {
-            Class.forName(driver);
-            connection = DriverManager.getConnection(url, username, password);
-            ps = connection.prepareStatement("set session_timeout = 0");
-            ps.execute();
-        } catch (ClassNotFoundException | SQLException exp) {
-            LOGGER.error("Create openGauss connection failed.", exp);
-        } finally {
-            if (ps != null) {
-                try {
-                    ps.close();
-                } catch (SQLException e) {
-                    LOGGER.error("Failed to close PreparedStatement.", e);
+        long totalReconnectCount = waitTimeoutSecond % reconnectInterval == 0 ? waitTimeoutSecond / reconnectInterval
+                : waitTimeoutSecond / reconnectInterval + 1;
+        long reconnectCount = 0L;
+        while (true) {
+            try {
+                Class.forName(driver);
+                connection = DriverManager.getConnection(url, username, password);
+                isConnectionAlive.set(true);
+                ps = connection.prepareStatement("set session_timeout = 0");
+                ps.execute();
+                return connection;
+            } catch (ClassNotFoundException | SQLException exp) {
+                isConnectionAlive.set(false);
+                reconnectCount++;
+                if (waitTimeoutSecond > 0) {
+                    if (reconnectInterval * reconnectCount >= waitTimeoutSecond) {
+                        break;
+                    }
+                    LOGGER.warn("The target database occurred an exception: {}, {} th reconnect,"
+                            + " will try up to {} times.", exp, reconnectCount, totalReconnectCount);
+                } else {
+                    LOGGER.warn("The target database occurred an exception: {}, {} th reconnect.", exp, reconnectCount);
+                }
+                MigrationProcessController.sleep(reconnectInterval * 1000L);
+            } finally {
+                if (ps != null) {
+                    try {
+                        ps.close();
+                    } catch (SQLException e) {
+                        LOGGER.error("Failed to close PreparedStatement.", e);
+                    }
                 }
             }
         }
+        LOGGER.error("{} Create openGauss connection failed.", ErrorCode.DB_CONNECTION_EXCEPTION);
         return connection;
     }
 }

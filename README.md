@@ -78,11 +78,20 @@ debezium-connector-mysql/target/debezium-connector-mysql-1.8.1.Final-plugin.tar.
 
 ### Debezium opengauss connector
 
-我们基于原始的debezium开源软件的debezium postgresql connector，新增了debezium opengauss connector，支持抽取openGauss的逻辑日志，将其存入kafka的topic中。同时，我们增加了debezium opengauss connector的sink端能力，能够抽取kafka的日志并完成数据的回放，以实现对数据dml操作的反向迁移能力（openGauss -> mysql）.
+我们基于原始的debezium开源软件的debezium postgresql connector，新增了debezium opengauss connector，支持抽取openGauss的逻辑日志，将其存入kafka的topic中。同时，我们增加了debezium opengauss connector的sink端能力，能够抽取kafka的日志并完成数据的回放，以实现对数据dml操作的反向迁移能力（openGauss -> mysql, openGauss -> PostgreSQL）.
 编译debezium后，可以得到反向迁移工具的压缩包，压缩包的位置为：
 
 ```
 debezium-connector-openngauss/target/debezium-connector-opengauss-1.8.1.Final-plugin.tar.gz
+```
+
+### Debezium postgres connector
+
+基于原始的debezium开源软件的debezium postgresql connector，支持抽取postgresql的逻辑日志，将其存入kafka的topic中。同时，我们增加了debezium postgres connector的sink端能力，能够抽取kafka的日志并完成数据的回放，以实现对数据dml操作的迁移能力（PostgreSQL -> openGauss）.
+编译debezium后，可以得到PostgreSQL迁移工具的压缩包，压缩包的位置为：
+
+```
+debezium-connector-postgres/target/debezium-connector-postgres-1.8.1.Final-plugin.tar.gz
 ```
 
 ### 构建命令
@@ -681,6 +690,523 @@ numactl -C 64-95 -m 0 ./bin/connect-standalone etc/schema-registry/connect-avro-
 
 (5) 统计迁移工具日志，得到迁移效率
 
+
+
+## Debezium postgres connector
+
+### 新增功能介绍
+
+原始的debezium postgres connector作为source端，可用于捕获数据变更并存入kafka。现新增如下功能点：
+
+- Source端支持自定义配置快照点；
+- 基于Debezium connector（Kafka Connect）框架，增加sink端能力，可用于从kafka抽取数据并在openGauss端按照表级粒度并行回放;
+- 增加迁移进度上报功能，可用于读取数据迁移时延；
+- sink端增加按表并行回放的能力。
+
+### 新增配置参数说明
+
+#### Source端
+
+(1) 启动类
+
+```
+connector.class=io.debezium.connector.postgresql.PostgresConnector
+```
+
+(2) 配置文件示例
+
+[postgres-source.properties](https://gitee.com/opengauss/debezium/blob/master/debezium-connector-postgres/patch/postgres-source.properties)
+
+(3) debezium原生参数含义请参考：
+
+[debezium原生参数](https://debezium.io/documentation/reference/1.8/connectors/postgresql.html)
+
+(4) topic路由请参考：
+
+[topic路由](https://debezium.io/documentation/reference/stable/transformations/topic-routing.html)
+
+在线迁移方案严格保证事务的顺序性，因此将DML路由在kafka的一个topic下，且该topic的分区数只能为1(参数num.partitions=1)，从而保证source端推送到kafka，和sink端从kafka拉取数据都是严格保序的。
+
+默认情况下，debezium postgres connector针对DML创建独立的topic，且每个表为一个topic
+
+topic命名规则为：
+
+DML topic名称：${database.server.name}.db_name.table_name
+
+DML topic名称均以${database.server.name}开头，因此以前缀方式去正则匹配合并topic，将DML topic进行路由合并为一个topic，且该topic的分区数只能为1。
+
+source端将数据推送至该topic下，同时sink端配置topics为合并后的topic，用于从kafka抽取数据，从而可保证事务的顺序。
+
+DML topic利用路由转发功能进行合并的配置如下：
+
+Source端：
+```
+database.server.name=postgres_server
+
+transforms=route
+transforms.route.type=org.apache.kafka.connect.transforms.RegexRouter
+transforms.route.regex=^postgres_server(.*)
+transforms.route.replacement=postgres_server_topic
+```
+
+Sink端：
+```
+topics=postgres_server_topic
+```
+
+(5) 新增配置参数说明
+
+| 参数                             | 类型      | 参数说明                                                                                                                                                          |
+|--------------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| commit.process.while.running   | boolean | 是否开启迁移进度上报功能，默认为false，表示不开启该功能                                                                                                                                |
+| source.process.file.path       | String  | 迁移进度文件输出路径，默认在迁移插件同一目录下，在迁移进度上报功能开启后起作用                                                                                                                       |
+| commit.time.interval           | int     | 迁移进度上报的时间间隔，默认值为1，单位：秒，在迁移进度上报功能开启后起作用                                                                                                                        |
+| create.count.info.path         | String  | 记录源端有效日志生产总数的文件输出路径，默认在迁移插件同一目录下，必须与sink端的该路径保持一致，用于和sink端交互获取总体同步时延                                                                                           |
+| process.file.count.limit       | int     | 同一目录下文件数目限制，超过该数目工具会按时间从早到晚删除多余进度文件，默认为10                                                                                                                     |
+| process.file.time.limit        | int     | 进度文件保存时间，超过该时间后工具会删除对应的进度文件，默认为168，单位：小时                                                                                                                      |
+| append.write                   | boolean | 进度文件写入方式，true表示追加写入，false表示覆盖写入，默认值为false                                                                                                                     |
+| file.size.limit                | int     | 文件大小限制，超过该限制值工具会另启新文件写入，默认为10，单位：兆                                                                                                                            |
+| min.start.memory               | String  | 自定义配置debezium最小启动内存，通过脚本生效，默认为256M                                                                                                                            |
+| max.start.memory               | String  | 自定义配置debezium最大启动内存，通过脚本生效，默认为2G                                                                                                                              |
+| queue.size.limit               | int     | 存储kafka记录的队列的最大长度，int类型，默认值为1000000                                                                                                                  |
+| open.flow.control.threshold    | double  | 流量控制参数，double类型，默认值为0.8，当存储某一队列长度>最大长度queue.size.limit*该门限值时，将启用流量控制，暂停抽取事件                                                                    |
+| close.flow.control.threshold   | double  | 流量控制参数，double类型，默认值为0.7，当存储各个队列长度<最大长度queue.size.limit*该门限值时，将关闭流量控制，继续抽取事件                                                                    |
+| wait.timeout.second          | int     | 自定义JDBC连接在被服务器自动关闭之前等待活动的秒数。如果客户端在这段时间内没有向服务器发送任何请求，服务器将关闭该连接，默认值：28800，单位：秒
+
+
+
+快照点参数配置说明：
+
+case 1: 查询到一个xlog location，配置当前查询的xlog location为快照点。
+
+```
+postgres> select * from pg_current_xlog_location(); --pg 10.0以上版本使用select * from pg_current_wal_lsn()；
++-----------------------------+
+| pg_current_xlog_location    |
++-----------------------------+
+| B/AD7DEA8                   |
++-----------------------------+
+(1 row)
+
+```
+
+如上示例中，根据查询到的快照点若配置新增的snapshot相关的参数，需配置为如下：
+
+```
+xlog.location=B/AD7DEA8
+```
+
+case 2：若和全量迁移对接，快照点从表sch_debezium.pg_replica_tables中获得。
+
+pg_schema_name对应表所属schema，pg_table_name对应表名，lsn与列pg_xlog_location相对应。
+
+```
+openGauss=> select * from sch_debezium.pg_replica_tables;
+
+ id | pg_schema_name | pg_table_name | pg_xlog_location
+----+----------------+---------------+------------------
+  1 | public         | t1            | B/AD7DEA8
+(1 row)
+```
+
+全量迁移开始时会为每个表生成快照，并保存在sch_debezium.pg_replica_tables，增量迁移启动后会加载每个表的快照信息，作为增量迁移的起始点。
+使用表级快照点，需配置如下参数值：
+
+```
+slot.drop.on.stop=false
+```
+
+#### Sink端
+
+(1) 启动类
+
+```
+connector.class=io.debezium.connector.postgresql.sink.PostgresSinkConnector
+```
+(2) 配置文件示例
+
+[postgres-sink.properties](https://gitee.com/opengauss/debezium/blob/master/debezium-connector-postgres/patch/postgres-sink.properties)
+
+(3) 新增配置参数说明
+
+| 参数                                        | 类型      | 参数说明                                                                                                                                                                                                                                                                                                                     |
+|-------------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| topics                                    | String  | sink端从kafka抽取数据的topic                                                                                                                                                                                                                                                                                                    |
+| opengauss.driver                          | String  | openGauss驱动名                                                                                                                                                                                                                                                                                                             |
+| opengauss.username                        | String  | openGauss用户名                                                                                                                                                                                                                                                                                                             |
+| opengauss.password                        | String  | openGauss用户密码                                                                                                                                                                                                                                                                                                            |
+| opengauss.url                             | String  | openGauss连接url                                                                                                                                                                                                                                                                                                           |
+| xlog.location                             | String  | 增量迁移停止时openGauss端lsn的存储文件路径                                                                                                                                                                                                                                                                                              |
+| schema.mappings                           | String  | postgres和openGauss的schema映射关系，用；区分不同的映射关系，用：区分postgres的schema和openGauss的schema<br>例如<br>schema_mappings:<br/>      postgres_schema1: opengauss_schema1<br/>      postgres_schema2: opengauss_schema2<br/> |
+| commit.process.while.running              | boolean | 是否开启迁移进度上报功能，默认为false，表示不开启该功能                                                                                                                                                                                                                                                                                           |
+| sink.process.file.path                    | String  | 迁移进度文件输出路径，默认在迁移插件同一目录下，在迁移进度上报功能开启后起作用                                                                                                                                                                                                                                                                                  |
+| commit.time.interval                      | int     | 迁移进度上报的时间间隔，默认值为1，单位：秒，在迁移进度上报功能开启后起作用                                                                                                                                                                                                                                                                                   |
+| create.count.info.path                    | String  | 记录源端有效日志生产总数的文件输出路径，默认在迁移插件同一目录下，必须与source端的该路径保持一致，用于和source端交互获取总体同步时延                                                                                                                                                                                                                                                  |
+| fail.sql.path                             | String  | 回放失败的sql语句输出路径，默认在迁移插件同一目录下                                                                                                                                                                                                                                                                                              |
+| process.file.count.limit                  | int     | 同一目录下文件数目限制，超过该数目工具会按时间从早到晚删除多余进度文件，默认为10                                                                                                                                                                                                                                                                                |
+| process.file.time.limit                   | int     | 进度文件保存时间，超过该时间后工具会删除对应的进度文件，默认为168，单位：小时                                                                                                                                                                                                                                                                                 |
+| append.write                              | boolean | 进度文件写入方式，true表示追加写入，false表示覆盖写入，默认值为false                                                                                                                                                                                                                                                                                |
+| file.size.limit                           | int     | 文件大小限制，超过该限制值工具会另启新文件写入，默认为10，单位：兆                                                                                                                                                                                                                                                                                       |
+| queue.size.limit                          | int     | 存储kafka记录的队列的最大长度，int类型，默认值为1000000                                                                                                                                                                                                                                                                                      |
+| open.flow.control.threshold               | double  | 流量控制参数，double类型，默认值为0.8，当存储kafka记录的队列长度>最大长度queue.size.limit*该门限值时，将启用流量控制，暂停从kafka抽取数据                                                                                                                                                                                                                                  |
+| close.flow.control.threshold              | double  | 流量控制参数，double类型，默认值为0.7，当存储kafka记录的队列长度<最大长度queue.size.limit*该门限值时，将关闭流量控制，继续从kafka抽取数据                                                                                                                                                                                                                                  |
+| wait.timeout.second                       | long    | sink端数据库停止服务后迁移工具等待数据库恢复服务的最大时长，默认值：28800，单位：秒                                                                                                                                                                                                                                                                           
+
+### 迁移进度上报信息说明
+
+#### Source端
+
+| 参数                           | 参数说明                           |
+|------------------------------|--------------------------------|
+| timestamp                       | source端当前上报信息的时间戳              |
+| createCount             | 生产事务数            |
+| skippedExcludeCount             | source端跳过的黑名单之内或白名单之外的变更数      |
+| convertCount | 完成解析的事务数 |
+| pollCount | 存入kafka的事务数 |
+| rest | source端剩余事务数（已生产但未存入kafka的事务数） |
+| speed | source端处理速度（每秒处理的事务数） |
+#### Sink端
+
+| 参数                     | 参数说明                             |
+| ------------------------ | ------------------------------------ |
+| timestamp                | sink端当前上报信息的时间戳           |
+| extractCount             | 从kafka抽取的事务数                  |
+| skippedCount             | 跳过的事务数                         |
+| replayedCount            | 已回放事务总数                       |
+| successCount             | 回放成功的事务数                     |
+| failCount                | 回放失败的事务数                     |
+| skippedExcludeEventCount | 跳过的黑名单表的事务数               |
+| rest                     | 剩余事务数（已抽取但未回放的事务数） |
+| speed                    | sink端处理速度（每秒处理的事务数）   |
+| overallPipe              | 当前时间片处于迁移管道中的事务总数   |
+
+
+## 基于Debezium postgres connector进行在线迁移
+
+### 环境依赖
+
+kafka，zookeeper，confluent community，debezium-connector-postgres
+
+### 原理
+
+debezium postgres connector的source端，监控postgres数据库的wal日志，并将数据以AVRO格式写入到kafka；debezium postgres connector的sink端，从kafka读取AVRO格式数据，并组装为事务，在openGauss端按照表级粒度并行回放，从而完成数据从postgres在线迁移至openGauss端。
+
+由于该方案严格保证事务的顺序性，因此将DML路由在kafka的一个topic下，且该topic的分区数只能为1(参数num.partitions=1)，从而保证source端推送到kafka，和sink端从kafka拉取数据都是严格保序的。
+
+### 约束及限制
+
+(1) PostgreSQL 9.4.26及以上版本：
+
+PostgreSQL版本低于10.x，仅支持使用wal2json插件创建逻辑复制槽；
+PostgreSQL版本大于10.x，支持使用wal2json和pgoutput插件创建逻辑复制槽（推荐使用pgoutput插件）。
+
+
+(2) PostgreSQL开启逻辑复制功能：
+
+配置参数
+```
+wal_level=logical
+```
+(3) 仅限初始用户和拥有REPLICATION权限的用户进行操作。三权分立关闭时数据库管理员可以进行逻辑复制操作，三权分立开启时不允许数据库管理员进行逻辑复制操作；
+
+(4) PostgreSQL的库与逻辑复制槽一一对应，当待迁移的库改变时，需要配置新的逻辑复制槽的名字；
+
+(5) 初次使用时要以sysadmin权限的用户开启工具。
+
+(6) 在线迁移直接透传DML，对于openGauss和PostgreSQL不兼容的语法，迁移会报错；
+
+(7) Kafka中以AVRO格式存储数据，AVRO字段名称[命名规则](https://avro.apache.org/docs/1.11.1/specification/#names)为：
+```
+- 以[A-Za-z_]开头
+- 随后仅包含[A-Za-z0-9_]
+```
+因此，对于PostgreSQL中的标识符，表名和列名推荐按上述规范命名，否则在线迁移可能会报错。
+
+(8) 增量迁移过程中创建的表不会进行迁移，如有需要，请重启迁移工具。
+
+### 性能指标
+
+按表回放，利用sysbench进行测试，在openEuler arm操作系统2p Kunpeng-920机器，针对混合IUD场景，50张表50个线程（insert-30线程，update-10线程，delete-10线程），性能可达3w tps。
+
+### 部署过程
+
+#### 下载依赖
+
+- [kafka](https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/)
+  （以kafka_2.13-3.6.1为例）
+  ```
+  wget -c https://mirrors.tuna.tsinghua.edu.cn/apache/kafka/3.6.1/kafka_2.13-3.6.1.tgz  
+  
+  tar -zxf kafka_2.13-3.6.1.tgz 
+  ```
+
+- [confluent community](https://packages.confluent.io/archive/5.5/confluent-community-5.5.1-2.12.zip)
+
+  ```
+  wget -c  https://packages.confluent.io/archive/5.5/confluent-community-5.5.1-2.12.zip
+  
+  unzip confluent-community-5.5.1-2.12.zip
+  ```
+
+- [debezium-connector-postgres](https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-postgresql2openGauss-7.0.0rc1.tar.gz)
+
+  ```
+  wget -c https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/replicate-postgresql2openGauss-7.0.0rc1.tar.gz
+
+  tar -zxvf replicate-postgresql2openGauss-7.0.0rc1.tar.gz
+  ```
+
+#### 修改配置文件
+
+默认配置文件的地址均为localhost，若需修改为具体ip，请同步修改下列所有文件中参数涉及localhost的均改为实际ip。
+
+- zookeeper
+
+  ```
+  配置文件位置：/kafka_2.13-3.6.1/config/zookeeper.properties
+  ```
+  zookeeper的默认端口号为2181，对应参数clientPort=2181。
+
+  若端口冲突，需要修改端口号，则同步修改以下文件对应参数：
+  ```
+  kafka_2.13-3.6.1/config/zookeeper.properties------clientPort=2181
+  kafka_2.13-3.6.1/config/server.properties------zookeeper.connect=localhost:2181
+  confluent-5.5.1/etc/schema-registry/schema-registry.properties------kafkastore.connection.url=localhost:2181
+  ```
+
+- kafka
+
+  ```
+  配置文件位置：/kafka_2.13-3.6.1/config/server.properties
+  ```
+
+  注意topic的分区数必须为1，因此需设置参数num.partitions=1，该参数默认值即为1，因此无需单独修改该参数。
+
+  kafka的默认端口是9092，对应参数listeners=PLAINTEXT://:9092。
+
+  若端口冲突，需要修改端口号，则同步修改以下文件对应参数：
+  ```
+  kafka_2.13-3.6.1/config/server.properties------listeners=PLAINTEXT://:9092
+  confluent-5.5.1/etc/schema-registry/schema-registry.properties------kafkastore.bootstrap.servers=PLAINTEXT://localhost:9092
+  confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties------bootstrap.servers=localhost:9092
+  confluent-5.5.1/etc/kafka/postgres-source.properties------database.history.kafka.bootstrap.servers=127.0.0.1:9092
+  ```
+
+- schema-registry
+
+  ```
+  配置文件位置：/confluent-5.5.1/etc/schema-registry/schema-registry.properties
+  ```
+  schema-registry的默认端口是8081，对应参数listeners=http://0.0.0.0:8081。
+
+  若端口冲突，需要修改端口号，则同步修改以下文件对应参数：
+  ```
+  confluent-5.5.1/etc/schema-registry/schema-registry.properties------listeners=http://0.0.0.0:8081
+  confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties------key.converter.schema.registry.url=http://localhost:8081
+  confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties------value.converter.schema.registry.url=http://localhost:8081
+  若需查看kafka topic内容，需修改
+  confluent-5.5.1/bin/kafka-avro-console-consumer------DEFAULT_SCHEMA_REGISTRY_URL="--property schema.registry.url=http://192.168.0.219:8081"
+  ```
+
+- connect-standalone
+
+  ```
+  配置文件位置：/confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties
+  ```
+
+  注意在plugin.path配置项中增加debezium-connector-postgres所在的路径
+
+  若debezium-connector-postgres所在路径为：/data/debezium_kafka/plugin/debezium-connector-postgres
+
+  则配置其上一层目录，即plugin.path=share/java,/data/debezium_kafka/plugin
+
+  connect-standalone的默认端口是8083，对应参数rest.port=8083。
+
+  若端口冲突，需要修改端口号，则同步修改以下文件对应参数：
+  ```
+  confluent-5.5.1/etc/schema-registry/connect-avro-standalone.properties------rest.port=8083
+  ```
+
+- postgres-source.properties
+
+  ```
+  配置文件位置：/confluent-5.5.1/etc/kafka/postgres-source.properties
+  ```
+
+  示例详见[postgres-source.properties](https://gitee.com/opengauss/debezium/blob/master/debezium-connector-postgres/patch/postgres-source.properties)
+
+
+- postgres-sink.properties
+
+  ```
+  配置文件位置：/confluent-5.5.1/etc/kafka/postgres-sink.properties
+  ```
+
+  示例详见[postgres-sink.properties](https://gitee.com/opengauss/debezium/blob/master/debezium-connector-postgres/patch/postgres-sink.properties)
+
+#### 启动命令
+
+（1）启动zookeeper
+
+```
+cd kafka_2.13-3.6.1
+./bin/zookeeper-server-start.sh ./config/zookeeper.properties
+```
+
+（2）启动kafka
+
+```
+cd kafka_2.13-3.6.1
+./bin/kafka-server-start.sh ./config/server.properties
+```
+
+（3）注册schema
+
+```
+cd confluent-5.5.1
+./bin/schema-registry-start etc/schema-registry/schema-registry.properties
+```
+
+（4）启动kafka-connect source端
+
+```
+cd confluent-5.5.1
+./bin/connect-standalone etc/schema-registry/connect-avro-standalone.properties etc/kafka/postgres-source.properties
+```
+
+（5）启动kafka-connect sink端
+
+```
+cd confluent-5.5.1
+./bin/connect-standalone etc/schema-registry/connect-avro-standalone-1.properties etc/kafka/postgres-sink.properties
+```
+说明：source端和sink端的两个配置文件connect-avro-standalone.properties和connect-avro-standalone-1.properties的差异点在于rest.port参数的不同，默认为8083，即两个文件中设置不同的端口号，即可启动多个kafka-connect，实现sink端和source端独立工作。
+
+步骤(4)和(5)示例source端和sink端分开启动，推荐分开启动方式。两者也可以同时启动，同时启动的命令为：
+
+```
+cd confluent-5.5.1
+./bin/connect-standalone etc/schema-registry/connect-avro-standalone.properties etc/kafka/postgres-source.properties etc/kafka/postgres-sink.properties
+```
+
+其他命令：
+
+（1）查看topic
+
+```
+cd kafka_2.13-3.6.1
+./bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list
+```
+
+（2）查看topic的信息
+
+```
+cd kafka_2.13-3.6.1
+./bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --describe --topic topic_name
+```
+
+（3）查看topic的内容
+
+```
+cd confluent-5.5.1
+./bin/kafka-avro-console-consumer --bootstrap-server 127.0.0.1:9092 --topic topic_name --from-beginning
+```
+
+### 全量与增量迁移的配合
+
+(1) 启动全量迁移
+
+启动source端开始前，需首先启动zookeeper，kafka，并注册schema。
+
+debezium-connector-postgres支持全量迁移，可实现表，数据，函数，存储过程，视图，触发器的离线迁移
+
+全量迁移启动后，可在openGauss端的表sch_debezium.pg_replica_tables中查询到全量迁移的快照点，单个表的快照点存储在
+sch_debezium.pg_replica_tables中。
+
+(2) 启动增量迁移source端
+
+source端启动后会从sch_debezium.pg_replica_tables加载全量迁移的快照点。无需等待全量迁移结束后
+才可启动source端。全量迁移启动后，即可启动source端，这样可以尽可能减少source端的时延，以达到减少迁移延迟的目的。
+
+当然，也可以等待全量迁移结束后启动source端。
+
+(3) 全量迁移结束，启动增量迁移sink端
+
+等待全量迁移结束后，即可启动sink端回放数据。
+
+针对全量迁移的表，若对其的DML事务位于表的快照点之前，将跳过对应的DML操作，避免数据出现重复，可保证迁移过程中数据不丢失，不重复。
+
+若在全量迁移未结束时，就启动sink端，将会导致数据乱序，属于不合理的操作步骤，实际操作过程应避免不合理的操作。
+
+### 性能测试
+
+#### 配置条件
+(1) PostgreSQL
+
+- PostgreSQL参数配置：
+  ```
+  wal_level=logical
+  ```
+- pg_xlog、安装目录、数据目录分别部署在3个不同的NVME盘
+
+- PostgreSQL高性能配置
+
+(2) openGauss
+
+- pg_xlog、安装目录、数据目录分别部署在3个不同的NVME盘
+
+- openGauss高性能配置
+
+(3) 在线迁移工具Debezium postgres connector
+
+- 修改Java heap space参数，否则可能出现OutOfMemory问题。
+
+  kafka connect进程启动时默认参数为-Xms256M -Xmx2G，将该参数值调大，
+  修改为-Xms25G -Xmx25G，修改的文件位置为：
+  ```
+  confluent-5.5.1/bin/connect-standalone 58行 export KAFKA_HEAP_OPTS="-Xms25G -Xmx25G"
+  ```
+- 在java11环境上运行在线迁移工具
+
+- 设置kafka-connect日志级别为WARN
+
+  默认的日志级别为INFO，INFO级别的日志会输出回放的事务信息，为减少日志刷屏，
+  建议将日志级别修改为WARN，此时只显示迁移效率日志。
+
+  修改的文件位置为：
+  ```
+  confluent-5.5.1/etc/kafka/connect-log4j.properties 16行
+  log4j.rootLogger=WARN, stdout, connectAppender
+  ```
+
+#### 测试步骤
+
+(1) sysbench执行prepare命令，为postgres端准备数据
+
+(2) 启动zookeeper，kafka，注册schema，通过debezium离线迁移数据至openGauss端
+
+(3) 开启在线复制
+
+绑核启动source端
+```
+cd confluent-5.5.1
+numactl -C 32-63 -m 0 ./bin/connect-standalone etc/schema-registry/connect-avro-standalone.properties etc/kafka/postgres-source.properties
+```
+
+绑核启动sink端
+```
+cd confluent-5.5.1
+numactl -C 64-95 -m 0 ./bin/connect-standalone etc/schema-registry/connect-avro-standalone-1.properties etc/kafka/postgres-sink.properties
+```
+(4) sysbench执行run命令，给postgres压入数据
+
+按事务并发时，混合IUD场景，10张表50个线程（insert-30线程，update-10线程，delete-10线程）
+按表并发时，混合IUD场景，50张表50个线程（insert-30线程，update-10线程，delete-10线程），性能可达3w tps。
+
+(5) 统计迁移工具日志，得到迁移效率
+
+
+
 ## Debezium opengauss connector
 
 ### 功能介绍
@@ -688,8 +1214,10 @@ numactl -C 64-95 -m 0 ./bin/connect-standalone etc/schema-registry/connect-avro-
 新增的debezium opengauss connector作为source端，可用于捕获数据变更并存入kafka。在此基础上添加sink端功能，功能点如下：
 
 - 支持openGauss端对schema下的数据的dml操作同步到MySQL端，不支持迁移ddl操作的迁移；
+- 支持openGauss端对schema下的数据的dml和ddl操作同步到PostgreSQL端；
 - Sink端支持数据按表进行并发回放；
 - 支持openGausss的多个schema下的数据迁移到指定的MySQL的多个库；
+- 支持openGausss的多个schema下的数据迁移到指定的PostgreSQL的多个schema；
 - 增加迁移进度上报功能，可用于读取数据迁移时延；
 - 增加反向迁移断点续传功能，用户中断后基于断点重启后继续迁移。
 
@@ -753,14 +1281,14 @@ select * from pg_current_xlog_location();
 
 黑白名单配置说明：
 
-mysql connector 可通过配置库级和表级的黑白名单，实现对特定库和表的变更日志的抽取，具体如下：
+sink connector 可通过配置库级和表级的黑白名单，实现对特定库和表的变更日志的抽取，具体如下：
 
-| 参数                    | 类型     | 参数说明                                                                |
-|-----------------------|--------|---------------------------------------------------------------------|
-| database.include.list | String | 库级白名单列表，以逗号分隔，规定connector只抽取白名单中的数据库的变更日志                           |
-| database.exclude.list | String | 库级黑名单列表，以逗号分隔，规定connector不抽取黑名单中的数据库的变更日志                           |
-| table.include.list    | String | 表级白名单列表，以逗号分隔，规定connector只抽取白名单中的表的变更日志，格式为database_name.table_name |
-| table.exclude.list    | String | 表级黑名单列表，以逗号分隔，规定connector不抽取黑名单中的表的变更日志，格式为database_name.table_name                           |
+| 参数                    | 类型     | 参数说明                                                                                         |
+|-----------------------|--------|----------------------------------------------------------------------------------------------|
+| database.include.list | String | 库级白名单列表，以逗号分隔，规定connector只抽取白名单中的数据库的变更日志                                                    |
+| database.exclude.list | String | 库级黑名单列表，以逗号分隔，规定connector不抽取黑名单中的数据库的变更日志                                                    |
+| table.include.list    | String | 表级白名单列表，以逗号分隔，规定connector只抽取白名单中的表的变更日志，格式为database_name.table_name 或者schema_name.table_name |
+| table.exclude.list    | String | 表级黑名单列表，以逗号分隔，规定connector不抽取黑名单中的表的变更日志，格式为database_name.table_name 或者schema_name.table_name  |
 
 使用说明：
 （1）同级的黑白名单不能同时配置；
@@ -772,36 +1300,36 @@ mysql connector 可通过配置库级和表级的黑白名单，实现对特定�
 connector.class=io.debezium.connector.opengauss.sink.OpengaussSinkConnector
 ```
 
-| 参数                                        | 类型      | 参数说明                                                                                                                                                                                                                                                                                                                                               |
-|-------------------------------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| topics                                    | String  | sink端从kafka抽取数据的topic                                                                                                                                                                                                                                                                                                                              |
-| max.thread.count                          | String  | 自定义Sink端按表回放时的最大并发线程数（不能为0）                                                                                                                                                                                                                                                                                                                        |
-| database.type                             | String  | 数据库类型，当前支持mysql,opengauss和oracle，默认值为mysql |
-| database.username                         | String  | 数据库用户名                                                                                                                                                                                                                                                                                                                                        |
-| database.password                         | String  | 数据库用户密码                                                                                                                                                                                                                                                                                                                                       |
-| database.ip                               | String  | 数据库ip                                                                                                                                                                                                                                                                                                                                  |
-| database.port                             | int     | 数据库端口 |
-| database.name                             | String  | 数据库名称 |
-| schema.mappings                           | String  | openGauss的schema与MySQL的映射关系，与全量迁移chameleon配置相反，用；区分不同的映射关系，用：区分openGauss的schema与MySQL的database<br>例如chameleon的配置<br>schema_mappings:<br/>      mysql_database1: opengauss_schema1<br/>      mysql_database2: opengauss_schema2<br/>则sink端的schema.mappings参数需配置为schema.mappings=opengauss_schema1:mysql_database1;opengauss_schema2:mysql_database2 |
-| commit.process.while.running              | boolean | 是否开启迁移进度上报功能，默认为false，表示不开启该功能                                                                                                                                                                                                                                                                                                                     |
-| sink.process.file.path                    | String  | 迁移进度文件输出路径，默认在迁移插件同一目录下，在迁移进度上报功能开启后起作用                                                                                                                                                                                                                                                                                                            |
-| commit.time.interval                      | int     | 迁移进度上报的时间间隔，默认值为1，单位：秒，在迁移进度上报功能开启后起作用                                                                                                                                                                                                                                                                                                             |
-| create.count.info.path                    | String  | 源端xlog日志写入的dml操作总数，默认在迁移插件同一目录下，必须与source端的该路径保持一致，用于和source端交互获取总体同步时延                                                                                                                                                                                                                                                                            |
-| fail.sql.path                             | String  | 回放失败的sql语句输出路径，默认在迁移插件同一目录下                                                                                                                                                                                                                                                                                                                        |
-| process.file.count.limit                  | int     | 同一目录下文件数目限制，超过该数目工具会按时间从早到晚删除多余进度文件，默认为10                                                                                                                                                                                                                                                                                                          |
-| process.file.time.limit                   | int     | 进度文件保存时间，超过该时间后工具会删除对应的进度文件，默认为168，单位：小时                                                                                                                                                                                                                                                                                                           |
-| append.write                              | boolean | 进度文件写入方式，true表示追加写入，false表示覆盖写入，默认值为false                                                                                                                                                                                                                                                                                                          |
-| file.size.limit                           | int     | 文件大小限制，超过该限制值工具会另启新文件写入，默认为10，单位：兆                                                                                                                                                                                                                                                                                                                 |
-| queue.size.limit                          | int     | 存储kafka记录的队列和按表并发线程中预处理数据的队列的最大长度，int类型，默认值为1000000                                                                                                                                                                                                                                                                                                |
-| open.flow.control.threshold               | double  | 流量控制参数，double类型，默认值为0.8，当存储kafka记录的队列或某一个按表并发线程中预处理数据的队列长度>最大长度queue.size.limit*该门限值时，将启用流量控制，暂停从kafka抽取数据                                                                                                                                                                                                                                         |
-| close.flow.control.threshold              | double  | 流量控制参数，double类型，默认值为0.7，当存储kafka记录的队列和所有按表并发线程中预处理数据的队列长度<最大长度queue.size.limit*该门限值时，将关闭流量控制，继续从kafka抽取数据                                                                                                                                                                                                                                          |
-| record.breakpoint.kafka.topic             | String  | 自定义断点记录topic，在回放过程记录执行结果到Kafka中，可根据实际情况修改，默认值为bp_topic                                                                                                                                                                                                                                                                                             |
-| record.breakpoint.kafka.bootstrap.servers | String  | 自定义断点记录的Kafka启动服务器地址，如无特殊需要，配置为source端的Kafka地址，可根据实际情况修改，默认值为localhost:9092                                                                                                                                                                                                                                                                        |
-| record.breakpoint.kafka.attempts          | int     | 自定义读取断点记录重试次数，默认为3                                                                                                                                                                                                                                                                                                                                 |
-| record.breakpoint.kafka.size.limit        | int     | 断点记录Kafka的条数限制，超过该限制会触发删除Kafka的断点清除策略，删除无用的断点记录数据，单位：事务万条数，默认值：3000                                                                                                                                                                                                                                                                                |
-| record.breakpoint.kafka.clear.interval    | int     | 断点记录Kafka的时间限制，超过该限制会触发删除Kafka的断点清除策略，删除无用的断点记录数据，单位：小时，默认值1                                                                                                                                                                                                                                                                                       |
-| record.breakpoint.repeat.count.limit      | int     | 断点续传时，查询待回放数据是否已在断点之前备回放的数据条数，默认值：50000 
-| wait.timeout.second                       | long    | sink端数据库停止服务后迁移工具等待数据库恢复服务的最大时长，默认值：28800，单位：秒 
+| 参数                                        | 类型      | 参数说明                                                                                                                                                                                                                                                                                                                                                                     |
+|-------------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| topics                                    | String  | sink端从kafka抽取数据的topic                                                                                                                                                                                                                                                                                                                                                    |
+| max.thread.count                          | String  | 自定义Sink端按表回放时的最大并发线程数（不能为0）                                                                                                                                                                                                                                                                                                                                              |
+| database.type                             | String  | 数据库类型，当前支持mysql,postgresql,opengauss和oracle，默认值为mysql                                                                                                                                                                                                                                                                                                                    |
+| database.username                         | String  | 数据库用户名                                                                                                                                                                                                                                                                                                                                                                   |
+| database.password                         | String  | 数据库用户密码                                                                                                                                                                                                                                                                                                                                                                  |
+| database.ip                               | String  | 数据库ip                                                                                                                                                                                                                                                                                                                                                                    |
+| database.port                             | int     | 数据库端口                                                                                                                                                                                                                                                                                                                                                                    |
+| database.name                             | String  | 数据库名称                                                                                                                                                                                                                                                                                                                                                                    |
+| schema.mappings                           | String  | openGauss的schema与目标端database或者schema的映射关系，与全量迁移chameleon配置相反，用；区分不同的映射关系，用：区分openGauss的schema与目标数据库的database或者schema<br>例如chameleon的配置<br>schema_mappings:<br/>      mysql_database1: opengauss_schema1<br/>      mysql_database2: opengauss_schema2<br/>则sink端的schema.mappings参数需配置为schema.mappings=opengauss_schema1:mysql_database1;opengauss_schema2:mysql_database2 |
+| commit.process.while.running              | boolean | 是否开启迁移进度上报功能，默认为false，表示不开启该功能                                                                                                                                                                                                                                                                                                                                           |
+| sink.process.file.path                    | String  | 迁移进度文件输出路径，默认在迁移插件同一目录下，在迁移进度上报功能开启后起作用                                                                                                                                                                                                                                                                                                                                  |
+| commit.time.interval                      | int     | 迁移进度上报的时间间隔，默认值为1，单位：秒，在迁移进度上报功能开启后起作用                                                                                                                                                                                                                                                                                                                                   |
+| create.count.info.path                    | String  | 源端xlog日志写入的dml操作总数，默认在迁移插件同一目录下，必须与source端的该路径保持一致，用于和source端交互获取总体同步时延                                                                                                                                                                                                                                                                                                  |
+| fail.sql.path                             | String  | 回放失败的sql语句输出路径，默认在迁移插件同一目录下                                                                                                                                                                                                                                                                                                                                              |
+| process.file.count.limit                  | int     | 同一目录下文件数目限制，超过该数目工具会按时间从早到晚删除多余进度文件，默认为10                                                                                                                                                                                                                                                                                                                                |
+| process.file.time.limit                   | int     | 进度文件保存时间，超过该时间后工具会删除对应的进度文件，默认为168，单位：小时                                                                                                                                                                                                                                                                                                                                 |
+| append.write                              | boolean | 进度文件写入方式，true表示追加写入，false表示覆盖写入，默认值为false                                                                                                                                                                                                                                                                                                                                |
+| file.size.limit                           | int     | 文件大小限制，超过该限制值工具会另启新文件写入，默认为10，单位：兆                                                                                                                                                                                                                                                                                                                                       |
+| queue.size.limit                          | int     | 存储kafka记录的队列和按表并发线程中预处理数据的队列的最大长度，int类型，默认值为1000000                                                                                                                                                                                                                                                                                                                      |
+| open.flow.control.threshold               | double  | 流量控制参数，double类型，默认值为0.8，当存储kafka记录的队列或某一个按表并发线程中预处理数据的队列长度>最大长度queue.size.limit*该门限值时，将启用流量控制，暂停从kafka抽取数据                                                                                                                                                                                                                                                               |
+| close.flow.control.threshold              | double  | 流量控制参数，double类型，默认值为0.7，当存储kafka记录的队列和所有按表并发线程中预处理数据的队列长度<最大长度queue.size.limit*该门限值时，将关闭流量控制，继续从kafka抽取数据                                                                                                                                                                                                                                                                |
+| record.breakpoint.kafka.topic             | String  | 自定义断点记录topic，在回放过程记录执行结果到Kafka中，可根据实际情况修改，默认值为bp_topic                                                                                                                                                                                                                                                                                                                   |
+| record.breakpoint.kafka.bootstrap.servers | String  | 自定义断点记录的Kafka启动服务器地址，如无特殊需要，配置为source端的Kafka地址，可根据实际情况修改，默认值为localhost:9092                                                                                                                                                                                                                                                                                              |
+| record.breakpoint.kafka.attempts          | int     | 自定义读取断点记录重试次数，默认为3                                                                                                                                                                                                                                                                                                                                                       |
+| record.breakpoint.kafka.size.limit        | int     | 断点记录Kafka的条数限制，超过该限制会触发删除Kafka的断点清除策略，删除无用的断点记录数据，单位：事务万条数，默认值：3000                                                                                                                                                                                                                                                                                                      |
+| record.breakpoint.kafka.clear.interval    | int     | 断点记录Kafka的时间限制，超过该限制会触发删除Kafka的断点清除策略，删除无用的断点记录数据，单位：小时，默认值1                                                                                                                                                                                                                                                                                                             |
+| record.breakpoint.repeat.count.limit      | int     | 断点续传时，查询待回放数据是否已在断点之前备回放的数据条数，默认值：50000                                                                                                                                                                                                                                                                                                                                  
+| wait.timeout.second                       | long    | sink端数据库停止服务后迁移工具等待数据库恢复服务的最大时长，默认值：28800，单位：秒                                                                                                                                                                                                                                                                                                                           
 
 ##### 全量数据迁移新增参数
 
@@ -870,11 +1398,11 @@ kafka， zookeeper，confluent community，debezium-connector-opengauss
 
 ### 原理
 
-debezium opengauss connector的source端，监控openGauss数据库的逻辑日志，并将数据写入到kafka；debezium opengauss connector的sink端，从kafka读取数据，并组装为sql语句，在MySQL端按表并行回放，从而完成数据从openGauss在线迁移至MySQL端。
+debezium opengauss connector的source端，监控openGauss数据库的逻辑日志，并将数据写入到kafka；debezium opengauss connector的sink端，从kafka读取数据，并组装为sql语句，在sink端按表并行回放，从而完成数据从openGauss在线迁移至sink端。
 
 #### 全量数据迁移原理
 
-debezium opengauss connector的source端，采集表的全量数据，按照数据量划分数据写入文件，将文件路径及其表信息推送到kafka中；debezium opengauss connector的sink端，消费kafka中的消息，读取信息，将文件数据加载进内存进行数据转换，并组装为sql语句，在MySQL端按表并行回放，从而完成数据从openGauss迁移至MySQL端。
+debezium opengauss connector的source端，采集表的全量数据，按照数据量划分数据写入文件，将文件路径及其表信息推送到kafka中；debezium opengauss connector的sink端，消费kafka中的消息，读取信息，将文件数据加载进内存进行数据转换，并组装为sql语句，在sink端按表并行回放，从而完成数据从openGauss迁移至sink端。
 
 ### 前置条件
 
@@ -894,7 +1422,7 @@ wal_level=logical
     （1）反向迁移sink端按表分发数据，不支持按事务分发，日志中记录的回放条数为实际成功执行的sql语句条数，openGauss分区表执行update操作时，如果更新前的数据和更新后的数据在同一分区，只会执行一条update语句，如果不在同一分区，会以事务的形式先后执行一条delete语句和一条insert语句，这种情形下日志会显示回放了两条数据；
     （2）反向迁移connector端配置连接数据库的用户需要有对应数据库下所有schema以及所有表的操作权限
     （3）反向迁移数据类型映射与变色龙的默认数据类型映射相反，当两端数据类型不一致时，只能迁移两端数据类型都支持的数据变更
-    （4）在迁移binary, varbinary, blob, tinyblob, blob, mediumblob, longblob类型时，需设置源端数据库参数dolphin.b_compatibility_mode=on
+    （4）MySQL在迁移binary, varbinary, blob, tinyblob, blob, mediumblob, longblob类型时，需设置源端数据库参数dolphin.b_compatibility_mode=on
 
 ### 部署过程
 
