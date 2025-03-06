@@ -133,11 +133,28 @@ public final class PostgresValueConverters {
 
     private static String convertNumberType(String columnName, Struct valueStruct) {
         Object object = valueStruct.get(columnName);
-        String result = null;
         if (object != null) {
-            result = object.toString();
+            String valueStr = object.toString();
+            if (!isNumeric(valueStr)) {
+                // case of NaN, Infinity
+                return addingSingleQuotation(valueStr);
+            }
+            return valueStr;
         }
-        return result;
+        return null;
+    }
+
+    private static boolean isNumeric(final String str) {
+        if (str.isEmpty()) {
+            return false;
+        }
+        final int len = str.length();
+        for (int i = 0; i < len; i++) {
+            if (!Character.isDigit(str.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static String convertIntType(String columnName, Struct valueStruct) {
@@ -374,6 +391,10 @@ public final class PostgresValueConverters {
             return null;
         }
         String valueStr = colValue.toString();
+        if (!isNumeric(valueStr)) {
+            // case of NaN, Infinity
+            return addingSingleQuotation(valueStr);
+        }
         String decimalStr = valueStr.substring(valueStr.indexOf(".") + 1);
         if (scale == -1) {
             return colValue.toString();
