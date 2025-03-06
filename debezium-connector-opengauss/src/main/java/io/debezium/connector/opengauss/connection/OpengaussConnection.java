@@ -210,6 +210,13 @@ public class OpengaussConnection extends JdbcConnection {
     }
 
     @Override
+    public Set<TableId> readTableNames(String databaseCatalog, String schemaNamePattern, String tableNamePattern,
+        String[] tableTypes)
+        throws SQLException {
+        return filterTables();
+    }
+
+    @Override
     protected void readTableColumnMetadata(Tables tables, DatabaseMetaData metadata, Map<TableId,
             List<Column>> columnsByTable) throws SQLException {
         List<String> schemaList = columnsByTable.keySet().stream().map(TableId::schema).

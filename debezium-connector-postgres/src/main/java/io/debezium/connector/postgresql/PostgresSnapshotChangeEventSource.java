@@ -818,9 +818,20 @@ public class PostgresSnapshotChangeEventSource extends
     public Optional<String> determineSnapshotSelect(
             RelationalSnapshotContext<PostgresPartition, PostgresOffsetContext> snapshotContext,
             TableId tableId) {
+        String schemaName = tableId.schema();
+        String tableName = tableId.table();
+        String fromStatement = " FROM ";
+        List<String> childs = getChildTables(schemaName, tableName, connectorConfig.getConnection());
+        if (childs.size() > 0) {
+            String childTable = childs.get(0);
+            Boolean isPartition = isPartitionTable(schemaName, childTable, connectorConfig.getConnection());
+            if (!isPartition) {
+                fromStatement += " ONLY ";
+            }
+        }
         List<String> columns = getPreparedColumnNames(schema.tableFor(tableId));
-        String query = columns.stream().collect(Collectors.joining(", ", "SELECT ", " FROM ONLY "
-                + tableId.toDoubleQuotedString()));
+        String query = columns.stream().collect(Collectors.joining(", ", "SELECT ", fromStatement
+            + tableId.toDoubleQuotedString()));
         return Optional.of(query);
     }
 
@@ -1152,13 +1163,18 @@ public class PostgresSnapshotChangeEventSource extends
         if (csvDirSize == null) {
             return;
         }
-        for (;;) {
+        boolean isPrintLog = false;
+        for (; ; ) {
             long csvDir = getCsvDir();
             if (csvDir < csvDirSize.longValue()) {
                 break;
+            } else {
+                if (!isPrintLog) {
+                    LOGGER.warn("csvDir capacity check, wait to write when satisfied");
+                    isPrintLog = true;
+                }
             }
             TimeUtil.sleep(1000);
-            LOGGER.warn("csvDir capacity check, wait to write when satisfied");
         }
     }
 
@@ -1250,6 +1266,9 @@ public class PostgresSnapshotChangeEventSource extends
     }
 
     private String getListPartitionDdl(List<PartitionInfo> partitions) {
+        if (partitions.isEmpty()) {
+            return "";
+        }
         Integer partitionIdx = 1;
         String partitionStr = "( ";
         for (PartitionInfo listPartitionInfo : partitions) {
@@ -1262,6 +1281,9 @@ public class PostgresSnapshotChangeEventSource extends
     }
 
     private String getHashPartitionDdl(List<PartitionInfo> partitions) {
+        if (partitions.isEmpty()) {
+            return "";
+        }
         Integer partitionIdx = 1;
         String partitionStr = "( ";
         for (int i = 0; i < partitions.size(); ++i) {

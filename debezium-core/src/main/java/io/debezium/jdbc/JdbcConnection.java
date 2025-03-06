@@ -80,6 +80,13 @@ public class JdbcConnection implements AutoCloseable {
     private static final int STATEMENT_CACHE_CAPACITY = 10_000;
     private final static Logger LOGGER = LoggerFactory.getLogger(JdbcConnection.class);
     private static final int CONNECTION_VALID_CHECK_TIMEOUT_IN_SEC = 3;
+    private static final String SCHEMA_QUERY = "SELECT iss.schema_name\n"
+        + "FROM information_schema.schemata iss\n"
+        + "         INNER JOIN pg_namespace pn ON pn.nspname = iss.schema_name\n" + "where iss.schema_name = 'public'\n"
+        + "   OR pn.oid > 16384";
+    private static final String TABLE_QUERY = "SELECT relname\n" + "FROM pg_class\n"
+        + "         JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid\n"
+        + "WHERE pg_namespace.nspname = '%s'\n" + "  AND (pg_class.relkind = 'r' or pg_class.relkind = 'p')";
 
     public static final String PKTABLE_SCHEM = "pktableSchem";
     public static final String PKTABLE_NAME = "pktableName";
@@ -1111,6 +1118,45 @@ public class JdbcConnection implements AutoCloseable {
             }
         }
         return tableIds;
+    }
+
+    /**
+     * Get filtered tables
+     *
+     * @return Set<TableId> the filtered tables
+     * @throws SQLException Throw SQLException while query schema or query tables occurred exception
+     */
+    protected Set<TableId> filterTables() throws SQLException {
+        Set<String> filteredSchemas = getFilterSchemas();
+        Set<TableId> tableIds = new HashSet<>();
+        for (String schema : filteredSchemas) {
+            tableIds.addAll(getTablesFromSchema(schema));
+        }
+        return tableIds;
+    }
+
+    private Set<TableId> getTablesFromSchema(String schema) throws SQLException {
+        Set<TableId> tablesInSchema = new HashSet<>();
+        try (Statement stmt = connection().createStatement();
+            ResultSet rs = stmt.executeQuery(String.format(TABLE_QUERY, schema))) {
+            while (rs.next()) {
+                String tableName = rs.getString(1);
+                TableId tableId = new TableId(null, schema, tableName);
+                tablesInSchema.add(tableId);
+            }
+        }
+        return tablesInSchema;
+    }
+
+    private Set<String> getFilterSchemas() throws SQLException {
+        Set<String> filteredSchemas = new HashSet<>();
+        try (Statement stmt = connection().createStatement(); ResultSet rs = stmt.executeQuery(SCHEMA_QUERY)) {
+            while (rs.next()) {
+                String schema = rs.getString(1);
+                filteredSchemas.add(schema);
+            }
+        }
+        return filteredSchemas;
     }
 
     /**
