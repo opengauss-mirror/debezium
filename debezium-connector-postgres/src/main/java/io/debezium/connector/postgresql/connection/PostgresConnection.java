@@ -146,6 +146,13 @@ public class PostgresConnection extends JdbcConnection {
         }
     }
 
+    @Override
+    public Set<TableId> readTableNames(String databaseCatalog, String schemaNamePattern, String tableNamePattern,
+        String[] tableTypes)
+        throws SQLException {
+        return filterTables();
+    }
+
     /**
      * Creates a Postgres connection using the supplied configuration.
      * The connector is the regular one without datatype resolution capabilities.
