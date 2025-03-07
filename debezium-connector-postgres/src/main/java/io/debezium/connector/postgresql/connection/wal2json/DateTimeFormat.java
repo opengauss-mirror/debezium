@@ -142,7 +142,7 @@ public interface DateTimeFormat {
 
         @Override
         public OffsetTime timeWithTimeZone(final String s) {
-            return format(TIME_TZ_FORMAT_PATTERN, s, () -> OffsetTime.parse(s, TIME_TZ_FORMAT)).withOffsetSameInstant(ZoneOffset.UTC);
+            return format(TIME_TZ_FORMAT_PATTERN, s, () -> OffsetTime.parse(s, TIME_TZ_FORMAT));
         }
 
         private <T> T format(final String pattern, final String s, final Supplier<T> value) {
