@@ -429,23 +429,27 @@ public class MppdbMessageDecoder extends AbstractMessageDecoder {
                 tableStructure.getTableName());
             primaryKeyColumns = connection.readTableUniqueIndices(databaseMetadata, tableId);
         }
+        Map<String, Integer> columnDimension = readColumns.stream()
+                .collect(toMap(column -> column.name(), column -> column.dimension(),
+                        (duplicateKey, newValue) -> newValue));
         List<ColumnMetaData> columns = new ArrayList<>();
         Set<String> columnNames = new HashSet<>();
         for (short i = 0; i < tableStructure.getAttrNum(); ++i) {
             String columnName = tableStructure.getColumnName().get(i);
-            int attypmod = -1;
-            final OpengaussType postgresType = typeRegistry.get(tableStructure.getOid().get(i));
-            boolean key = isColumnInPrimaryKey(schemaName, tableName, columnName, primaryKeyColumns);
             Boolean optional = columnOptionality.get(columnName);
             if (optional == null) {
                 LOGGER.warn("Column '{}' optionality could not be determined, defaulting to true", columnName);
                 optional = true;
             }
+            int attypmod = -1;
+            boolean key = isColumnInPrimaryKey(schemaName, tableName, columnName, primaryKeyColumns);
             final boolean hasDefault = columnDefaults.containsKey(columnName);
             final String defaultValueExpression = columnDefaults.getOrDefault(columnName,
                 Optional.empty()).orElse(null);
+            final OpengaussType postgresType = typeRegistry.get(tableStructure.getOid().get(i));
+            Integer dimension = columnDimension.getOrDefault(columnName, 0);
             columns.add(new ColumnMetaData(columnName, postgresType, key, optional, hasDefault,
-                defaultValueExpression, attypmod));
+                defaultValueExpression, attypmod, dimension));
             columnNames.add(columnName);
         }
         primaryKeyColumns.retainAll(columnNames);

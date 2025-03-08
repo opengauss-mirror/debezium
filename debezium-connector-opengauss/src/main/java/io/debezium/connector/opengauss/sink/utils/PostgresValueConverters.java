@@ -17,20 +17,30 @@ package io.debezium.connector.opengauss.sink.utils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.Year;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.TextStyle;
+import java.time.temporal.ChronoField;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAccessor;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
+import io.debezium.connector.opengauss.OpengaussValueConverter;
+import io.debezium.data.Json;
+import io.debezium.time.ZonedTimestamp;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
 
@@ -55,7 +65,9 @@ public final class PostgresValueConverters {
     private static final long NANOSECOND_OF_DAY = 86400000000000L;
     private static final String INVALID_TIME_FORMAT_STRING = "HH:mm:ss.SSSSSSSSS";
     private static final String SINGLE_QUOTE = "'";
-    private static final String BACKSLASH = "\\\\";
+    private static final String DOUBLE_QUOTE = "\"";
+    private static final String DOUBLE_BACKSLASH = "\\\\";
+    private static final String SINGLE_BACKSLASH = "\\";
     private static final HashMap<String, ValueConverter> dataTypeConverterMap = new HashMap<String, ValueConverter>() {
         {
             put("integer", (columnName, value) -> convertNumberType(columnName, value));
@@ -74,6 +86,7 @@ public final class PostgresValueConverters {
             put("time without time zone", (columnName, value) -> convertTime(columnName, value));
             put("real", ((columnName, value) -> convertNumberType(columnName, value)));
             put("timestamp without time zone", ((columnName, value) -> convertDatetimeAndTimestamp(columnName, value)));
+            put("timestamp with time zone", ((columnName, value) -> convertTimestampTz(columnName, value)));
             put("bytea", ((columnName, value) -> convertBytea(columnName, value)));
             put("lseg", ((columnName, value) -> convertByte(columnName, value)));
             put("box", ((columnName, value) -> convertByte(columnName, value)));
@@ -85,7 +98,8 @@ public final class PostgresValueConverters {
             put("tsvector", ((columnName, value) -> convertByte(columnName, value)));
             put("tsquery", ((columnName, value) -> convertByte(columnName, value)));
             put("ARRAY", ((columnName, value) -> convertArray(columnName, value)));
-            put("USER-DEFINED", ((columnName, value) -> convertByte(columnName, value)));
+            put("USER-DEFINED", ((columnName, value) -> convertUserDefined(columnName, value)));
+            put("oid", ((columnName, value) -> convertOid(columnName, value)));
         }
     };
     private static final String IO_DEBEZIUM_TIME_DATE = "io.debezium.time.Date";
@@ -97,6 +111,7 @@ public final class PostgresValueConverters {
     private static final String IO_DEBEZIUM_TIME_TIME = "io.debezium.time.Time";
     private static final String IO_DEBEZIUM_TIME_NANO_TIMESTAMP = "io.debezium.time.NanoTimestamp";
     private static final String IO_DEBEZIUM_TIME_NANO_TIME = "io.debezium.time.NanoTime";
+    private static final String JSONB_SUFFIX = "::jsonb";
 
     /**
      * Get value
@@ -177,6 +192,29 @@ public final class PostgresValueConverters {
         return result;
     }
 
+    private static String convertTimestampTz(String columnName, Struct valueStruct) {
+        Field field = valueStruct.schema().field(columnName);
+        String schemaName = field.schema().name();
+        Object value = valueStruct.get(columnName);
+        if (value == null) {
+            return null;
+        }
+        if (ZonedTimestamp.SCHEMA_NAME.equals(schemaName)) {
+            String timeStr = valueStruct.getString(columnName);
+            ZonedDateTime bcDateTime = ZonedDateTime.parse(timeStr);
+            ZonedDateTime zonedDateTime = bcDateTime.withZoneSameInstant(ZoneId.of("Asia/Shanghai"));
+            DateTimeFormatter bcFormatter = new DateTimeFormatterBuilder()
+                    .appendValue(ChronoField.YEAR_OF_ERA)
+                    .appendLiteral('-')
+                    .appendPattern("MM-dd HH:mm:ss")
+                    .appendLiteral(' ')
+                    .appendText(ChronoField.ERA, TextStyle.SHORT)
+                    .toFormatter(Locale.ENGLISH);
+            return addingSingleQuotation(bcFormatter.format(zonedDateTime));
+        }
+        return addingSingleQuotation(value);
+    }
+
     private static String convertDatetimeAndTimestamp(String columnName, Struct valueStruct) {
         Field field = valueStruct.schema().field(columnName);
         String schemaName = field.schema().name();
@@ -185,6 +223,18 @@ public final class PostgresValueConverters {
             return null;
         }
         Instant instant = convertDbzDateTime(value, schemaName);
+        if (instant == null) {
+            return null;
+        }
+        if (OpengaussValueConverter.POSITIVE_INFINITY_INSTANT.equals(instant)) {
+            return addingSingleQuotation(OpengaussValueConverter.POSITIVE_INFINITY);
+        }
+        if (OpengaussValueConverter.NEGATIVE_INFINITY_INSTANT.equals(instant)) {
+            return addingSingleQuotation(OpengaussValueConverter.NEGATIVE_INFINITY);
+        }
+        if (isBeforeChrist(instant)) {
+            return addingSingleQuotation(resolveTimestampBeforeChrist(instant, schemaName));
+        }
         DateTimeFormatter dateTimeFormatter;
         if ("io.debezium.time.ZonedTimestamp".equals(schemaName)) {
             dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS")
@@ -195,6 +245,29 @@ public final class PostgresValueConverters {
         return addingSingleQuotation(dateTimeFormatter.format(instant));
     }
 
+    // -4712-01-01 00:00:00 -> 4713-01-01 00:00:00 BC
+    private static String resolveTimestampBeforeChrist(Instant instant, String schemaName) {
+        DateTimeFormatter bcFormatter = new DateTimeFormatterBuilder()
+                .appendValue(ChronoField.YEAR_OF_ERA)
+                .appendLiteral('-')
+                .appendPattern("MM-dd HH:mm:ss.SSSSSS")
+                .appendLiteral(' ')
+                .appendText(ChronoField.ERA, TextStyle.SHORT)
+                .toFormatter(Locale.ENGLISH);
+        if (ZonedTimestamp.SCHEMA_NAME.equals(schemaName)) {
+            bcFormatter = bcFormatter.withZone(ZoneId.of("Asia/Shanghai"));
+        } else {
+            bcFormatter = bcFormatter.withZone(ZoneOffset.UTC);
+        }
+        return bcFormatter.format(instant);
+    }
+
+    private static boolean isBeforeChrist(Instant instant) {
+        Year year = Year.from(instant.atZone(ZoneOffset.UTC));
+        // If the year is less than or equal to 0, it is BC (Before Christ).
+        return year.getValue() <= 0;
+    }
+
     private static String convertDate(String columnName, Struct valueStruct) {
         Field field = valueStruct.schema().field(columnName);
         String schemaName = field.schema().name();
@@ -203,9 +276,38 @@ public final class PostgresValueConverters {
             return null;
         }
         Instant instant = convertDbzDateTime(object, schemaName);
+        if (instant == null) {
+            return null;
+        }
+        LocalDate localDate = instant.atZone(ZoneOffset.UTC).toLocalDate();
+        if (OpengaussValueConverter.POSITIVE_INFINITY_LOCAL_DATE.equals(localDate)) {
+            return addingSingleQuotation(OpengaussValueConverter.POSITIVE_INFINITY);
+        }
+        if (OpengaussValueConverter.NEGATIVE_INFINITY_LOCAL_DATE.equals(localDate)) {
+            return addingSingleQuotation(OpengaussValueConverter.NEGATIVE_INFINITY);
+        }
+        if (isBeforeChrist(instant)) {
+            return addingSingleQuotation(resolveDateBeforeChrist(instant));
+        }
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
                 .withZone(ZoneId.of("Asia/Shanghai"));
-        return addingSingleQuotation(dateTimeFormatter.format(instant));
+        String formatDate = dateTimeFormatter.format(instant);
+        if (formatDate.startsWith("+")) {
+            formatDate = formatDate.substring(1);
+        }
+        return addingSingleQuotation(formatDate);
+    }
+
+    // -4712-01-01 -> 4713-01-01 BC
+    private static String resolveDateBeforeChrist(Instant instant) {
+        DateTimeFormatter bcFormatter = new DateTimeFormatterBuilder()
+                .appendValue(ChronoField.YEAR_OF_ERA)
+                .appendLiteral('-')
+                .appendPattern("MM-dd")
+                .appendLiteral(' ')
+                .appendText(ChronoField.ERA, TextStyle.SHORT)
+                .toFormatter(Locale.ENGLISH);
+        return bcFormatter.withZone(ZoneId.of("Asia/Shanghai")).format(instant);
     }
 
     private static String convertTime(String columnName, Struct valueStruct) {
@@ -225,7 +327,7 @@ public final class PostgresValueConverters {
             }
         }
         Instant instant = convertDbzDateTime(object, schemaName);
-        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneOffset.UTC);
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss.SSSSSS").withZone(ZoneOffset.UTC);
         return addingSingleQuotation(dateTimeFormatter.format(instant));
     }
 
@@ -352,6 +454,22 @@ public final class PostgresValueConverters {
         return "io.debezium.data.geometry.Geometry".equals(schemaName);
     }
 
+    private static String convertOid(String columnName, Struct valueStruct) {
+        Object object = valueStruct.get(columnName);
+        if (object == null) {
+            return null;
+        }
+        if (object instanceof Number) {
+            return String.valueOf(object);
+        }
+        if (object instanceof byte[]) {
+            byte[] bytes = (byte[]) object;
+            String byteStr = new String(bytes, StandardCharsets.UTF_8);
+            return addingSingleQuotation(byteStr);
+        }
+        return object.toString();
+    }
+
     private static String convertBytea(String columnName, Struct valueStruct) {
         byte[] bytes = valueStruct.getBytes(columnName);
         String result = null;
@@ -360,6 +478,26 @@ public final class PostgresValueConverters {
             result = SINGLE_QUOTE + "\\x" + hexString + SINGLE_QUOTE;
         }
         return result;
+    }
+
+    private static String convertUserDefined(String columnName, Struct valueStruct) {
+        Object object = valueStruct.get(columnName);
+        if (object == null) {
+            return null;
+        }
+        if (object instanceof ByteBuffer) {
+            byte[] bytes = valueStruct.getBytes(columnName);
+            return addingSingleQuotation(new String(bytes, StandardCharsets.UTF_8));
+        }
+        if (object instanceof byte[]) {
+            byte[] bytes = (byte[]) object;
+            String byteStr = new String(bytes, StandardCharsets.UTF_8);
+            return addingSingleQuotation(byteStr);
+        }
+        if (object instanceof String) {
+            return addingSingleQuotation(object);
+        }
+        return object.toString();
     }
 
     private static String convertByte(String columnName, Struct valueStruct) {
@@ -374,15 +512,45 @@ public final class PostgresValueConverters {
 
     private static String convertChar(String columnName, Struct value) {
         Object object = value.get(columnName);
-        return object == null ? null : addingSingleQuotation(object);
+        if (object == null) {
+            return null;
+        }
+        if (object instanceof ByteBuffer) {
+            return convertByte(columnName, value);
+        }
+        return addingSingleQuotation(object);
     }
 
     private static String convertArray(String columnName, Struct value) {
-        String arrayStr = convertChar(columnName, value);
-        if (arrayStr == null) {
-            return arrayStr;
+        Object object = value.get(columnName);
+        if (object == null) {
+            return null;
         }
-        return arrayStr.replace("[", "{").replace("]", "}");
+        if (object instanceof String) {
+            return addingSingleQuotation(object);
+        }
+        Field field = value.schema().field(columnName);
+        String schemaName = field.schema().valueSchema().name();
+        List<Object> jsonArray = value.getArray(columnName);
+        if (Json.LOGICAL_NAME.equals(schemaName)) {
+            StringBuilder sb = new StringBuilder("ARRAY[");
+            for (int i = 0; i < jsonArray.size(); i++) {
+                sb.append(addingSingleQuotation(jsonArray.get(i))).append(JSONB_SUFFIX);
+                if (i != jsonArray.size() - 1) {
+                    sb.append(",");
+                }
+            }
+            return sb.append("]").toString();
+        }
+        StringBuilder sb = new StringBuilder("{");
+        for (int i = 0; i < jsonArray.size(); i++) {
+            sb.append(escapeSpecialChar(jsonArray.get(i).toString()));
+            if (i != jsonArray.size() - 1) {
+                sb.append(",");
+            }
+        }
+        sb.append("}");
+        return SINGLE_QUOTE + sb + SINGLE_QUOTE;
     }
 
     private static String convertNumeric(String columnName, Struct value, Integer scale) {
@@ -447,9 +615,16 @@ public final class PostgresValueConverters {
         return BIT_CHARACTER + addingSingleQuotation(sb.toString());
     }
 
+    private static String escapeSpecialChar(String data) {
+        String escapeStr = data.replace(SINGLE_QUOTE, SINGLE_QUOTE + SINGLE_QUOTE)
+                .replace(SINGLE_BACKSLASH, DOUBLE_BACKSLASH)
+                .replace(DOUBLE_QUOTE, SINGLE_BACKSLASH + DOUBLE_QUOTE);
+        return DOUBLE_QUOTE + escapeStr + DOUBLE_QUOTE;
+    }
+
     private static String addingSingleQuotation(Object originValue) {
         return SINGLE_QUOTE + originValue.toString()
                 .replaceAll(SINGLE_QUOTE, SINGLE_QUOTE + SINGLE_QUOTE)
-                .replaceAll(BACKSLASH, BACKSLASH + BACKSLASH) + SINGLE_QUOTE;
+                .replaceAll(DOUBLE_BACKSLASH, DOUBLE_BACKSLASH + DOUBLE_BACKSLASH) + SINGLE_QUOTE;
     }
 }

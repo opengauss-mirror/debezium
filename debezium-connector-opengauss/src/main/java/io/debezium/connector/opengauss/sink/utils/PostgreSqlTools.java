@@ -264,6 +264,8 @@ public class PostgreSqlTools extends SqlTools {
             valueList.add(columnName + JSON_PREFIX + "=" + singleValue);
         } else if (columnType.equals("point") || columnType.equals("polygon")) {
             valueList.add(columnName + POINT_POLYGON_PREFIX + "=" + singleValue);
+        } else if (columnType.equals("USER-DEFINED") || columnType.equals("xml")) {
+            LOGGER.info("The data type is {}, and the data is {}", columnType, singleValue);
         } else {
             valueList.add(columnName + " = " + singleValue);
         }

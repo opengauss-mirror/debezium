@@ -37,11 +37,16 @@ import io.debezium.enums.ErrorCode;
  * @author Chris Cranford
  */
 public abstract class AbstractColumnValue<T> implements ReplicationMessage.ColumnValue<T> {
-
     private static final Logger LOGGER = LoggerFactory.getLogger(AbstractColumnValue.class);
 
     @Override
     public LocalDate asLocalDate() {
+        if ("infinity".equalsIgnoreCase(asString())) {
+            return OpengaussValueConverter.POSITIVE_INFINITY_LOCAL_DATE;
+        }
+        if ("-infinity".equalsIgnoreCase(asString())) {
+            return OpengaussValueConverter.NEGATIVE_INFINITY_LOCAL_DATE;
+        }
         return DateTimeFormat.get().date(asString());
     }
 

@@ -96,9 +96,18 @@ public class OpengaussValueConverter extends JdbcValueConverters {
     public static final OffsetDateTime POSITIVE_INFINITY_OFFSET_DATE_TIME = OffsetDateTime.ofInstant(Conversions.toInstantFromMillis(PGStatement.DATE_POSITIVE_INFINITY),
             ZoneOffset.UTC);
 
+    /**
+     * The maximum value of a {@link LocalDate}
+     */
+    public static final LocalDate POSITIVE_INFINITY_LOCAL_DATE = POSITIVE_INFINITY_LOCAL_DATE_TIME.toLocalDate();
     public static final Timestamp NEGATIVE_INFINITY_TIMESTAMP = new Timestamp(PGStatement.DATE_NEGATIVE_INFINITY);
     public static final Instant NEGATIVE_INFINITY_INSTANT = Conversions.toInstantFromMicros(PGStatement.DATE_NEGATIVE_INFINITY);
     public static final LocalDateTime NEGATIVE_INFINITY_LOCAL_DATE_TIME = LocalDateTime.ofInstant(NEGATIVE_INFINITY_INSTANT, ZoneOffset.UTC);
+
+    /**
+     * The minimum value of a {@link LocalDate}
+     */
+    public static final LocalDate NEGATIVE_INFINITY_LOCAL_DATE = NEGATIVE_INFINITY_LOCAL_DATE_TIME.toLocalDate();
     public static final OffsetDateTime NEGATIVE_INFINITY_OFFSET_DATE_TIME = OffsetDateTime.ofInstant(Conversions.toInstantFromMillis(PGStatement.DATE_NEGATIVE_INFINITY),
             ZoneOffset.UTC);
 
@@ -236,10 +245,19 @@ public class OpengaussValueConverter extends JdbcValueConverters {
             case OgOid.BYTEA:
                 return binaryMode.getSchema();
             case OgOid.INT2_ARRAY:
+                if (column.dimension() != null && column.dimension() > 1) {
+                    return SchemaBuilder.string();
+                }
                 return SchemaBuilder.array(SchemaBuilder.OPTIONAL_INT16_SCHEMA);
             case OgOid.INT4_ARRAY:
+                if (column.dimension() != null && column.dimension() > 1) {
+                    return SchemaBuilder.string();
+                }
                 return SchemaBuilder.array(SchemaBuilder.OPTIONAL_INT32_SCHEMA);
             case OgOid.INT8_ARRAY:
+                if (column.dimension() != null && column.dimension() > 1) {
+                    return SchemaBuilder.string();
+                }
                 return SchemaBuilder.array(SchemaBuilder.OPTIONAL_INT64_SCHEMA);
             case OgOid.CHAR_ARRAY:
             case OgOid.VARCHAR_ARRAY:
@@ -255,12 +273,24 @@ public class OpengaussValueConverter extends JdbcValueConverters {
             case OgOid.INT4RANGE_ARRAY:
             case OgOid.NUM_RANGE_ARRAY:
             case OgOid.INT8RANGE_ARRAY:
+                if (column.dimension() != null && column.dimension() > 1) {
+                    return SchemaBuilder.string();
+                }
                 return SchemaBuilder.array(SchemaBuilder.OPTIONAL_STRING_SCHEMA);
             case OgOid.NUMERIC_ARRAY:
+                if (column.dimension() != null && column.dimension() > 1) {
+                    return SchemaBuilder.string();
+                }
                 return SchemaBuilder.array(numericSchema(column).optional().build());
             case OgOid.FLOAT4_ARRAY:
+                if (column.dimension() != null && column.dimension() > 1) {
+                    return SchemaBuilder.string();
+                }
                 return SchemaBuilder.array(Schema.OPTIONAL_FLOAT32_SCHEMA);
             case OgOid.FLOAT8_ARRAY:
+                if (column.dimension() != null && column.dimension() > 1) {
+                    return SchemaBuilder.string();
+                }
                 return SchemaBuilder.array(Schema.OPTIONAL_FLOAT64_SCHEMA);
             case OgOid.BOOL_ARRAY:
                 return SchemaBuilder.array(SchemaBuilder.OPTIONAL_BOOLEAN_SCHEMA);
@@ -273,6 +303,9 @@ public class OpengaussValueConverter extends JdbcValueConverters {
                 return SchemaBuilder.array(Uuid.builder().optional().build());
             case OgOid.JSONB_ARRAY:
             case OgOid.JSON_ARRAY:
+                if (column.dimension() != null && column.dimension() > 1) {
+                    return SchemaBuilder.string();
+                }
                 return SchemaBuilder.array(Json.builder().optional().build());
             case OgOid.TIME_ARRAY:
                 return SchemaBuilder.array(MicroTime.builder().optional().build());
@@ -946,12 +979,17 @@ public class OpengaussValueConverter extends JdbcValueConverters {
             }
             else if (data instanceof PgArray) {
                 try {
-                    final Object[] values = (Object[]) ((PgArray) data).getArray();
-                    final List<Object> converted = new ArrayList<>(values.length);
-                    for (Object value : values) {
-                        converted.add(elementConverter.convert(resolveArrayValue(value, elementType)));
+                    // If the dimension of the array is greater than 1, convert it to a string.
+                    if (column.dimension() != null && column.dimension() > 1) {
+                        r.deliver(((PgArray) data).toString());
+                    } else {
+                        final Object[] values = (Object[]) ((PgArray) data).getArray();
+                        final List<Object> converted = new ArrayList<>(values.length);
+                        for (Object value : values) {
+                            converted.add(elementConverter.convert(resolveArrayValue(value, elementType)));
+                        }
+                        r.deliver(converted);
                     }
-                    r.deliver(converted);
                 }
                 catch (SQLException e) {
                     throw new ConnectException("Failed to read value of array " + column.name());
