@@ -9,7 +9,7 @@ import io.debezium.connector.postgresql.PostgresPartition;
 import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.source.spi.ChangeEventSource;
 import io.debezium.relational.RelationalSnapshotChangeEventSource.RelationalSnapshotContext;
-import io.debezium.relational.TableId;
+import io.debezium.relational.Table;
 
 /**
  * create postgresql DataEventsForTable into the reference entity
@@ -21,7 +21,7 @@ public class PostgresDataEventsParam {
     private final ChangeEventSource.ChangeEventSourceContext sourceContext;
     private final RelationalSnapshotContext<PostgresPartition, PostgresOffsetContext> snapshotContext;
     private final EventDispatcher.SnapshotReceiver snapshotReceiver;
-    private final TableId tableId;
+    private final Table table;
     private final boolean isLastTable;
 
     /**
@@ -31,18 +31,18 @@ public class PostgresDataEventsParam {
      * @param snapshotContext RelationalSnapshotChangeEventSource.RelationalSnapshotContext<OpengaussPartition,
      *        OpengaussOffsetContext>
      * @param snapshotReceiver EventDispatcher.SnapshotReceiver
-     * @param tableId TableId
+     * @param table table
      * @param isLastTable boolean
      */
     public PostgresDataEventsParam(ChangeEventSource.ChangeEventSourceContext sourceContext,
                                    RelationalSnapshotContext<PostgresPartition, PostgresOffsetContext> snapshotContext,
                                    EventDispatcher.SnapshotReceiver snapshotReceiver,
-                                   TableId tableId,
+                                   Table table,
                                    boolean isLastTable) {
         this.sourceContext = sourceContext;
         this.snapshotContext = snapshotContext;
         this.snapshotReceiver = snapshotReceiver;
-        this.tableId = tableId;
+        this.table = table;
         this.isLastTable = isLastTable;
     }
 
@@ -78,8 +78,8 @@ public class PostgresDataEventsParam {
      *
      * @return TableId
      */
-    public TableId getTableId() {
-        return tableId;
+    public Table getTable() {
+        return table;
     }
 
     /**
