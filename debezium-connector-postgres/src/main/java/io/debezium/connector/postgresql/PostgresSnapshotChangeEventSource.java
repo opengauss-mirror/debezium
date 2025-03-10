@@ -107,7 +107,6 @@ public class PostgresSnapshotChangeEventSource extends
     private final SlotState startingSlotInfo;
     private final Object messLock = new Object();
     private final Object dirLock = new Object();
-    private final Object lsnLock = new Object();
 
     private Map<String, Set<String>> migrationSchemaTables;
     private String csvPath;
@@ -300,7 +299,7 @@ public class PostgresSnapshotChangeEventSource extends
 
     private void readAndSendXlogLocation(Statement statement, PostgresDataEventsParam dataEventsParam)
             throws SQLException, InterruptedException {
-        TableId tableId = dataEventsParam.getTableId();
+        TableId tableId = dataEventsParam.getTable().id();
         LOGGER.info("start get and write xloglocation for table {}.{}", tableId.schema(), tableId.table());
         String xlogLocation = "";
         String getSnapshotStmt =
@@ -315,7 +314,7 @@ public class PostgresSnapshotChangeEventSource extends
         RelationalSnapshotContext<PostgresPartition, PostgresOffsetContext> snapshotContext
                 = dataEventsParam.getSnapshotContext();
         EventDispatcher.SnapshotReceiver snapshotReceiver = dataEventsParam.getSnapshotReceiver();
-        synchronized (lsnLock) {
+        synchronized (messLock) {
             snapshotContext.offset.event(tableId, getClock().currentTime());
             ChangeRecordEmitter xlogEmitter = new PostgresXlogLocationEmitter(snapshotContext.partition,
                     snapshotContext.offset, getClock(), xlogLocation);
@@ -597,9 +596,7 @@ public class PostgresSnapshotChangeEventSource extends
                                     RelationalSnapshotContext<PostgresPartition, PostgresOffsetContext> snapshotContext)
             throws Exception {
         initVariables();
-        EventDispatcher.SnapshotReceiver receiver = dispatcher.getFullSnapshotChangeEventReceiver();
         List<String> schemaList = appointSchemas();
-        pushTruncateMessageForTable(snapshotContext, receiver, schemaList);
         tryStartingSnapshot(snapshotContext);
         Set<TableId> tableIds = snapshotContext.capturedTables.stream().filter(o -> schemaList.contains(o.schema()))
                 .collect(Collectors.toSet());
@@ -616,6 +613,7 @@ public class PostgresSnapshotChangeEventSource extends
             pgProcessCommitter = new PgProcessCommitter(connectorConfig, PgProcessCommitter.FULL_PROCESS_SUFFIX);
             tableNameList = new ArrayList<>();
         }
+        EventDispatcher.SnapshotReceiver receiver = dispatcher.getFullSnapshotChangeEventReceiver();
         for (Iterator<TableId> tableIdIterator = tableIds.iterator(); tableIdIterator.hasNext();) {
             final TableId tableId = tableIdIterator.next();
             boolean isLastTable = !tableIdIterator.hasNext();
@@ -627,7 +625,7 @@ public class PostgresSnapshotChangeEventSource extends
             LOGGER.debug("Snapshotting table {}", tableId);
             poolExecutor.execute(() -> {
                 PostgresDataEventsParam dataEventsParam = new PostgresDataEventsParam(sourceContext, snapshotContext,
-                        receiver, tableId, isLastTable);
+                        receiver, snapshotContext.tables.forTable(tableId), isLastTable);
                 createDataEventsForTable(dataEventsParam, tableOrder.getAndIncrement(), tableCount);
             });
             if (connectorConfig.isCommitProcess()) {
@@ -670,7 +668,7 @@ public class PostgresSnapshotChangeEventSource extends
     private void dispatchIndexTask(EventDispatcher.SnapshotReceiver receiver) throws InterruptedException {
         PostgresTableIndexTask indexTask = indexTaskQueue.take();
         PostgresDataEventsParam postgresDataEventsParam = indexTask.getPostgresDataEventsParam();
-        TableId oldtableId = postgresDataEventsParam.getTableId();
+        TableId oldtableId = postgresDataEventsParam.getTable().id();
         for (String indexDdl : indexTask.getTableIdxDdls()) {
             LOGGER.info("indexDdl: {}", indexDdl);
             synchronized (messLock) {
@@ -836,7 +834,7 @@ public class PostgresSnapshotChangeEventSource extends
     }
 
     private void createDataEventsForTable(PostgresDataEventsParam dataEventsParam, int tableOrder, int tableCount) {
-        TableId tableId = dataEventsParam.getTableId();
+        TableId tableId = dataEventsParam.getTable().id();
         RelationalSnapshotContext<PostgresPartition, PostgresOffsetContext> snapshotContext
                 = dataEventsParam.getSnapshotContext();
         LOGGER.info("Exporting data from table '{}' ({} of {} tables)", tableId, tableOrder, tableCount);
@@ -904,7 +902,7 @@ public class PostgresSnapshotChangeEventSource extends
 
     private void createIndexEventsForTable(PostgresDataEventsParam dataEventsParam, Connection connection)
             throws IOException, InterruptedException, SQLException {
-        TableId tableId = dataEventsParam.getTableId();
+        TableId tableId = dataEventsParam.getTable().id();
         String schemaName = tableId.schema();
         String tableName = tableId.table();
 
@@ -978,7 +976,7 @@ public class PostgresSnapshotChangeEventSource extends
     private int processData(PostgresDataEventsParam dataEventsParam, ResultSet rs,
                             PostgresPageSliceParam pageSliceParam)
             throws InterruptedException, IOException, SQLException {
-        TableId tableId = dataEventsParam.getTableId();
+        TableId tableId = dataEventsParam.getTable().id();
         int rows = 0;
         if (rs.next()) {
             rows = traverseResultSet(dataEventsParam, rs, pageSliceParam);
@@ -994,7 +992,8 @@ public class PostgresSnapshotChangeEventSource extends
                                   PostgresPageSliceParam pageSliceParam)
             throws SQLException, InterruptedException, IOException {
         boolean lastRecordInRst = false;
-        TableId tableId = dataEventsParam.getTableId();
+        Table table = dataEventsParam.getTable();
+        TableId tableId = table.id();
         final OptionalLong rowCountForTable = rowCountForTable(tableId);
         ChangeEventSourceContext sourceContext = dataEventsParam.getSourceContext();
         int rows = 0;
@@ -1003,10 +1002,8 @@ public class PostgresSnapshotChangeEventSource extends
         int pageRows = pageSliceParam.getPageRows();
         int totalSlice = pageSliceParam.getTotalSlice();
         double spacePerSlice = pageSliceParam.getSpacePerSlice();
-        RelationalSnapshotContext<PostgresPartition, PostgresOffsetContext> snapshotContext
-                = dataEventsParam.getSnapshotContext();
         List<String> columnStringArr = new ArrayList<>();
-        ColumnUtils.ColumnArray columnArray = ColumnUtils.toArray(rs, snapshotContext.tables.forTable(tableId));
+        ColumnUtils.ColumnArray columnArray = ColumnUtils.toArray(rs, table);
         Threads.Timer logTimer = getTableScanLogTimer();
         while (!lastRecordInRst) {
             if (!sourceContext.isRunning()) {
@@ -1014,7 +1011,7 @@ public class PostgresSnapshotChangeEventSource extends
             }
             rows++;
             realTotalRows++;
-            columnStringArr.add(columnToString(rs, columnArray, snapshotContext.tables.forTable(tableId)));
+            columnStringArr.add(columnToString(rs, columnArray, table));
             if (realTotalRows > subscript * pageRows) {
                 writeAndSendData(dataEventsParam, columnStringArr, subscript, totalSlice, spacePerSlice);
                 if (subscript % MigrationUtil.LOG_REPORT_INTERVAL_SLICES == 0) {
@@ -1039,6 +1036,8 @@ public class PostgresSnapshotChangeEventSource extends
         writeAndSendData(dataEventsParam, columnStringArr, subscript, totalSlice, spacePerSlice);
         LOGGER.info("generate {} slices for table {}, total {} rows", subscript, tableId.table(), realTotalRows);
 
+        RelationalSnapshotContext<PostgresPartition, PostgresOffsetContext> snapshotContext
+                = dataEventsParam.getSnapshotContext();
         synchronized (messLock) {
             ChangeRecordEmitter changeRecordEmitter = getFilePathRecordEmitter(snapshotContext,
                     tableId, new Object[]{"", subscript, totalSlice, spacePerSlice});
@@ -1107,7 +1106,7 @@ public class PostgresSnapshotChangeEventSource extends
     private void writeAndSendData(PostgresDataEventsParam dataEventsParam, List<String> columnStringArr,
                                   Integer subscript, int totalSlice, double spacePerSlice)
             throws IOException, InterruptedException {
-        TableId tableId = dataEventsParam.getTableId();
+        TableId tableId = dataEventsParam.getTable().id();
         RelationalSnapshotContext<PostgresPartition, PostgresOffsetContext> snapshotContext
                 = dataEventsParam.getSnapshotContext();
         EventDispatcher.SnapshotReceiver snapshotReceiver = dataEventsParam.getSnapshotReceiver();
@@ -1274,6 +1273,7 @@ public class PostgresSnapshotChangeEventSource extends
         for (PartitionInfo listPartitionInfo : partitions) {
             partitionStr += String.format("partition p%s values %s," + LINESEP,
                     partitionIdx, listPartitionInfo.getListPartitionValue());
+            partitionIdx += 1;
         }
         partitionStr = partitionStr.substring(0, partitionStr.lastIndexOf(","));
         partitionStr += ")";
@@ -1288,6 +1288,7 @@ public class PostgresSnapshotChangeEventSource extends
         String partitionStr = "( ";
         for (int i = 0; i < partitions.size(); ++i) {
             partitionStr += String.format("partition p%s," + LINESEP, partitionIdx);
+            partitionIdx += 1;
         }
         partitionStr = partitionStr.substring(0, partitionStr.lastIndexOf(","));
         partitionStr += ")";
