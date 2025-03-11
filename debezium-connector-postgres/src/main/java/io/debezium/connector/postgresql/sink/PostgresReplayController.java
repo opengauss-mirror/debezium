@@ -110,7 +110,7 @@ public class PostgresReplayController implements ReplayController {
 
     private Map<ObjectEnum, List<ProgressInfo>> objectProgressMap;
     private int threadCount;
-    private int runCount;
+    private int runCount = 0;
     private ConnectionInfo databaseConnection;
     private SqlTools sqlTools;
     private PgProcessCommitter failSqlCommitter;
@@ -496,13 +496,6 @@ public class PostgresReplayController implements ReplayController {
         if (runnableMap.containsKey(tableFullName)) {
             PostgresDataReplayWorkThread workThread = threadList.get(runnableMap.get(tableFullName));
             workThread.addData(sinkDataRecord);
-            return;
-        }
-        int relyThreadIndex = getRelyIndex(tableFullName);
-        if (relyThreadIndex != -1) {
-            PostgresDataReplayWorkThread workThread = threadList.get(relyThreadIndex);
-            workThread.addData(sinkDataRecord);
-            runnableMap.put(tableFullName, relyThreadIndex);
             return;
         }
         PostgresDataReplayWorkThread workThread;
