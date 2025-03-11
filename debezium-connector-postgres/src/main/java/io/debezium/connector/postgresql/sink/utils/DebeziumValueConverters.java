@@ -322,15 +322,15 @@ public final class DebeziumValueConverters {
         if (instant == null) {
             return null;
         }
-        if (isBeforeChrist(instant)) {
-            return addingSingleQuotation(resolveDateBeforeChrist(instant));
-        }
         LocalDate localDate = instant.atZone(ZoneOffset.UTC).toLocalDate();
         if (PostgresValueConverter.POSITIVE_INFINITY_LOCAL_DATE.equals(localDate)) {
             return addingSingleQuotation(PostgresValueConverter.POSITIVE_INFINITY);
         }
         if (PostgresValueConverter.NEGATIVE_INFINITY_LOCAL_DATE.equals(localDate)) {
             return addingSingleQuotation(PostgresValueConverter.NEGATIVE_INFINITY);
+        }
+        if (isBeforeChrist(instant)) {
+            return addingSingleQuotation(resolveDateBeforeChrist(instant));
         }
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
                 .withZone(ZoneId.of("Asia/Shanghai"));

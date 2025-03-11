@@ -37,6 +37,12 @@ import java.util.regex.Pattern;
  */
 public class PostgresDdlParser implements DdlParser {
     private static final Logger LOGGER = LoggerFactory.getLogger(PostgresDdlParser.class);
+    private static final String PG_CATALOG_PG_SYSTIMESTAMP = "pg_catalog.pg_systimestamp()";
+    private static final String CURRENT_TIMESTAMP = "CURRENT_TIMESTAMP";
+    private static final String PG_CATALOG_TEXT_DATE_NOW = "pg_catalog.text_date('now'::text)";
+    private static final String CURRENT_DATE = "CURRENT_DATE";
+    private static final String SCHEMA_NAME = "schemaname";
+
     private final Pattern punctuation = Pattern.compile("\\p{P}");
     private final Map<String, String> schemaMappingMap;
     private String identifier;
@@ -252,7 +258,7 @@ public class PostgresDdlParser implements DdlParser {
 
     private void expandJsonToDottedName(StringBuilder result, String jsonKey, String jsonValue) {
         JSONObject json = JSONObject.parseObject(jsonValue);
-        String schemaName = findStringInJsonObject(json, "schemaname", true);
+        String schemaName = findStringInJsonObject(json, SCHEMA_NAME, true);
         StringBuilder fullName = new StringBuilder();
         if (!isEmpty(schemaName)) {
             String newSchema = schemaMappingMap.getOrDefault(schemaName, schemaName);
@@ -364,6 +370,14 @@ public class PostgresDdlParser implements DdlParser {
             String newClausePrefix = sequenceClausePrefix + schemaMappingMap.getOrDefault(oldSchema, oldSchema);
             return jsonValue.replace(oldClausePrefix, newClausePrefix);
         }
+        // Function pg_catalog.pg_systimestamp() does not exist in PostgreSQL, so replace it with CURRENT_TIMESTAMP
+        if (PG_CATALOG_PG_SYSTIMESTAMP.equals(jsonValue)) {
+            return jsonValue.replace(PG_CATALOG_PG_SYSTIMESTAMP, CURRENT_TIMESTAMP);
+        }
+        // function pg_catalog.text_date(text) does not exist in PostgreSQL, so replace it with CURRENT_DATE
+        if (PG_CATALOG_TEXT_DATE_NOW.equals(jsonValue)) {
+            return jsonValue.replace(PG_CATALOG_TEXT_DATE_NOW, CURRENT_DATE);
+        }
         return jsonValue;
     }
 
@@ -391,7 +405,7 @@ public class PostgresDdlParser implements DdlParser {
         if (isArray) {
             decorator = "[]";
         }
-        String schema = findStringInJsonObject(json, "schemaname", true);
+        String schema = findStringInJsonObject(json, SCHEMA_NAME, true);
         String typename = findStringInJsonObject(json, "typename", false);
         String newTypeName = typeNameMappingMap.getOrDefault(typename, typename);
         if (schema == null) {
@@ -399,7 +413,8 @@ public class PostgresDdlParser implements DdlParser {
         } else if (schema.equals("")) {
             result.append(newTypeName);
         } else {
-            result.append(schema).append(".").append(newTypeName);
+            String newSchema = schemaMappingMap.getOrDefault(schema, schema);
+            result.append(newSchema).append(".").append(newTypeName);
         }
         String typmodstr = findStringInJsonObject(json, "typmod", true);
         result.append(typmodstr == null ? "" : typmodstr).append(decorator);
