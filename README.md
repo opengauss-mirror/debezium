@@ -87,7 +87,7 @@ debezium-connector-openngauss/target/debezium-connector-opengauss-1.8.1.Final-pl
 
 ### Debezium postgres connector
 
-基于原始的debezium开源软件的debezium postgresql connector，支持抽取postgresql的逻辑日志，将其存入kafka的topic中。同时，我们增加了debezium postgres connector的sink端能力，能够抽取kafka的日志并完成数据的回放，以实现对数据dml操作的迁移能力（PostgreSQL -> openGauss）.
+基于原始的debezium开源软件的debezium postgresql connector，支持抽取postgresql的逻辑日志，将其存入kafka的topic中。同时，我们增加了debezium postgres connector 全量迁移和sink端能力，全量迁移支持抽取postgresql端全量数据和对象，并将对应消息存入kafka中。增量迁移通过抽取postgresql的逻辑日志并存入kafka中。sink端能够抽取kafka的日志并完成数据的回放，以实现对数据的全量和增量迁移能力（PostgreSQL -> openGauss）.
 编译debezium后，可以得到PostgreSQL迁移工具的压缩包，压缩包的位置为：
 
 ```
@@ -698,10 +698,11 @@ numactl -C 64-95 -m 0 ./bin/connect-standalone etc/schema-registry/connect-avro-
 
 原始的debezium postgres connector作为source端，可用于捕获数据变更并存入kafka。现新增如下功能点：
 
+- 支持全量数据迁移和对象迁移；
+
 - Source端支持自定义配置快照点；
-- 基于Debezium connector（Kafka Connect）框架，增加sink端能力，可用于从kafka抽取数据并在openGauss端按照表级粒度并行回放;
-- 增加迁移进度上报功能，可用于读取数据迁移时延；
-- sink端增加按表并行回放的能力。
+- 基于Debezium connector（Kafka Connect）框架，增加sink端能力，可用于从kafka抽取数据并在openGauss端根据迁移类型进行数据回放;
+- 增加增量迁移进度上报功能，可用于读取数据迁移时延；
 
 ### 新增配置参数说明
 
@@ -756,25 +757,32 @@ topics=postgres_server_topic
 
 (5) 新增配置参数说明
 
-| 参数                             | 类型      | 参数说明                                                                                                                                                          |
-|--------------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| commit.process.while.running   | boolean | 是否开启迁移进度上报功能，默认为false，表示不开启该功能                                                                                                                                |
-| source.process.file.path       | String  | 迁移进度文件输出路径，默认在迁移插件同一目录下，在迁移进度上报功能开启后起作用                                                                                                                       |
-| commit.time.interval           | int     | 迁移进度上报的时间间隔，默认值为1，单位：秒，在迁移进度上报功能开启后起作用                                                                                                                        |
-| create.count.info.path         | String  | 记录源端有效日志生产总数的文件输出路径，默认在迁移插件同一目录下，必须与sink端的该路径保持一致，用于和sink端交互获取总体同步时延                                                                                           |
-| process.file.count.limit       | int     | 同一目录下文件数目限制，超过该数目工具会按时间从早到晚删除多余进度文件，默认为10                                                                                                                     |
-| process.file.time.limit        | int     | 进度文件保存时间，超过该时间后工具会删除对应的进度文件，默认为168，单位：小时                                                                                                                      |
-| append.write                   | boolean | 进度文件写入方式，true表示追加写入，false表示覆盖写入，默认值为false                                                                                                                     |
-| file.size.limit                | int     | 文件大小限制，超过该限制值工具会另启新文件写入，默认为10，单位：兆                                                                                                                            |
-| min.start.memory               | String  | 自定义配置debezium最小启动内存，通过脚本生效，默认为256M                                                                                                                            |
-| max.start.memory               | String  | 自定义配置debezium最大启动内存，通过脚本生效，默认为2G                                                                                                                              |
-| queue.size.limit               | int     | 存储kafka记录的队列的最大长度，int类型，默认值为1000000                                                                                                                  |
-| open.flow.control.threshold    | double  | 流量控制参数，double类型，默认值为0.8，当存储某一队列长度>最大长度queue.size.limit*该门限值时，将启用流量控制，暂停抽取事件                                                                    |
-| close.flow.control.threshold   | double  | 流量控制参数，double类型，默认值为0.7，当存储各个队列长度<最大长度queue.size.limit*该门限值时，将关闭流量控制，继续抽取事件                                                                    |
-| wait.timeout.second          | int     | 自定义JDBC连接在被服务器自动关闭之前等待活动的秒数。如果客户端在这段时间内没有向服务器发送任何请求，服务器将关闭该连接，默认值：28800，单位：秒
-
-
-
+| 参数                         | 类型    | 参数说明                                                     |
+| ---------------------------- | ------- | ------------------------------------------------------------ |
+| commit.process.while.running | boolean | 是否开启迁移进度上报功能，默认为false，表示不开启该功能      |
+| source.process.file.path     | String  | 迁移进度文件输出路径，默认在迁移插件同一目录下，在迁移进度上报功能开启后起作用 |
+| commit.time.interval         | int     | 迁移进度上报的时间间隔，默认值为1，单位：秒，在迁移进度上报功能开启后起作用 |
+| create.count.info.path       | String  | 记录源端有效日志生产总数的文件输出路径，默认在迁移插件同一目录下，必须与sink端的该路径保持一致，用于和sink端交互获取总体同步时延 |
+| process.file.count.limit     | int     | 同一目录下文件数目限制，超过该数目工具会按时间从早到晚删除多余进度文件，默认为10 |
+| process.file.time.limit      | int     | 进度文件保存时间，超过该时间后工具会删除对应的进度文件，默认为168，单位：小时 |
+| append.write                 | boolean | 进度文件写入方式，true表示追加写入，false表示覆盖写入，默认值为false |
+| file.size.limit              | int     | 文件大小限制，超过该限制值工具会另启新文件写入，默认为10，单位：兆 |
+| min.start.memory             | String  | 自定义配置debezium最小启动内存，通过脚本生效，默认为256M     |
+| max.start.memory             | String  | 自定义配置debezium最大启动内存，通过脚本生效，默认为2G       |
+| queue.size.limit             | int     | 存储kafka记录的队列的最大长度，int类型，默认值为1000000      |
+| open.flow.control.threshold  | double  | 流量控制参数，double类型，默认值为0.8，当存储某一队列长度>最大长度queue.size.limit*该门限值时，将启用流量控制，暂停抽取事件 |
+| close.flow.control.threshold | double  | 流量控制参数，double类型，默认值为0.7，当存储各个队列长度<最大长度queue.size.limit*该门限值时，将关闭流量控制，继续抽取事件 |
+| wait.timeout.second          | int     | 自定义JDBC连接在被服务器自动关闭之前等待活动的秒数。如果客户端在这段时间内没有向服务器发送任何请求，服务器将关闭该连接，默认值：28800，单位：秒 |
+| export.csv.path              | String  | 全量数据采集后写入文件的位置                                 |
+| export.file.size             | String  | 全量数据文件大小划分配置，支持K、M、G大小配置，没有单位默认按照M单位处理，默认值为 2M |
+| export.csv.path.size         | String  | 文件夹大小控制 支持K、M、G大小配置，没有单位时默认按照G单位处理，默认值为null |
+| migration.type               | String  | 迁移类型，无默认值。full:全量迁移,incremental:增量，object:对象 |
+| migration.view               | boolean | 对象迁移时生效，是否迁移视图                                 |
+| migration.func               | boolean | 对象迁移时生效，是否迁移函数和存储过程                       |
+| migration.trigger            | boolean | 对象迁移时生效，是否迁移触发器                               |
+| migration.workers            | int     | 全量迁移表数据导出的并发度                                   |
+| export.page.number           | int     | 分页抽取一次抽取的分片数量。取值范围为(0, 100000]，默认值50。需根据实际jvm内存进行配置 |
+| truncate.handling.mode       | String  | 指定如何处理更改事件的 TRUNCATE操作（仅在 pg11+ pgoutput 插件上受支持），包括skip和include。默认值为skip |
 快照点参数配置说明：
 
 case 1: 查询到一个xlog location，配置当前查询的xlog location为快照点。
@@ -829,29 +837,30 @@ connector.class=io.debezium.connector.postgresql.sink.PostgresSinkConnector
 
 (3) 新增配置参数说明
 
-| 参数                                        | 类型      | 参数说明                                                                                                                                                                                                                                                                                                                     |
-|-------------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| topics                                    | String  | sink端从kafka抽取数据的topic                                                                                                                                                                                                                                                                                                    |
-| opengauss.driver                          | String  | openGauss驱动名                                                                                                                                                                                                                                                                                                             |
-| opengauss.username                        | String  | openGauss用户名                                                                                                                                                                                                                                                                                                             |
-| opengauss.password                        | String  | openGauss用户密码                                                                                                                                                                                                                                                                                                            |
-| opengauss.url                             | String  | openGauss连接url                                                                                                                                                                                                                                                                                                           |
-| xlog.location                             | String  | 增量迁移停止时openGauss端lsn的存储文件路径                                                                                                                                                                                                                                                                                              |
-| schema.mappings                           | String  | postgres和openGauss的schema映射关系，用；区分不同的映射关系，用：区分postgres的schema和openGauss的schema<br>例如<br>schema_mappings:<br/>      postgres_schema1: opengauss_schema1<br/>      postgres_schema2: opengauss_schema2<br/> |
-| commit.process.while.running              | boolean | 是否开启迁移进度上报功能，默认为false，表示不开启该功能                                                                                                                                                                                                                                                                                           |
-| sink.process.file.path                    | String  | 迁移进度文件输出路径，默认在迁移插件同一目录下，在迁移进度上报功能开启后起作用                                                                                                                                                                                                                                                                                  |
-| commit.time.interval                      | int     | 迁移进度上报的时间间隔，默认值为1，单位：秒，在迁移进度上报功能开启后起作用                                                                                                                                                                                                                                                                                   |
-| create.count.info.path                    | String  | 记录源端有效日志生产总数的文件输出路径，默认在迁移插件同一目录下，必须与source端的该路径保持一致，用于和source端交互获取总体同步时延                                                                                                                                                                                                                                                  |
-| fail.sql.path                             | String  | 回放失败的sql语句输出路径，默认在迁移插件同一目录下                                                                                                                                                                                                                                                                                              |
-| process.file.count.limit                  | int     | 同一目录下文件数目限制，超过该数目工具会按时间从早到晚删除多余进度文件，默认为10                                                                                                                                                                                                                                                                                |
-| process.file.time.limit                   | int     | 进度文件保存时间，超过该时间后工具会删除对应的进度文件，默认为168，单位：小时                                                                                                                                                                                                                                                                                 |
-| append.write                              | boolean | 进度文件写入方式，true表示追加写入，false表示覆盖写入，默认值为false                                                                                                                                                                                                                                                                                |
-| file.size.limit                           | int     | 文件大小限制，超过该限制值工具会另启新文件写入，默认为10，单位：兆                                                                                                                                                                                                                                                                                       |
-| queue.size.limit                          | int     | 存储kafka记录的队列的最大长度，int类型，默认值为1000000                                                                                                                                                                                                                                                                                      |
-| open.flow.control.threshold               | double  | 流量控制参数，double类型，默认值为0.8，当存储kafka记录的队列长度>最大长度queue.size.limit*该门限值时，将启用流量控制，暂停从kafka抽取数据                                                                                                                                                                                                                                  |
-| close.flow.control.threshold              | double  | 流量控制参数，double类型，默认值为0.7，当存储kafka记录的队列长度<最大长度queue.size.limit*该门限值时，将关闭流量控制，继续从kafka抽取数据                                                                                                                                                                                                                                  |
-| wait.timeout.second                       | long    | sink端数据库停止服务后迁移工具等待数据库恢复服务的最大时长，默认值：28800，单位：秒                                                                                                                                                                                                                                                                           
-
+| 参数                         | 类型    | 参数说明                                                     |
+| ---------------------------- | ------- | ------------------------------------------------------------ |
+| topics                       | String  | sink端从kafka抽取数据的topic                                 |
+| opengauss.driver             | String  | openGauss驱动名                                              |
+| opengauss.username           | String  | openGauss用户名                                              |
+| opengauss.password           | String  | openGauss用户密码                                            |
+| opengauss.url                | String  | openGauss连接url                                             |
+| xlog.location                | String  | 增量迁移停止时openGauss端lsn的存储文件路径                   |
+| schema.mappings              | String  | postgres和openGauss的schema映射关系，用；区分不同的映射关系，用：区分postgres的schema和openGauss的schema<br>例如<br>schema_mappings:<br/>      postgres_schema1: opengauss_schema1<br/>      postgres_schema2: opengauss_schema2<br/> |
+| commit.process.while.running | boolean | 是否开启迁移进度上报功能，默认为false，表示不开启该功能      |
+| sink.process.file.path       | String  | 迁移进度文件输出路径，默认在迁移插件同一目录下，在迁移进度上报功能开启后起作用 |
+| commit.time.interval         | int     | 迁移进度上报的时间间隔，默认值为1，单位：秒，在迁移进度上报功能开启后起作用 |
+| create.count.info.path       | String  | 记录源端有效日志生产总数的文件输出路径，默认在迁移插件同一目录下，必须与source端的该路径保持一致，用于和source端交互获取总体同步时延 |
+| fail.sql.path                | String  | 回放失败的sql语句输出路径，默认在迁移插件同一目录下          |
+| process.file.count.limit     | int     | 同一目录下文件数目限制，超过该数目工具会按时间从早到晚删除多余进度文件，默认为10 |
+| process.file.time.limit      | int     | 进度文件保存时间，超过该时间后工具会删除对应的进度文件，默认为168，单位：小时 |
+| append.write                 | boolean | 进度文件写入方式，true表示追加写入，false表示覆盖写入，默认值为false |
+| file.size.limit              | int     | 文件大小限制，超过该限制值工具会另启新文件写入，默认为10，单位：兆 |
+| queue.size.limit             | int     | 存储kafka记录的队列的最大长度，int类型，默认值为1000000      |
+| open.flow.control.threshold  | double  | 流量控制参数，double类型，默认值为0.8，当存储kafka记录的队列长度>最大长度queue.size.limit*该门限值时，将启用流量控制，暂停从kafka抽取数据 |
+| close.flow.control.threshold | double  | 流量控制参数，double类型，默认值为0.7，当存储kafka记录的队列长度<最大长度queue.size.limit*该门限值时，将关闭流量控制，继续从kafka抽取数据 |
+| wait.timeout.second          | long    | ink端数据库停止服务后迁移工具等待数据库恢复服务的最大时长，默认值：28800，单位：秒 |
+| delete.full.csv.file         | boolean | 控制在全量数据迁移处理完csv文件后是否删除文件，默认值false   |
+| create.table.with.options    | String  | 建表添加with选项，JsonArray形式，table为表名，with选项值之间用","隔开，默认值：[] |
 ### 迁移进度上报信息说明
 
 #### Source端
@@ -881,7 +890,7 @@ connector.class=io.debezium.connector.postgresql.sink.PostgresSinkConnector
 | overallPipe              | 当前时间片处于迁移管道中的事务总数   |
 
 
-## 基于Debezium postgres connector进行在线迁移
+## 基于Debezium postgres connector进行数据迁移
 
 ### 环境依赖
 
@@ -889,7 +898,11 @@ kafka，zookeeper，confluent community，debezium-connector-postgres
 
 ### 原理
 
-debezium postgres connector的source端，监控postgres数据库的wal日志，并将数据以AVRO格式写入到kafka；debezium postgres connector的sink端，从kafka读取AVRO格式数据，并组装为事务，在openGauss端按照表级粒度并行回放，从而完成数据从postgres在线迁移至openGauss端。
+**全量迁移：**debezium postgres connector的source端首先获取指定的表，通过pgjdbc获取源端表结构信息，推送至kafka中缓存；然后获取表的快照，对源端表数据进行并发抽取，将抽取到的数据转换成csv格式写入文件，且向kafka推送文件路径以及分片消息；表数据抽取完成后抽取表的索引信息，并向kafka推送；sink端从kafka中持续的拉取消息，并进行输入导入操作。
+
+**对象迁移**：source端通过jdbc获取源库对应的所有对象信息，并组装成ddl推送至kafka缓存；sink端从kafka中持续的拉取消息，并进行对象的创建。
+
+**增量迁移**：debezium postgres connector的source端，监控postgres数据库的wal日志，并将数据以AVRO格式写入到kafka；debezium postgres connector的sink端，从kafka读取AVRO格式数据，并组装为事务，在openGauss端按照表级粒度并行回放，从而完成数据从postgres在线迁移至openGauss端。
 
 由于该方案严格保证事务的顺序性，因此将DML路由在kafka的一个topic下，且该topic的分区数只能为1(参数num.partitions=1)，从而保证source端推送到kafka，和sink端从kafka拉取数据都是严格保序的。
 
@@ -924,9 +937,99 @@ wal_level=logical
 
 (8) 增量迁移过程中创建的表不会进行迁移，如有需要，请重启迁移工具。
 
+(9)  全量迁移支持迁移主键约束和非空约束。暂不支持迁移外键，check约束和唯一约束。
+
+(10) 全量迁移暂不支持列comment信息，字符集和字符序的迁移。
+
+(11) 全量迁移支持仅支持迁移一级分区，支持的分区表类型如下：
+
+| pg分区类型 | og分区类型 |
+| ---------- | ---------- |
+| range分区  | range分区  |
+| list分区   | list分区   |
+| hash分区   | hash分区   |
+
+(12) 对象迁移仅支持函数、视图、触发器、存储过程的迁移，不支持用户、权限及序列。
+
+(13) 全量迁移需设置source端参数snapshot.mode为always。
+
+(14) 不支持自定义数据类型的迁移，若源端存在自定义数据类型，需要在目标端提前创建。
+
+(15) 其他迁移场景依赖于openGauss数据库与postgresql数据库的兼容情况。
+
+### 数据类型映射
+
+postgresql数据迁移至openGauss数据类型映射关系如下：
+
+| pg类型                                  | og类型                                  |
+| --------------------------------------- | --------------------------------------- |
+| smallint                                | smallint                                |
+| integer                                 | integer                                 |
+| bigint                                  | bigint                                  |
+| decimal                                 | decimal                                 |
+| numeric                                 | numeric                                 |
+| real                                    | real                                    |
+| double precision                        | double precision                        |
+| smallserial                             | smallserial                             |
+| serial                                  | serial                                  |
+| bigserial                               | bigserial                               |
+| money                                   | money                                   |
+| varchar(n)   character varying(n)       | varchar(n)   character varying(n)       |
+| char(n), character(n)                   | char(n), character(n)                   |
+| varchar                                 | varchar                                 |
+| char                                    | char                                    |
+| text                                    | text                                    |
+| name                                    | name                                    |
+| bytea                                   | bytea                                   |
+| timestamp [ (p) ] [ without time zone ] | timestamp [ (p) ] [ without time zone ] |
+| timestamp [ (p) ] with time zone        | timestamp [ (p) ] with time zone        |
+| timestamp  without time zone            | timestamp(6)  without time zone         |
+| timestamp  with time zone               | timestamp(6)  with time zone            |
+| date                                    | date                                    |
+| time [ (p) ] [ without time zone ]      | time [ (p) ] [ without time zone ]      |
+| time [ (p) ] with time zone             | time [ (p) ] with time zone             |
+| time without time zone                  | time(6) without time zone               |
+| time with time zone                     | time(6) with time zone                  |
+| interval [ fields ] [ (p) ]             | interval [ fields ] [ (p) ]             |
+| interval                                | interval(6)                             |
+| boolean                                 | boolean                                 |
+| oid                                     | oid                                     |
+| enum                                    | enum                                    |
+| point                                   | point                                   |
+| line                                    | varchar                                 |
+| lseg                                    | lseg                                    |
+| box                                     | box                                     |
+| path                                    | path                                    |
+| polygon                                 | polygon                                 |
+| circle                                  | circle                                  |
+| cidr                                    | cidr                                    |
+| inet                                    | inet                                    |
+| macaddr                                 | macaddr                                 |
+| bit                                     | bit(1)                                  |
+| bit(n)                                  | bit(n)                                  |
+| bit varying(n)                          | bit varying(n)                          |
+| tsvector                                | tsvector                                |
+| tsquery                                 | tsquery                                 |
+| uuid                                    | uuid                                    |
+| xml                                     | xml                                     |
+| json                                    | json                                    |
+| jsonb                                   | jsonb                                   |
+| array                                   | array                                   |
+| Composite Types（组合类型）             | Composite Types                         |
+| int4range                               | int4range                               |
+| int8range                               | int8range                               |
+| numrange                                | numrange                                |
+| tsrange                                 | tsrange                                 |
+| tstzrange                               | tstzrange                               |
+| daterange                               | daterange                               |
+| 域类型                                  | 域类型                                  |
+| pg_lsn                                  | varchar                                 |
+
 ### 性能指标
 
-按表回放，利用sysbench进行测试，在openEuler arm操作系统2p Kunpeng-920机器，针对混合IUD场景，50张表50个线程（insert-30线程，update-10线程，delete-10线程），性能可达3w tps。
+**全量迁移：**基于sysbench测试模型，2路鲲鹏920 CPU、openEuler操作系统下，Postgresql数据库20张表（无索引）单表数据量在500万以上时，使用20并发迁移数据至openGauss，整体全量迁移性能可达300M/s以上。
+
+**增量迁移：**按表回放，利用sysbench进行测试，在openEuler arm操作系统2p Kunpeng-920机器，针对混合IUD场景，50张表50个线程（insert-30线程，update-10线程，delete-10线程），性能可达3w tps。
 
 ### 部署过程
 
