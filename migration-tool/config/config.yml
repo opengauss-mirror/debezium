@@ -1,0 +1,89 @@
+# global settings
+pidDir: '~/.pg_chameleon/pid/'
+logDir: '~/.pg_chameleon/logs/'
+logDest: file
+logLevel: info
+logDaysKeep: 10
+rollbarKey: ''
+rollbarEnv: ''
+isDumpJson: false
+alertLogConfig:
+  isAlertLogCollection: false
+  alertLogKafkaServer: 127.0.0.1:9092
+  alertLogKafkaTopic: 'my_log'
+typeOverrides:
+  -
+    type: tinyint(1)
+    overrideTo: boolean
+    overrideTables:
+      - "*"
+  -
+    type: float(5,2)
+    overrideTo: float4
+    overrideTables:
+      - "*"
+# specify the compress properties when creating tables
+compressConfig:
+  compressType: 0
+  compressLevel: 0
+  compressChunkSize: 4096
+  compressPreallocChunks: 0
+  compressByteConvert: false
+  compressDiffConvert: false
+# postgres destination connection
+ogConn:
+  host: "192.168.0.215"
+  port: 3333
+  user: "og_test"
+  password: "Huawei@123"
+  database: "sstest"
+  charset: "utf8"
+  params:
+sourceConfig:
+  type: sqlserver
+  readerNum: 4
+  writerNum: 4
+  retryNum: 3
+  dbConn:
+    host: "192.168.2.85"
+    port: "1433"
+    user: "sa"
+    password: "Huawei@123"
+    database: "sstest1"
+    charset: 'utf8'
+    connectTimeout: 10
+  schemaMappings:
+    sstest1.dbo: sstest.dbo
+  # 复制表白名单，不配置则复制所有表
+  limitTables:
+  # 复制表黑名单
+  skipTables:
+  isCompress: No
+  compressTables:
+  grantRoles:
+  lockTimeout: "120s"
+  # 源端数据库副本服务器id
+  serverId: 100
+  replicaBatchSize: 10000
+  replayMaxRows: 10000
+  batchRetention: '1 day'
+  copyMaxMemory: "300M"
+  copyMode: 'file'
+  outDir: /tmp
+  csvDir: D:\\test\\migration
+  containColumns: No
+  columnSplit: ','
+  sleepLoop: 1
+  indexParallelWorkers: 2
+  isKeepExistingSchema: No
+  # 是否迁移源库的默认值到openGauss
+  isMigrateDefaultValue: Yes
+  isRestartConfig: No
+  isCreateIndex: Yes
+  indexDir: '~/.pg_chameleon/index/'
+  isSkipCompletedTables: No
+  isWithDataCheck: No
+  dataCheckConfig:
+    sliceSize: 100000
+    csvFilesThreshold:
+    csvDirSpaceThreshold:
