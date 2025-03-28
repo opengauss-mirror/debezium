@@ -689,6 +689,23 @@ public class PostgresConnection extends JdbcConnection {
         return doReadTableColumn(columnMetadata, tableId, columnNameFilter).map(ColumnEditor::create);
     }
 
+    private Integer getFullVectorType(TableId tableId, String colName) throws SQLException {
+        AtomicReference<Integer> intervalType = new AtomicReference<>();
+        String sql = "select p.atttypmod as dimensions from pg_attribute p join pg_class c on p.attrelid = c.oid join "
+                + "pg_namespace n on c.relnamespace = n.oid where n.nspname = ? and c.relname = ? and p.attname = ?";
+        prepareQuery(sql, stmt -> {
+            stmt.setString(1, tableId.schema());
+            stmt.setString(2, tableId.table());
+            stmt.setString(3, colName);
+        }, rs -> {
+            while (rs.next()) {
+                Integer resultType = rs.getInt(1);
+                intervalType.set(resultType);
+            }
+        });
+        return intervalType.get();
+    }
+
     private Optional<ColumnEditor> doReadTableColumn(ResultSet columnMetadata, TableId tableId, Tables.ColumnNameFilter columnFilter)
             throws SQLException {
         Map<String, Integer> columnDimensions = tableColumnDimension.get(tableId);
@@ -696,7 +713,14 @@ public class PostgresConnection extends JdbcConnection {
         Integer dimension = columnDimensions.get(columnName);
         if (columnFilter == null || columnFilter.matches(tableId.catalog(), tableId.schema(), tableId.table(), columnName)) {
             final ColumnEditor column = Column.editor().name(columnName);
-            column.type(columnMetadata.getString(6));
+            String columnType = columnMetadata.getString(6);
+            if ("vector".equalsIgnoreCase(columnType)) {
+                Integer diamension = getFullVectorType(tableId, columnName);
+                if (diamension > 0) {
+                    columnType += String.format("(%s)", diamension);
+                }
+            }
+            column.type(columnType);
 
             // first source the length/scale from the column metadata provided by the driver
             // this may be overridden below if the column type is a user-defined domain type
