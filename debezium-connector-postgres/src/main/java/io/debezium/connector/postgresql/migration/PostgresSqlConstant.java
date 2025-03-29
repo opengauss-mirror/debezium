@@ -65,6 +65,19 @@ public class PostgresSqlConstant {
     public static final String GETINDEXINFO = "select indexname, indexdef from pg_indexes where tablename = '%s'";
 
     /**
+     * add table unique constraint info
+     */
+    public static final String ADDUNIQUECONSTRAINT = "alter table %s add constraint %s";
+
+    /**
+     * get table unique constraint info
+     */
+    public static final String GETUNIQUECONSTRAINT = "SELECT conname, pg_get_constraintdef(p.oid) AS "
+            + " constraint_definition FROM pg_constraint p JOIN pg_class c ON p.conrelid = c.oid "
+            + " JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = '%s' and c.relname = '%s' "
+            + " AND p.contype = 'u';" ;
+
+    /**
      * create primary key statement header
      */
     public static final String CREATEPK_HEADER = "alter table %s add constraint %s primary key (";

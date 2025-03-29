@@ -909,6 +909,7 @@ public class PostgresSnapshotChangeEventSource extends
         switchSchema(schemaName, connection);
         Map<String, List<String>> pkInfo = getPkColumns(tableName, connection);
         Map<String, String> indexDef = getIndexDef(tableName, connection);
+        indexDef.putAll(getUniqueConstraint(schemaName, tableName, connection));
         List<String> idxDdls = new ArrayList<>();
         if (!pkInfo.isEmpty()) {
             String constraintName = pkInfo.keySet().iterator().next();
@@ -928,6 +929,23 @@ public class PostgresSnapshotChangeEventSource extends
             dispatchIndexTask(receiver);
         }
         indexTaskQueue.add(new PostgresTableIndexTask(dataEventsParam, idxDdls));
+    }
+
+    private Map<String, String> getUniqueConstraint(String schema, String table, Connection connection)
+            throws SQLException {
+        // key: constraint name, value: add unique constraint ddl
+        Map<String, String> uniqueCons = new HashMap<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rst = stmt.executeQuery(
+                 String.format(PostgresSqlConstant.GETUNIQUECONSTRAINT, schema, table))) {
+            while (rst.next()) {
+                String consName = rst.getString(1);
+                String uniqueDdl = String.format(PostgresSqlConstant.ADDUNIQUECONSTRAINT, table,
+                        consName + " " + rst.getString(2));
+                uniqueCons.put(consName, uniqueDdl);
+            }
+        }
+        return uniqueCons;
     }
 
     private Map<String, String> getIndexDef(String table, Connection connection) throws SQLException {
