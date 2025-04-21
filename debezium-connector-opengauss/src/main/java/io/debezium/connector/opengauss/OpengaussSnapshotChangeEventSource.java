@@ -45,6 +45,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.nio.file.attribute.PosixFilePermission;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -802,6 +803,23 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
             String data = String.join(System.lineSeparator(), columnStringArr) + System.lineSeparator();
             printWriter.write(data);
             printWriter.flush();
+
+            if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                // Windows, only owner can read and write
+                file.setReadable(false, false);
+                file.setWritable(false, false);
+                file.setExecutable(false, false);
+                file.setReadable(true, true);
+                file.setWritable(true, true);
+                file.setExecutable(true, true);
+            } else {
+                // Other os like Unix, set file permissions to rw-r----
+                Set<PosixFilePermission> permissions = new HashSet<>();
+                permissions.add(PosixFilePermission.OWNER_READ);
+                permissions.add(PosixFilePermission.OWNER_WRITE);
+                permissions.add(PosixFilePermission.GROUP_READ);
+                Files.setPosixFilePermissions(file.toPath(), permissions);
+            }
         } catch (IOException e) {
             throw new IOException(e);
         }
