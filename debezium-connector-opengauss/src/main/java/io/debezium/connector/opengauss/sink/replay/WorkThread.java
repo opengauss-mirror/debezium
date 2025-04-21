@@ -343,7 +343,6 @@ public class WorkThread extends Thread {
             processRecordMap.put(tableName, count + list.size());
             replayedOffsets.offer(sinkRecordObject.getKafkaOffset());
             savedBreakPointInfo(sinkRecordObject, true);
-            clearCsvFile(path);
         } catch (CommunicationsException exp) {
             LOGGER.error("{}statement closed unexpectedly.", ErrorCode.DB_CONNECTION_EXCEPTION);
             retryLoad(sql, inputStream, sinkRecordObject);
@@ -358,6 +357,7 @@ public class WorkThread extends Thread {
             printSqlException(path, e, sql);
         } finally {
             try {
+                clearCsvFile(path);
                 inputStream.close();
             } catch (IOException e) {
                 LOGGER.error("{}inputStream close error", ErrorCode.IO_EXCEPTION, e);

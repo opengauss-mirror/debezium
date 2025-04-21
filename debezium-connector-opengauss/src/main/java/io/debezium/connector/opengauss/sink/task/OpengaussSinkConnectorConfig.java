@@ -63,7 +63,7 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
      * ConfigDef
      */
     public static final ConfigDef CONFIG_DEF = getConfigDef()
-            .define(DELETE_FULL_CSV_FILE, ConfigDef.Type.BOOLEAN, false, ConfigDef.Importance.HIGH,
+            .define(DELETE_FULL_CSV_FILE, ConfigDef.Type.BOOLEAN, true, ConfigDef.Importance.HIGH,
             "whether to delete the csv file")
             .define(MAX_THREAD_COUNT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "max thread count")
             .define(DATABASE_TYPE, ConfigDef.Type.STRING, "mysql", ConfigDef.Importance.HIGH,
