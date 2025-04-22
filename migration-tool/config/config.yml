@@ -1,0 +1,47 @@
+# global settings
+# 是否记录进度
+isDumpJson: true
+# 是否删除迁移成功的csv文件
+isDeleteCsv: true
+# 是否保留原有schema
+isKeepExistingSchema: false
+# 目标端数据库配置
+ogConn:
+  host: "192.168.0.2"
+  port: 5432
+  user: "username"
+  password: "password"
+  database: "database"
+  charset: "utf8"
+  params:
+sourceConfig:
+  # 查询表的线程数
+  readerNum: 4
+  # 写表的线程数
+  writerNum: 4
+  # 全量数据文件大小划分配置，支持K、M、G大小配置，没有单位默认按照M单位处理，默认值为 2M
+  fileSize: 2M
+  # 源端数据库连接信息
+  dbConn:
+    host: "192.168.0.1"
+    port: "1433"
+    user: "username"
+    password: "password"
+    database: "database"
+    charset: 'utf8'
+    connectTimeout: 10
+  # schema映射关系
+  schemaMappings:
+    test: ogtest
+  # 复制表白名单，不配置则复制所有表
+  limitTables:
+    - test.Students
+  # 复制表黑名单
+  skipTables:
+  csvDir: /**/**
+  # sqlserver中time,datetime2和datetimeoffset类型精度为0-7，openGauss中对应类型精度为0-6，可能会有精度损失，该参数控制是否迁移这三种类型
+  isTimeMigrate: true
+  # 是否迁移源库的默认值到openGauss
+  isMigrateDefaultValue: Yes
+  # 是否记录快照
+  isRecordSnapshot: No
