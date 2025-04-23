@@ -41,6 +41,15 @@ public final class SqlServerSqlConstants {
         + "    LEFT JOIN PartitionInfo pi ON ts.object_id = pi.object_id\n" + "ORDER BY \n" + "    ts.tableRows ASC";
 
     /**
+     * sql for querying generate define
+     */
+    public static final String QUERY_GENERATE_DEFINE_SQL = "SELECT \n" + "    sc.name AS column_name, \n"
+        + "    sc.definition AS computation_expression, \n" + "    sc.is_persisted \n" + "FROM \n"
+        + "    sys.computed_columns sc \n" + "JOIN \n" + "    sys.objects o ON sc.object_id = o.object_id \n"
+        + "JOIN \n" + "    sys.schemas s ON o.schema_id = s.schema_id \n" + "WHERE \n" + "    s.name = ? \n"
+        + "    AND o.name = ? \n" + "    AND sc.name = ?";
+
+    /**
      * sql for setting snapshot
      */
     public static final String SET_SNAPSHOT_SQL = "SET TRANSACTION ISOLATION LEVEL SNAPSHOT";

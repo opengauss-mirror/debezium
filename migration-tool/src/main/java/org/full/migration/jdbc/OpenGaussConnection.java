@@ -31,7 +31,8 @@ import java.util.Locale;
  */
 public class OpenGaussConnection implements JdbcConnection {
     private static final Logger LOGGER = LoggerFactory.getLogger(OpenGaussConnection.class);
-    private static final String JDBC_URL = "jdbc:opengauss://%s:%s/%s?currentSchema=%s&loggerLevel=error";
+    private static final String JDBC_URL
+        = "jdbc:opengauss://%s:%s/%s?currentSchema=%s&connectTimeout=10&loggerLevel=error";
 
     @Override
     public Connection getConnection(DatabaseConfig dbConfig) throws SQLException {

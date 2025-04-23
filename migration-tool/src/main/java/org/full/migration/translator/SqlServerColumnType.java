@@ -40,12 +40,12 @@ public enum SqlServerColumnType {
     SS_VARCHAR_MAX("varchar(max)", "text"),
     SS_NCHAR("nchar", "nchar"),
     SS_NVARCHAR("nvarchar", "nvarchar"),
-    SS_NVARCHAR_MAX("nvarchar(max)", "text"), // NVARCHAR(MAX)，替代TEXT
+    SS_NVARCHAR_MAX("nvarchar(max)", "text"),
     SS_TEXT("text", "text"),
     SS_NTEXT("ntext", "text"),
     SS_BINARY("binary", "bytea"),
     SS_VARBINARY("varbinary", "bytea"),
-    SS_VARBINARY_MAX("varbinary(max)", "blob"), // VARBINARY(MAX)(""),替代image
+    SS_VARBINARY_MAX("varbinary(max)", "bytea"),
     SS_DATE("date", "date"),
     SS_TIME("time", "time"),
     SS_DATETIME("datetime", "timestamp"),
@@ -56,11 +56,11 @@ public enum SqlServerColumnType {
     SS_XML("xml", "xml"),
     SS_GEOMETRY("geometry", "point"),
     SS_GEOGRAPHY("geography", "point"),
-    SS_IMAGE("image", "blob"),
+    SS_IMAGE("image", "bytea"),
     SS_MONEY("money", "money"),
     SS_SMALLMONEY("smallmoney", "money"),
-    SS_ROWVERSION("rowversion", "timestamp"),
-    SS_TIMESTAMP("timestamp", "timestamp"),
+    SS_ROWVERSION("rowversion", "bytea"),
+    SS_TIMESTAMP("timestamp", "bytea"),
     SS_HIERARCHYID("hierarchyid", "nvarchar(4000)"),
     SS_JSON("json", "jsonb");
 
@@ -78,6 +78,7 @@ public enum SqlServerColumnType {
     static final Set<SqlServerColumnType> VAR_TYPE_SET = Set.of(SS_VARCHAR, SS_NVARCHAR);
     static final Set<SqlServerColumnType> BINARY_TYPE_SET = Set.of(SS_VARBINARY);
     static final Set<SqlServerColumnType> TIME_TYPE_SET = Set.of(SS_TIME, SS_DATETIME2, SS_DATETIMEOFFSET);
+    static final Set<SqlServerColumnType> GEOMETRY_TYPE_SET = Set.of(SS_GEOMETRY, SS_GEOGRAPHY);
 
     /**
      * is type with length
@@ -155,6 +156,21 @@ public enum SqlServerColumnType {
     }
 
     /**
+     * isGeometryTypes
+     *
+     * @param typeName typeName
+     * @return isBinaryTypes
+     */
+    public static boolean isGeometryTypes(String typeName) {
+        for (SqlServerColumnType type : GEOMETRY_TYPE_SET) {
+            if (type.getSsType().equalsIgnoreCase(typeName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * convertType
      *
      * @param ssType ssType
@@ -166,6 +182,6 @@ public enum SqlServerColumnType {
                 return type.ogType;
             }
         }
-        return "unknown";
+        return ssType;
     }
 }

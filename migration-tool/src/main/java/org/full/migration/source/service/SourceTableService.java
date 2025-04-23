@@ -223,6 +223,11 @@ public class SourceTableService {
                 }
             }
         }
+        if (column.isGenerated()) {
+            builder.append("GENERATED ALWAYS AS")
+                .append(column.getGenerateInfo().getDefine())
+                .append(column.getGenerateInfo().getIsStored() ? " STORED " : "VIRTUAL");
+        }
         String defaultValue = column.getDefaultValueExpression();
         if (StringUtils.isNoneEmpty(defaultValue)) {
             builder.append(" default ").append(SqlServerFuncTranslator.convertDefinition(defaultValue));
@@ -317,7 +322,19 @@ public class SourceTableService {
         int columnCount = columns.size();
         final List<Object> rowList = new ArrayList<>(columnCount);
         for (int i = 0; i < columnCount; i++) {
-            rowList.add(rs.getObject(i + 1));
+            Object value;
+            // getObject 对time类型截断小数位，所有使用getString读取该类型
+            if ("time".equalsIgnoreCase(columns.get(i).getTypeName())) {
+                value = rs.getString(i + 1);
+            } else {
+                value = rs.getObject(i + 1);
+            }
+            if (SqlServerColumnType.isGeometryTypes(columns.get(i).getTypeName())) {
+                if (value.toString().toLowerCase(Locale.ROOT).contains("point")) {
+                    value = SqlServerFuncTranslator.convertDefinition(value.toString());
+                }
+            }
+            rowList.add(value);
         }
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < columnCount; i++) {

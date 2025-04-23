@@ -15,12 +15,15 @@
 
 package org.full.migration.strategy;
 
+import org.full.migration.coordinator.ProgressTracker;
+import org.full.migration.coordinator.QueueManager;
 import org.full.migration.source.SourceDatabase;
 import org.full.migration.target.TargetDatabase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -91,5 +94,36 @@ public abstract class MigrationStrategy {
                 return thread;
             }
         };
+    }
+
+    /**
+     * waitThreadsTerminated
+     *
+     * @param threadPool threadPool
+     * @param queueName queueName
+     * @param isTaskFinish isTaskFinish
+     */
+    protected void waitThreadsTerminated(ThreadPoolExecutor threadPool, String queueName, boolean isTaskFinish) {
+        threadPool.shutdown();
+        while (true) {
+            int activeCount = threadPool.getActiveCount();
+            if (activeCount == 0) {
+                process(queueName, isTaskFinish);
+                break;
+            }
+            sleep(1000);
+        }
+    }
+
+    private void process(String queueName, boolean isTaskFinish) {
+        if (isTaskFinish) {
+            if (source.isDumpJson()) {
+                ProgressTracker.getInstance().setIsTaskStop(true);
+            }
+            LOGGER.info("table migration task has been completed.");
+        } else {
+            QueueManager.getInstance().setReadFinished(queueName, true);
+            LOGGER.info("the {} has been consumed completely.", queueName);
+        }
     }
 }

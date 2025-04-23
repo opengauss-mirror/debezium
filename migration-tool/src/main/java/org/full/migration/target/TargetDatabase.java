@@ -61,6 +61,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -99,6 +100,7 @@ public class TargetDatabase {
     private BigInteger spacePerSlice;
     private boolean isDeleteCsv;
     private boolean isKeepExistingSchema;
+    private Map<String, String> schemaMappings;
 
     /**
      * Constructor
@@ -113,6 +115,7 @@ public class TargetDatabase {
             .divide(BigInteger.valueOf(1024 * 1024));
         this.isDeleteCsv = globalConfig.getIsDeleteCsv();
         this.isKeepExistingSchema = globalConfig.getIsKeepExistingSchema();
+        this.schemaMappings = globalConfig.getSourceConfig().getSchemaMappings();
         this.connection = new OpenGaussConnection();
     }
 
@@ -159,8 +162,9 @@ public class TargetDatabase {
                     }
                     copyMeta(tableMeta, conn);
                 } catch (SQLException e) {
-                    LOGGER.error("fail to create table {}.{} or create constraint, errMsg:{}",
-                        table.getTargetSchemaName(), table.getTableName(), e.getMessage());
+                    conn.rollback();
+                    LOGGER.error("fail to create table {}.{}, errMsg:{}", table.getTargetSchemaName(),
+                        table.getTableName(), e.getMessage());
                 }
                 QueueManager.getInstance().putToQueue(QueueManager.TARGET_TABLE_META_QUEUE, tableMeta);
             }
@@ -209,7 +213,6 @@ public class TargetDatabase {
         } catch (SQLException e) {
             LOGGER.warn("fail to write table, errMsg:{}", e.getMessage());
         }
-        ProgressTracker.getInstance().setIsTaskStop(true);
         Thread.currentThread().interrupt();
     }
 
@@ -229,13 +232,18 @@ public class TargetDatabase {
 
     private void executeAlterTable(Connection connection, Statement statement, List<String> alterSqlList)
         throws SQLException {
-        connection.setAutoCommit(false);
         if (!CollectionUtils.isEmpty(alterSqlList)) {
             for (String alterSql : alterSqlList) {
-                statement.execute(alterSql);
+                try {
+                    connection.setAutoCommit(false);
+                    statement.execute(alterSql);
+                    connection.commit();
+                } catch (SQLException e) {
+                    connection.rollback();
+                    LOGGER.error("failed to create constraint, sql:{}", alterSql);
+                }
             }
         }
-        connection.commit();
     }
 
     private void copyData(TableData tableTask, Connection connection) throws SQLException, IOException {
@@ -280,7 +288,7 @@ public class TargetDatabase {
             progressInfo.setPercent(ProgressStatus.MIGRATED_FAILURE.getCode());
             progressInfo.setError(e.getMessage());
             LOGGER.error("failed to copy data of {}.{}, error message:{}", schemaName, tableName, e.getMessage());
-            insertToTable(connection, name, path);
+            insertToTable(connection, String.format("%s.%s", targetSchema, tableName), path);
         } finally {
             if (isJsonDump) {
                 ProgressTracker.getInstance().upgradeTableProgress(name, progressInfo);
@@ -315,7 +323,8 @@ public class TargetDatabase {
                 try {
                     String[] values = CSV_SPLIT_PATTERN.split(line, -1);
                     for (int i = 0; i < values.length; i++) {
-                        pstmt.setString(i + 1, values[i].trim());
+                        String value = values[i].substring(1, values[i].length() - 1).trim();
+                        pstmt.setObject(i + 1, "null".equalsIgnoreCase(value) ? "" : value);
                     }
                     pstmt.executeUpdate();
                 } catch (SQLException e) {
@@ -356,10 +365,11 @@ public class TargetDatabase {
                 if (object == null) {
                     continue;
                 }
+                String targetSchema = schemaMappings.get(schema);
                 String fullName = String.format("%s.%s", schema, object.getName());
                 String createObjectSql = object.getDefinition();
                 try {
-                    executeCreateObject(schema, conn, statement, createObjectSql, fullName);
+                    executeCreateObject(targetSchema, conn, statement, createObjectSql, fullName);
                 } catch (SQLException e) {
                     LOGGER.warn(
                         "Method 1 directly execute create {} {} has occurred an exception, detail:{}, so translate it"
@@ -368,12 +378,12 @@ public class TargetDatabase {
                         createObjectSql, false, false);
                     if (!translatedSql.isPresent()) {
                         handleCreateFailure(objectType, fullName, "sql-translator failed");
-                        continue;
-                    }
-                    try {
-                        executeCreateObject(schema, conn, statement, translatedSql.get(), fullName);
-                    } catch (SQLException ex) {
-                        handleCreateFailure(objectType, fullName, e.getMessage());
+                    } else {
+                        try {
+                            executeCreateObject(targetSchema, conn, statement, translatedSql.get(), fullName);
+                        } catch (SQLException ex) {
+                            handleCreateFailure(objectType, fullName, e.getMessage());
+                        }
                     }
                 }
             }
@@ -383,23 +393,35 @@ public class TargetDatabase {
         }
     }
 
-    private void executeCreateObject(String schema, Connection conn, Statement statement, String sql, String fullName)
-        throws SQLException {
+    private void executeCreateObject(String schema, Connection conn, Statement statement, String sqlStr,
+        String fullName) throws SQLException {
         try {
             conn.setAutoCommit(false);
             conn.setSchema(schema);
-            statement.executeUpdate(sql);
+            if (sqlStr.contains(";")) {
+                String[] sqls = sqlStr.split(";");
+                for (String sql : sqls) {
+                    statement.execute(sql);
+                }
+            } else {
+                statement.executeUpdate(sqlStr);
+            }
             conn.commit();
-            ProgressTracker.getInstance().upgradeObjectProgressMap(fullName, ProgressStatus.MIGRATED_COMPLETE);
+            if (isJsonDump) {
+                ProgressTracker.getInstance()
+                    .upgradeObjectProgressMap(fullName, ProgressStatus.MIGRATED_COMPLETE, StringUtils.EMPTY);
+            }
         } catch (SQLException e) {
             conn.rollback();
             throw e;
         }
     }
 
-    private static void handleCreateFailure(String objectType, String fullName, String errMsg) {
+    private void handleCreateFailure(String objectType, String fullName, String errMsg) {
         LOGGER.error("Method 2 execute failed to create {} {}. detail:{}.", objectType, fullName, errMsg);
-        ProgressTracker.getInstance().upgradeObjectProgressMap(fullName, ProgressStatus.MIGRATED_FAILURE);
+        if (isJsonDump) {
+            ProgressTracker.getInstance().upgradeObjectProgressMap(fullName, ProgressStatus.MIGRATED_FAILURE, errMsg);
+        }
     }
 
     /**
@@ -433,7 +455,7 @@ public class TargetDatabase {
      * @param queueName queueName
      * @param logPrefix logPrefix
      */
-    public void writeKeyOrIndex(Function<Object, String> sqlGenerator, String queueName, String logPrefix) {
+    public void writeKeyOrIndex(Function<Object, Optional<String>> sqlGenerator, String queueName, String logPrefix) {
         try (Connection conn = connection.getConnection(dbConfig); Statement statement = conn.createStatement()) {
             while (!QueueManager.getInstance().isQueuePollEnd(queueName)) {
                 Object object = QueueManager.getInstance().pollQueue(queueName);
@@ -443,10 +465,11 @@ public class TargetDatabase {
                     continue;
                 }
                 try {
-                    String sql = sqlGenerator.apply(object);
+                    String sql = sqlGenerator.apply(object)
+                        .orElseThrow(() -> new SQLException("This object is not currently supported."));
                     statement.executeUpdate(sql);
                 } catch (SQLException e) {
-                    LOGGER.warn("write {} has occurred an exception, detail:{}", logPrefix, e.getMessage());
+                    LOGGER.error("write {} has occurred an exception,  detail:{}", logPrefix, e.getMessage());
                     continue;
                 }
                 LOGGER.info("{} has finished to write {}", Thread.currentThread().getName(), logPrefix);
@@ -456,13 +479,36 @@ public class TargetDatabase {
         }
     }
 
-    private String getCreateIndexSql(TableIndex tableIndex) {
+    private Optional<String> getCreateIndexSql(TableIndex tableIndex) {
+        Optional<String> indexSqlTempOptional = getIndexSqlTemp(tableIndex);
+        if (indexSqlTempOptional.isPresent()) {
+            StringBuilder builder = new StringBuilder(
+                String.format(indexSqlTempOptional.get(), tableIndex.getIndexName(), tableIndex.getSchemaName(),
+                    tableIndex.getTableName(), tableIndex.getColumnName()));
+            if (StringUtils.isNotEmpty(tableIndex.getIncludedColumns())) {
+                builder.append(" INCLUDE (").append(tableIndex.getIncludedColumns()).append(")");
+            }
+            if (tableIndex.isHasFilter() && StringUtils.isNotEmpty(tableIndex.getFilterDefinition())) {
+                builder.append(" WHERE ").append(tableIndex.getFilterDefinition());
+            }
+            return Optional.of(builder.toString());
+        }
+        return Optional.empty();
+    }
+
+    private Optional<String> getIndexSqlTemp(TableIndex tableIndex) {
         String indexType = tableIndex.getIndexType().toUpperCase(Locale.ROOT);
         String createIndexTemp;
+        if (indexType.contains("COLUMNSTORE")) {
+            LOGGER.error("this type of index is not be supported to migration, schema:{}, table:{}, name:{}. type:{}",
+                tableIndex.getSchemaName(), tableIndex.getTableName(), tableIndex.getIndexName(),
+                tableIndex.getIndexType());
+            return Optional.empty();
+        }
         if ("CLUSTERED".equals(indexType) || "NONCLUSTERED".equals(indexType)) {
-            createIndexTemp = "CREATE INDEX %s ON %s.%s USING btree (%s)";
-        } else if ("UNIQUE".equals(indexType)) {
-            createIndexTemp = "CREATE UNIQUE INDEX %s ON %s.%s USING btree (%s)";
+            createIndexTemp = tableIndex.isUnique()
+                ? "CREATE UNIQUE INDEX %s ON %s.%s USING btree (%s)"
+                : "CREATE INDEX %s ON %s.%s USING btree (%s)";
         } else if ("FULLTEXT".equals(indexType) || "XML".equalsIgnoreCase(indexType)) {
             createIndexTemp = "CREATE INDEX %s ON %s.%s USING gin (%s gin_trgm_ops)";
         } else if ("SPATIAL".equals(indexType)) {
@@ -470,26 +516,18 @@ public class TargetDatabase {
         } else {
             createIndexTemp = "CREATE INDEX %s ON %s.%s (%s)";
         }
-        StringBuilder builder = new StringBuilder(
-            String.format(createIndexTemp, tableIndex.getIndexName(), tableIndex.getSchemaName(),
-                tableIndex.getTableName(), tableIndex.getColumnName()));
-        if (StringUtils.isNotEmpty(tableIndex.getIncludedColumns())) {
-            builder.append(" INCLUDE (").append(tableIndex.getIncludedColumns()).append(")");
-        }
-        if (tableIndex.isHasFilter() && StringUtils.isNotEmpty(tableIndex.getFilterDefinition())) {
-            builder.append(" WHERE ").append(tableIndex.getFilterDefinition());
-        }
-        return builder.toString();
+        return Optional.of(createIndexTemp);
     }
 
-    private String getCreatePkSql(TablePrimaryKey tablePrimaryKey) {
-        return String.format(CREATE_PK_SQL, tablePrimaryKey.getSchemaName(), tablePrimaryKey.getTableName(),
-            tablePrimaryKey.getPkName(), tablePrimaryKey.getColumnName());
+    private Optional<String> getCreatePkSql(TablePrimaryKey tablePrimaryKey) {
+        return Optional.of(String.format(CREATE_PK_SQL, tablePrimaryKey.getSchemaName(), tablePrimaryKey.getTableName(),
+            tablePrimaryKey.getPkName(), tablePrimaryKey.getColumnName()));
     }
 
-    private String getCreateFkSql(TableForeignKey tableForeignKey) {
-        return String.format(CREATE_FK_SQL, tableForeignKey.getSchemaName(), tableForeignKey.getParentTable(),
-            tableForeignKey.getFkName(), tableForeignKey.getParentColumn(), tableForeignKey.getSchemaName(),
-            tableForeignKey.getReferencedTable(), tableForeignKey.getReferencedColumn());
+    private Optional<String> getCreateFkSql(TableForeignKey tableForeignKey) {
+        return Optional.of(
+            String.format(CREATE_FK_SQL, tableForeignKey.getSchemaName(), tableForeignKey.getParentTable(),
+                tableForeignKey.getFkName(), tableForeignKey.getParentColumn(), tableForeignKey.getSchemaName(),
+                tableForeignKey.getReferencedTable(), tableForeignKey.getReferencedColumn()));
     }
 }
