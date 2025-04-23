@@ -34,7 +34,23 @@ public enum TaskTypeEnum {
     FUNCTION("function"),
     TRIGGER("trigger"),
     PROCEDURE("procedure"),
-    SEQUENCE("sequence");
+    SEQUENCE("sequence"),
+    UNKNOWN("unknown");
 
     private String taskType;
+
+    /**
+     * getTaskTypeEnum
+     *
+     * @param type type
+     * @return TaskTypeEnum
+     */
+    public static TaskTypeEnum getTaskTypeEnum(String type) {
+        for (TaskTypeEnum typeEnum : TaskTypeEnum.values()) {
+            if (typeEnum.getTaskType().equalsIgnoreCase(type)) {
+                return typeEnum;
+            }
+        }
+        return UNKNOWN;
+    }
 }

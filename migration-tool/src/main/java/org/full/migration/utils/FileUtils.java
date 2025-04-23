@@ -122,11 +122,8 @@ public class FileUtils {
                 PosixFilePermission.GROUP_READ);
             Files.setPosixFilePermissions(filePath, perms);
         } catch (UnsupportedOperationException e) {
-            filePath.toFile().setReadable(true, true);
-            filePath.toFile().setWritable(true, true);
-            filePath.toFile().setReadable(true, false);
-            filePath.toFile().setWritable(false, false);
-            filePath.toFile().setExecutable(false, false);
+            filePath.toFile().setReadable(true);
+            filePath.toFile().setWritable(true);
         }
     }
 

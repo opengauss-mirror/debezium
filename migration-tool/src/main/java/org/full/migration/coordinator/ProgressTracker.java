@@ -17,6 +17,7 @@ package org.full.migration.coordinator;
 
 import com.alibaba.fastjson.JSON;
 
+import org.apache.commons.lang3.StringUtils;
 import org.full.migration.model.TaskTypeEnum;
 import org.full.migration.model.progress.MigrationProgressInfo;
 import org.full.migration.model.progress.ProgressInfo;
@@ -182,8 +183,9 @@ public class ProgressTracker {
      *
      * @param name name
      * @param status status
+     * @param errMsg errMsg
      */
-    public void upgradeObjectProgressMap(String name, ProgressStatus status) {
+    public void upgradeObjectProgressMap(String name, ProgressStatus status, String errMsg) {
         if (!progressMap.containsKey(name)) {
             return;
         }
@@ -191,6 +193,9 @@ public class ProgressTracker {
         progressInfo.setStatus(status.getCode());
         if (status == ProgressStatus.MIGRATED_COMPLETE || status == ProgressStatus.MIGRATED_FAILURE) {
             progressInfo.setPercent(1);
+        }
+        if (StringUtils.isNotEmpty(errMsg)) {
+            progressInfo.setError(errMsg);
         }
         progressMap.put(name, progressInfo);
     }

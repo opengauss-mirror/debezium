@@ -15,36 +15,16 @@
 
 package org.full.migration.model.table;
 
-import lombok.Builder;
 import lombok.Data;
 
-import java.util.List;
-
 /**
- * Column
+ * GenerateInfo
  *
  * @since 2025-04-18
  */
 @Data
-@Builder
-public class Column {
+public class GenerateInfo {
     private String name;
-    private int position;
-    private int jdbcType;
-    private int nativeType;
-    private String typeName;
-    private String typeExpression;
-    private String charsetName;
-    private long length;
-    private Integer scale;
-    private boolean optional;
-    private boolean autoIncremented;
-    private boolean generated;
-    private GenerateInfo generateInfo;
-    private String defaultValueExpression;
-    private boolean hasDefaultValue;
-    private List<String> enumValues;
-    private List<String> modifyKeys;
-    private String comment;
-    private String intervalType;
+    private Boolean isStored;
+    private String define;
 }

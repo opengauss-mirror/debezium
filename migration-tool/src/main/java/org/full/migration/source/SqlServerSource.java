@@ -21,11 +21,14 @@ import org.apache.commons.lang3.StringUtils;
 import org.full.migration.constants.CommonConstants;
 import org.full.migration.constants.SqlServerSqlConstants;
 import org.full.migration.jdbc.SqlServerConnection;
+import org.full.migration.model.TaskTypeEnum;
 import org.full.migration.model.config.GlobalConfig;
 import org.full.migration.model.table.Column;
+import org.full.migration.model.table.GenerateInfo;
 import org.full.migration.model.table.PartitionDefinition;
 import org.full.migration.model.table.Table;
 import org.full.migration.model.table.TableIndex;
+import org.full.migration.translator.SqlServerColumnType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,6 +40,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -56,6 +60,29 @@ public class SqlServerSource extends SourceDatabase {
     @Override
     protected String getQueryTableSql(String schema) {
         return String.format(SqlServerSqlConstants.QUERY_TABLE_SQL, schema);
+    }
+
+    @Override
+    protected Optional<GenerateInfo> getGeneratedDefine(Connection conn, String schema, String tableName,
+        String column) {
+        try (PreparedStatement pstmt = conn.prepareStatement(SqlServerSqlConstants.QUERY_GENERATE_DEFINE_SQL)) {
+            pstmt.setString(1, schema);
+            pstmt.setString(2, tableName);
+            pstmt.setString(3, column);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    GenerateInfo generateInfo = new GenerateInfo();
+                    generateInfo.setName(column);
+                    generateInfo.setIsStored(rs.getBoolean("is_persisted"));
+                    generateInfo.setDefine(convertCondition(rs.getString("computation_expression")));
+                    return Optional.of(generateInfo);
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.error("query generate define occurred an exception, schema:{}, table:{}, column:{}", schema,
+                tableName, column);
+        }
+        return Optional.empty();
     }
 
     @Override
@@ -118,7 +145,13 @@ public class SqlServerSource extends SourceDatabase {
 
     @Override
     protected String getQueryWithLock(Table table, List<Column> columns) {
-        List<String> columnNames = columns.stream().map(Column::getName).collect(Collectors.toList());
+        List<String> columnNames = columns.stream().map(column -> {
+            String name = column.getName();
+            if (SqlServerColumnType.isGeometryTypes(column.getTypeName())) {
+                return name + ".STAsText() AS " + name;
+            }
+            return name;
+        }).collect(Collectors.toList());
         return String.format(SqlServerSqlConstants.QUERY_WITH_LOCK_SQL,
             String.join(CommonConstants.DELIMITER, columnNames), table.getCatalogName(), table.getSchemaName(),
             table.getTableName());
@@ -152,16 +185,17 @@ public class SqlServerSource extends SourceDatabase {
 
     @Override
     protected String convertDefinition(String objectType, ResultSet rs) throws SQLException {
-        if ("sequences".equalsIgnoreCase(objectType)) {
+        if (TaskTypeEnum.SEQUENCE.getTaskType().equalsIgnoreCase(objectType)) {
             long minValue = rs.getLong("minValue");
             long maxValue = rs.getLong("maxValue");
             int typeId = rs.getInt("typeId");
             if (minValue == Long.MIN_VALUE || maxValue == Long.MAX_VALUE) {
                 long[] bounds = getDataTypeBounds(typeId);
-                minValue = bounds[0];
-                maxValue = bounds[1];
+                minValue = Math.max(bounds[0], minValue);
+                maxValue = Math.min(bounds[1], maxValue);
             }
             int cacheSize = rs.getInt("cacheSize");
+            // SQLServer 默认50
             cacheSize = cacheSize == 0 ? 50 : cacheSize;
             long increment = rs.getLong("increment");
             increment = increment == 0 ? 1 : increment;
@@ -170,9 +204,9 @@ public class SqlServerSource extends SourceDatabase {
             boolean isCycling = rs.getBoolean("isCycling");
             long currentValue = rs.getLong("currentValue");
             return String.format(Locale.ROOT,
-                "CREATE OR REPLACE SEQUENCE %s START WITH %d INCREMENT BY %d MINVALUE %d MAXVALUE %d %s CACHE %d; "
+                "CREATE SEQUENCE IF NOT EXISTS %s START WITH %d INCREMENT BY %d MINVALUE %d MAXVALUE %d %s CACHE %d; "
                     + "SELECT setval('%s', %d);", rs.getString("name"), startValue, increment, minValue, maxValue,
-                isCycling ? "CYCLE" : "NOT CYCLE", cacheSize, rs.getString("name"), currentValue);
+                isCycling ? "CYCLE" : "NOCYCLE", cacheSize, rs.getString("name"), currentValue);
         }
         return rs.getString("definition");
     }
@@ -201,7 +235,7 @@ public class SqlServerSource extends SourceDatabase {
     protected TableIndex getTableIndex(Connection conn, ResultSet rs) throws SQLException {
         TableIndex tableIndex = new TableIndex(rs);
         if (tableIndex.isHasFilter() && StringUtils.isNotEmpty(tableIndex.getFilterDefinition())) {
-            tableIndex.setFilterDefinition(convertFilterCondition(tableIndex.getFilterDefinition()));
+            tableIndex.setFilterDefinition(convertCondition(tableIndex.getFilterDefinition()));
         }
         long objectId = rs.getLong("object_id");
         List<String> indexCols = new ArrayList<>();
@@ -227,7 +261,7 @@ public class SqlServerSource extends SourceDatabase {
         return String.format(SqlServerSqlConstants.QUERY_FOREIGN_KEY_SQL, schema);
     }
 
-    private String convertFilterCondition(String filterDefinition) {
-        return filterDefinition.replace("[", "").replace("]", "");
+    private String convertCondition(String definition) {
+        return definition.replace("[", "").replace("]", "");
     }
 }

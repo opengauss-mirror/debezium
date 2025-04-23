@@ -47,6 +47,7 @@ public class SqlServerFuncTranslator {
         PATTERNS.put("CONVERT", Pattern.compile("(?i)CONVERT\\((\\w+)\\s*,\\s*([^)]+)\\)"));
         PATTERNS.put("IIF", Pattern.compile("(?i)IIF\\(([^,]+)\\s*,\\s*([^,]+)\\s*,\\s*([^)]+)\\)"));
         // 特殊语法
+        PATTERNS.put("POINT", Pattern.compile("(?i)POINT\\s*\\(\\s*([\\d.]+)\\s+([\\d.]+)\\s*\\)"));
         PATTERNS.put("STRING_CONCAT", Pattern.compile("(?<=\\w|\\\")\\s*\\+\\s*(?=\\w|\\\")"));
         PATTERNS.put("NOT_EQUAL", Pattern.compile("!="));
         PATTERNS.put("TOP_CLAUSE", Pattern.compile("(?i)TOP\\s+\\(?(\\d+)\\)?\\s+"));
@@ -80,6 +81,7 @@ public class SqlServerFuncTranslator {
         result = convertFunction(PATTERNS.get("CONVERT"), result, "CAST($2 AS $1)");
         result = convertFunction(PATTERNS.get("IIF"), result, "CASE WHEN $1 THEN $2 ELSE $3 END");
         // 5. 转换特殊语法
+        result = convertFunction(PATTERNS.get("POINT"), result, "point($1,$2)");
         result = PATTERNS.get("STRING_CONCAT").matcher(result).replaceAll(" || ");
         result = PATTERNS.get("NOT_EQUAL").matcher(result).replaceAll("<>");
         result = PATTERNS.get("TOP_CLAUSE").matcher(result).replaceAll("");

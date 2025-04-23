@@ -26,6 +26,7 @@ import org.full.migration.model.TaskTypeEnum;
 import org.full.migration.model.config.GlobalConfig;
 import org.full.migration.model.config.SourceConfig;
 import org.full.migration.model.table.Column;
+import org.full.migration.model.table.GenerateInfo;
 import org.full.migration.model.table.PartitionDefinition;
 import org.full.migration.model.table.SliceInfo;
 import org.full.migration.model.table.Table;
@@ -52,6 +53,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * SourceDatabase
@@ -94,6 +96,18 @@ public abstract class SourceDatabase {
      * @return sql for querying Table
      */
     protected abstract String getQueryTableSql(String schema);
+
+    /**
+     * getGeneratedDefine
+     *
+     * @param conn conn
+     * @param schema schema
+     * @param tableName tableName
+     * @param name name
+     * @return generated column
+     */
+    protected abstract Optional<GenerateInfo> getGeneratedDefine(Connection conn, String schema, String tableName,
+        String name);
 
     /**
      * getQueryUniqueConstraint
@@ -253,19 +267,26 @@ public abstract class SourceDatabase {
                 if (table == null) {
                     continue;
                 }
-                LOGGER.info("start to read metadata of {}.{}.", table.getSchemaName(), table.getTableName());
+                String schema = table.getSchemaName();
+                String tableName = table.getTableName();
+                LOGGER.info("start to read metadata of {}.{}.", schema, tableName);
                 DatabaseMetaData metaData = conn.getMetaData();
-                ResultSet columnMetadata = metaData.getColumns(table.getCatalogName(), table.getSchemaName(),
-                    table.getTableName(), null);
+                ResultSet columnMetadata = metaData.getColumns(table.getCatalogName(), schema, tableName, null);
                 List<Column> columns = new ArrayList<>();
                 while (columnMetadata.next()) {
-                    sourceTableService.readTableColumn(columnMetadata).ifPresent(columns::add);
+                    sourceTableService.readTableColumn(columnMetadata).ifPresent(column -> {
+                        Optional<GenerateInfo> generateInfoOptional = getGeneratedDefine(conn, schema, tableName,
+                            column.getName());
+                        if (column.isGenerated() && generateInfoOptional.isPresent()) {
+                            column.setGenerateInfo(generateInfoOptional.get());
+                        }
+                        columns.add(column);
+                    });
                 }
                 // 构造建表语句
                 String partitionDdl = null;
                 if (table.isPartition()) {
-                    PartitionDefinition partitionDef = getPartitionDefinition(conn, table.getSchemaName(),
-                        table.getTableName());
+                    PartitionDefinition partitionDef = getPartitionDefinition(conn, schema, tableName);
                     partitionDdl = sourceTableService.getPartitionDdl(partitionDef);
                 }
                 Optional<String> createTableSqlOptional = sourceTableService.getCreateTableSql(table, columns,
@@ -389,9 +410,12 @@ public abstract class SourceDatabase {
         LOGGER.info("start to export data for table {}.{}", table.getSchemaName(), table.getTableName());
         try (Statement stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
             stmt.setFetchSize(pageRows);
-            String lockQuery = getQueryWithLock(table, columns);
+            List<Column> queryColumns = columns.stream()
+                .filter(column -> !column.isGenerated())
+                .collect(Collectors.toList());
+            String lockQuery = getQueryWithLock(table, queryColumns);
             try (ResultSet rs = stmt.executeQuery(lockQuery)) {
-                sourceTableService.exportResultSetToCsv(rs, table, columns, pageRows, snapshotPoint);
+                sourceTableService.exportResultSetToCsv(rs, table, queryColumns, pageRows, snapshotPoint);
             }
         }
         conn.commit();
@@ -423,14 +447,14 @@ public abstract class SourceDatabase {
                 dbObject.setSchema(schema);
                 dbObject.setName(objectName);
                 dbObject.setDefinition(convertDefinition(objectType, rs));
-                LOGGER.info("{}:{}", objectType, dbObject.getDefinition());
+                LOGGER.debug("read object, type:{}, object Name:{}", objectType, dbObject.getName());
                 QueueManager.getInstance().putToQueue(QueueManager.OBJECT_QUEUE, dbObject);
                 if (isDumpJson) {
                     ProgressTracker.getInstance().putProgressMap(schema, objectName);
                 }
             }
             if (isDumpJson) {
-                ProgressTracker.getInstance().recordObjectProgress(TaskTypeEnum.valueOf(objectType));
+                ProgressTracker.getInstance().recordObjectProgress(TaskTypeEnum.getTaskTypeEnum(objectType));
             }
         } catch (SQLException e) {
             LOGGER.error("fail to read {}, errorMsg:{}", objectType, e.getMessage());
@@ -450,6 +474,9 @@ public abstract class SourceDatabase {
                 try (ResultSet rs = stmt.executeQuery(getQueryIndexSql(schema))) {
                     while (rs.next()) {
                         TableIndex tableIndex = getTableIndex(conn, rs);
+                        if (sourceTableService.isSkipTable(tableIndex.getSchemaName(), tableIndex.getTableName())) {
+                            continue;
+                        }
                         tableIndex.setSchemaName(sourceConfig.getSchemaMappings().get(schema));
                         if (!(tableIndex.isPrimaryKey() && tableIndex.isUnique())) {
                             QueueManager.getInstance().putToQueue(QueueManager.TABLE_INDEX_QUEUE, tableIndex);
@@ -481,6 +508,10 @@ public abstract class SourceDatabase {
                             tablePrimaryKey.setTableName(rs.getString("table_name"));
                             tablePrimaryKey.setColumnName(rs.getString("pk_columns"));
                             tablePrimaryKey.setPkName(rs.getString("pk_name"));
+                            if (sourceTableService.isSkipTable(tablePrimaryKey.getSchemaName(),
+                                tablePrimaryKey.getTableName())) {
+                                continue;
+                            }
                             QueueManager.getInstance()
                                 .putToQueue(QueueManager.TABLE_PRIMARY_KEY_QUEUE, tablePrimaryKey);
                         }

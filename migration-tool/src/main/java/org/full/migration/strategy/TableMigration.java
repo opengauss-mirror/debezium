@@ -75,23 +75,6 @@ public class TableMigration extends MigrationStrategy {
         waitThreadsTerminated(dataWriteExecutor, StringUtils.EMPTY, true);
     }
 
-    private void waitThreadsTerminated(ThreadPoolExecutor threadPool, String queueName, boolean isTaskFinish) {
-        threadPool.shutdown();
-        while (true) {
-            int activeCount = threadPool.getActiveCount();
-            if (activeCount == 0) {
-                if (isTaskFinish) {
-                    LOGGER.info("table migration task has been completed.");
-                } else {
-                    QueueManager.getInstance().setReadFinished(queueName, true);
-                    LOGGER.info("the {} has been consumed completely.", queueName);
-                }
-                break;
-            }
-            sleep(1000);
-        }
-    }
-
     private ThreadPoolExecutor getThreadPool(String prefix, int threadCount) {
         return new ThreadPoolExecutor(threadCount + 1, threadCount + 1, 0L, TimeUnit.MILLISECONDS,
             new LinkedBlockingQueue<>(), getThreadFactory(prefix));

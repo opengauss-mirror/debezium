@@ -15,6 +15,7 @@
 
 package org.full.migration.strategy;
 
+import org.full.migration.coordinator.QueueManager;
 import org.full.migration.source.SourceDatabase;
 import org.full.migration.target.TargetDatabase;
 import org.slf4j.Logger;
@@ -61,5 +62,6 @@ public class ObjectMigration extends MigrationStrategy {
             LOGGER.error(e.getMessage());
         }
         executor.shutdown();
+        waitThreadsTerminated(executor, QueueManager.OBJECT_QUEUE, true);
     }
 }
