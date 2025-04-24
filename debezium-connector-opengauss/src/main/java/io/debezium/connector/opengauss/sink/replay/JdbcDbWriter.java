@@ -48,7 +48,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
@@ -95,6 +94,7 @@ public class JdbcDbWriter {
     private final DateTimeFormatter ofPattern = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
     private BlockingQueue<SinkRecord> sinkQueue = new LinkedBlockingQueue<>();
     private Map<String, Integer> runnableMap = new HashMap<>();
+    private Map<String, List<String>> relyTableMap = new HashMap<>();
     private Map<String, String> schemaMappingMap = new HashMap<>();
     private final Map<String, TableMetaData> oldTableMap = new HashMap<>();
     private Map<Long, Long> addedQueueMap = new ConcurrentHashMap<>();
@@ -611,13 +611,19 @@ public class JdbcDbWriter {
     }
 
     private int getRelyIndex(String currentTableName) {
-        Set<String> set = runnableMap.keySet();
-        Iterator<String> iterator = set.iterator();
-        while (iterator.hasNext()) {
-            String previousTableName = iterator.next();
-            if (sqlTools.getForeignTableList(previousTableName).contains(currentTableName)
-                    || sqlTools.getForeignTableList(currentTableName).contains(previousTableName)) {
-                return runnableMap.get(previousTableName);
+        for (Map.Entry<String, List<String>> entry : relyTableMap.entrySet()) {
+            if (entry.getValue().contains(currentTableName)) {
+                return runnableMap.getOrDefault(entry.getKey(), -1);
+            }
+        }
+        List<String> foreignTableList = sqlTools.getForeignTableList(currentTableName);
+        if (foreignTableList.isEmpty()) {
+            return -1;
+        }
+        relyTableMap.put(currentTableName, foreignTableList);
+        for (Map.Entry<String, Integer> entry : runnableMap.entrySet()) {
+            if (foreignTableList.contains(entry.getKey())) {
+                return entry.getValue();
             }
         }
         return -1;

@@ -11,10 +11,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -69,6 +67,7 @@ public class TableReplayTask extends ReplayTask {
     private final Map<String, TableMetaData> oldTableMap = new HashMap<>();
 
     private Map<String, Integer> runnableMap = new HashMap<>();
+    private Map<String, List<String>> relyTableMap = new HashMap<>();
     private MySqlSinkConnectorConfig config;
     private volatile AtomicBoolean isSinkQueueBlock = new AtomicBoolean(false);
     private volatile AtomicBoolean isWorkQueueBlock = new AtomicBoolean(false);
@@ -531,13 +530,19 @@ public class TableReplayTask extends ReplayTask {
     }
 
     private int getRelyIndex(String currentTableName) {
-        Set<String> set = runnableMap.keySet();
-        Iterator<String> iterator = set.iterator();
-        while (iterator.hasNext()) {
-            String previousTableName = iterator.next();
-            if (sqlTools.getForeignTableList(previousTableName).contains(currentTableName)
-                    || sqlTools.getForeignTableList(currentTableName).contains(previousTableName)) {
-                return runnableMap.get(previousTableName);
+        for (Map.Entry<String, List<String>> entry : relyTableMap.entrySet()) {
+            if (entry.getValue().contains(currentTableName)) {
+                return runnableMap.getOrDefault(entry.getKey(), -1);
+            }
+        }
+        List<String> foreignTableList = sqlTools.getForeignTableList(currentTableName);
+        if (foreignTableList.isEmpty()) {
+            return -1;
+        }
+        relyTableMap.put(currentTableName, foreignTableList);
+        for (Map.Entry<String, Integer> entry : runnableMap.entrySet()) {
+            if (foreignTableList.contains(entry.getKey())) {
+                return entry.getValue();
             }
         }
         return -1;
