@@ -250,6 +250,7 @@ public abstract class SourceDatabase {
             if (isDumpJson) {
                 ProgressTracker.getInstance().recordTableProgress();
             }
+            LOGGER.info("success to query all tables...");
         } catch (SQLException e) {
             LOGGER.error("fail to query table list, error message:{}.", e.getMessage());
         }
