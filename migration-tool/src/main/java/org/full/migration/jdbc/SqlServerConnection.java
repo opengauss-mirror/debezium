@@ -38,11 +38,12 @@ public class SqlServerConnection implements JdbcConnection {
         String url = String.format(Locale.ROOT, SQLSERVER_URL, dbConfig.getHost(), dbConfig.getPort(),
             dbConfig.getDatabase());
         try {
+            Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
             return DriverManager.getConnection(url, dbConfig.getUser(), dbConfig.getPassword());
-        } catch (SQLException e) {
+        } catch (SQLException | ClassNotFoundException e) {
             LOGGER.error("fail to create sql server connection, host:{}, port:{}, please check.", dbConfig.getHost(),
                 dbConfig.getPort());
-            throw e;
+            throw new SQLException(e.getMessage());
         }
     }
 
