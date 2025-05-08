@@ -43,11 +43,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.util.CollectionUtils;
 
-import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
@@ -264,7 +265,8 @@ public class TargetDatabase {
         }
         String targetSchema = tableTask.getTable().getTargetSchemaName();
         connection.setSchema(targetSchema);
-        try (FileReader csvReader = new FileReader(path)) {
+        try (InputStreamReader csvReader = new InputStreamReader(Files.newInputStream(Paths.get(path)),
+            StandardCharsets.UTF_8)) {
             CopyManager copyManager = new CopyManager((BaseConnection) connection);
             String copySql = String.format(COPY_SQL, targetSchema, tableName);
             copyManager.copyIn(copySql, csvReader);
@@ -308,7 +310,7 @@ public class TargetDatabase {
     }
 
     private void insertToTable(Connection conn, String fullTableName, String csvFile) throws SQLException, IOException {
-        List<String> allLines = Files.readAllLines(Paths.get(csvFile));
+        List<String> allLines = Files.readAllLines(Paths.get(csvFile), StandardCharsets.UTF_8);
         if (allLines.isEmpty()) {
             throw new IOException(csvFile + "is empty, please check...");
         }
