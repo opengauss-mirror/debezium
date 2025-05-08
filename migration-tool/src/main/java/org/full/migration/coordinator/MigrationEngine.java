@@ -48,7 +48,7 @@ public class MigrationEngine {
      * @param configPath configPath
      */
     public MigrationEngine(String taskType, String sourceDbType, String configPath) {
-        this.taskType = taskType;
+        this.taskType = taskType.toLowerCase(Locale.ROOT);
         this.sourceDbType = sourceDbType.toLowerCase(Locale.ROOT);
         this.configPath = configPath;
     }
