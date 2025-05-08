@@ -257,11 +257,14 @@ public class SourceTableService {
         String tableCsvPath = sourceConfig.getCsvDir();
         FileUtils.createDir(tableCsvPath);
         int fileIndex = 1;
-        BufferedWriter writer = initializeWriter(table, tableCsvPath, fileIndex, columns);
+        BufferedWriter writer = null;
         try {
             int rowCount = 0;
             long totalSlice = table.getRowCount() / pageRows + 1;
             while (rs.next()) {
+                if (rowCount == 0) {
+                    writer = initializeWriter(table, tableCsvPath, fileIndex, columns);
+                }
                 rowCount++;
                 String line = formatData(rs, columns);
                 writer.write(line);
@@ -274,23 +277,14 @@ public class SourceTableService {
                         FileUtils.getCurrentFilePath(table, tableCsvPath, fileIndex), snapshotPoint, sliceInfo);
                     updateTableDataQueue(tableData);
                     fileIndex++;
-                    writer = initializeWriter(table, tableCsvPath, fileIndex, columns);
                     rowCount = 0;
                 }
             }
+            writer.flush();
+            writer.close();
             TableData tableData = new TableData(table, FileUtils.getCurrentFilePath(table, tableCsvPath, fileIndex),
                 snapshotPoint, new SliceInfo(fileIndex, totalSlice, rowCount, true));
-            if (rowCount == 0) {
-                String filePath = FileUtils.getCurrentFilePath(table, tableCsvPath, fileIndex - 1);
-                SliceInfo sliceInfo = new SliceInfo(fileIndex - 1, totalSlice, pageRows, true);
-                tableData.setDataPath(filePath);
-                tableData.setSliceInfo(sliceInfo);
-                updateTableDataQueue(tableData);
-            } else {
-                writer.flush();
-                writer.close();
-                updateTableDataQueue(tableData);
-            }
+            updateTableDataQueue(tableData);
         } catch (IOException e) {
             LOGGER.error("write csv file has occurred an IOException, error message:{}", e.getMessage());
         } finally {
