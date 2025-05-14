@@ -182,6 +182,11 @@ public class SourceTableService {
                     table.getSchemaName(), table.getTableName(), colType);
                 return Optional.empty();
             }
+            if (SqlServerColumnType.isGeometryTypes(colName)) {
+                LOGGER.error("{}.{} has column type {}, can't migrate this table", table.getSchemaName(),
+                    table.getTableName(), colType);
+                return Optional.empty();
+            }
             String nullType = column.isOptional() ? "" : " NOT NULL ";
             columnDdl.add(String.format("%s %s %s", colName, colType, nullType));
         }

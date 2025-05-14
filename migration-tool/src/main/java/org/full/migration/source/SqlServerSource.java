@@ -28,7 +28,6 @@ import org.full.migration.model.table.GenerateInfo;
 import org.full.migration.model.table.PartitionDefinition;
 import org.full.migration.model.table.Table;
 import org.full.migration.model.table.TableIndex;
-import org.full.migration.translator.SqlServerColumnType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -145,13 +144,7 @@ public class SqlServerSource extends SourceDatabase {
 
     @Override
     protected String getQueryWithLock(Table table, List<Column> columns) {
-        List<String> columnNames = columns.stream().map(column -> {
-            String name = column.getName();
-            if (SqlServerColumnType.isGeometryTypes(column.getTypeName())) {
-                return name + ".STAsText() AS " + name;
-            }
-            return name;
-        }).collect(Collectors.toList());
+        List<String> columnNames = columns.stream().map(Column::getName).collect(Collectors.toList());
         return String.format(SqlServerSqlConstants.QUERY_WITH_LOCK_SQL,
             String.join(CommonConstants.DELIMITER, columnNames), table.getCatalogName(), table.getSchemaName(),
             table.getTableName());
