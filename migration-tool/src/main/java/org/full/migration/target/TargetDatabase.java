@@ -110,9 +110,7 @@ public class TargetDatabase {
     public TargetDatabase(GlobalConfig globalConfig) {
         this.dbConfig = globalConfig.getOgConn();
         this.isJsonDump = globalConfig.getIsDumpJson();
-        this.spacePerSlice = globalConfig.getSourceConfig()
-            .initStoreSize(globalConfig.getSourceConfig().getFileSize())
-            .divide(BigInteger.valueOf(1024 * 1024));
+        this.spacePerSlice = globalConfig.getSourceConfig().convertFileSize();
         this.isDeleteCsv = globalConfig.getIsDeleteCsv();
         this.isKeepExistingSchema = globalConfig.getIsKeepExistingSchema();
         this.schemaMappings = globalConfig.getSourceConfig().getSchemaMappings();

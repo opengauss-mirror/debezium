@@ -42,8 +42,7 @@ import javax.validation.constraints.NotNull;
 public class SourceConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger(SourceConfig.class);
     private static final int MEMORY_UNIT = 1024;
-    private static final BigInteger MEMORY_UNIT_BIGINTEGER = BigInteger.valueOf(MEMORY_UNIT);
-    private static final BigInteger DEFAULT_PAGE_SIZE = BigInteger.valueOf(2 * MEMORY_UNIT * MEMORY_UNIT);
+    private static final BigInteger DEFAULT_PAGE_SIZE = BigInteger.valueOf(2 * MEMORY_UNIT);
     private static final Pattern SIZE_PATTERN = Pattern.compile("^\\d+[kKmMgG]?$");
 
     private String type;
@@ -104,7 +103,7 @@ public class SourceConfig {
             return DEFAULT_PAGE_SIZE;
         }
         if (StringUtils.isNumeric(fileSize)) {
-            return Unit.calculateSize(BigInteger.valueOf(Integer.parseInt(fileSize)), Unit.B);
+            return Unit.calculateSize(BigInteger.valueOf(Integer.parseInt(fileSize)), Unit.M);
         }
         return initStoreSize(fileSize);
     }
