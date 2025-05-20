@@ -29,21 +29,17 @@ import java.math.BigInteger;
 @AllArgsConstructor
 public enum Unit {
     /**
-     * BYTE
-     */
-    B(0),
-    /**
      * KB
      */
-    K(1),
+    K(0),
     /**
      * MB
      */
-    M(2),
+    M(1),
     /**
      * GB
      */
-    G(3);
+    G(2);
     private static final BigInteger MEMORY_UNIT_BIGINTEGER = BigInteger.valueOf(1024);
 
     private final int exponent;
