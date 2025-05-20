@@ -177,6 +177,11 @@ public class SourceTableService {
                     table.getSchemaName(), table.getTableName(), colType);
                 return Optional.empty();
             }
+            if (SqlServerColumnType.isMoneyTypes(colType) && !sourceConfig.getIsMoneyMigrate()) {
+                LOGGER.error("{}.{} has column type {}, don't migrate this table according to the configuration",
+                    table.getSchemaName(), table.getTableName(), colType);
+                return Optional.empty();
+            }
             String nullType = column.isOptional() ? "" : " NOT NULL ";
             columnDdl.add(String.format("%s %s %s", colName, colType, nullType));
         }

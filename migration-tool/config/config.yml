@@ -41,6 +41,8 @@ sourceConfig:
   csvDir: /**/**
   # sqlserver中time,datetime2和datetimeoffset类型精度为0-7，openGauss中对应类型精度为0-6，可能会有精度损失，该参数控制是否迁移这三种类型
   isTimeMigrate: true
+  # sqlserver中money和smallmoney数据类型精确到它们所代表的货币单位的万分之一，openGauss的money类型精确到它们所代表的货币单位的百分之一，该参数控制是否迁移货币类型
+  isMoneyMigrate: true
   # 是否迁移源库的默认值到openGauss
   isMigrateDefaultValue: Yes
   # 是否记录快照
