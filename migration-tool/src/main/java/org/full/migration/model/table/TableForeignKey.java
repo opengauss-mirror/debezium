@@ -47,7 +47,7 @@ public class TableForeignKey {
         this.fkName = rs.getString("fk_name");
         this.parentTable = rs.getString("parent_table");
         this.referencedTable = rs.getString("referenced_table");
-        this.parentColumn = rs.getString("parent_column");
-        this.referencedColumn = rs.getString("referenced_column");
+        this.parentColumn = rs.getString("parent_columns");
+        this.referencedColumn = rs.getString("referenced_columns");
     }
 }
