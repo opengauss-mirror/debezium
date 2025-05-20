@@ -75,6 +75,7 @@ public class SourceConfig {
     private String outDir;
     private String csvDir;
     private Boolean isTimeMigrate;
+    private Boolean isMoneyMigrate;
     private Boolean containColumns;
     private String columnSplit;
     private Integer sleepLoop;

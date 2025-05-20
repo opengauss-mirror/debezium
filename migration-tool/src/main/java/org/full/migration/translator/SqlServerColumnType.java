@@ -79,6 +79,7 @@ public enum SqlServerColumnType {
     static final Set<SqlServerColumnType> BINARY_TYPE_SET = Set.of(SS_VARBINARY);
     static final Set<SqlServerColumnType> TIME_TYPE_SET = Set.of(SS_TIME, SS_DATETIME2, SS_DATETIMEOFFSET);
     static final Set<SqlServerColumnType> GEOMETRY_TYPE_SET = Set.of(SS_GEOMETRY, SS_GEOGRAPHY);
+    static final Set<SqlServerColumnType> MONEY_TYPE_SET = Set.of(SS_MONEY, SS_SMALLMONEY);
 
     /**
      * is type with length
@@ -163,6 +164,21 @@ public enum SqlServerColumnType {
      */
     public static boolean isGeometryTypes(String typeName) {
         for (SqlServerColumnType type : GEOMETRY_TYPE_SET) {
+            if (type.getSsType().equalsIgnoreCase(typeName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * isMoneyTypes
+     *
+     * @param typeName typeName
+     * @return isBinaryTypes
+     */
+    public static boolean isMoneyTypes(String typeName) {
+        for (SqlServerColumnType type : MONEY_TYPE_SET) {
             if (type.getSsType().equalsIgnoreCase(typeName)) {
                 return true;
             }
