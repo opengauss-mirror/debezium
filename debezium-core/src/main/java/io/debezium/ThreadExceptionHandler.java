@@ -21,8 +21,7 @@ public class ThreadExceptionHandler implements Thread.UncaughtExceptionHandler {
 
     @Override
     public void uncaughtException(Thread t, Throwable e) {
-        LOGGER.error("{}Uncaught exception occurred in thread {}, error message is: {}", ErrorCode.UNKNOWN, t.getName(),
-            e.getMessage());
+        LOGGER.error("{}Uncaught exception occurred in thread {}, error message is: ", ErrorCode.UNKNOWN, t.getName(), e);
         throw new RuntimeException(e);
     }
 }

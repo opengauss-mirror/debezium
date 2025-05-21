@@ -28,6 +28,7 @@ public class OgSinkProcessInfo extends BaseSinkProcessInfo {
      * @param createCount Long the overall pipe
      */
     public void setOverallPipe(long createCount) {
-        this.overallPipe = createCount - getReplayedCount();
+        long res = createCount - getReplayedCount();
+        this.overallPipe = res >= 0 ? res : 0;
     }
 }

@@ -123,15 +123,8 @@ public class OracleProcessCommitter extends BaseProcessCommitter {
         sinkProcessInfo.setRest(sinkProcessInfo.getSkippedExcludeEventCount(), sinkProcessInfo.getSkippedCount());
         sinkProcessInfo.setTimestamp();
         long sourceCreateCount = inputCreateCount(createCountInfoPath + File.separator
-                + CREATE_COUNT_INFO_NAME);
-        while (sourceCreateCount != -1 && sourceCreateCount < sinkProcessInfo.getReplayedCount()
-                + sinkProcessInfo.getSkippedCount() + sinkProcessInfo.getSkippedExcludeEventCount()) {
-            sourceCreateCount = inputCreateCount(createCountInfoPath + File.separator
-                    + CREATE_COUNT_INFO_NAME);
-        }
-        if (sourceCreateCount != -1) {
-            sinkProcessInfo.setOverallPipe(sourceCreateCount);
-        }
+            + CREATE_COUNT_INFO_NAME);
+        sinkProcessInfo.setOverallPipe(sourceCreateCount);
         return sinkProcessInfo.toString();
     }
 

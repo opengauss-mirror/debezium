@@ -202,14 +202,8 @@ public class OgProcessCommitter extends BaseProcessCommitter {
         sinkProcessInfo.setRest(0, 0);
         sinkProcessInfo.setTimestamp();
         long sourceCreateCount = inputCreateCount(createCountInfoPath + File.separator
-                + CREATE_COUNT_INFO_NAME);
-        while (sourceCreateCount != -1 && sourceCreateCount < sinkProcessInfo.getReplayedCount()) {
-            sourceCreateCount = inputCreateCount(createCountInfoPath + File.separator
-                    + CREATE_COUNT_INFO_NAME);
-        }
-        if (sourceCreateCount != -1) {
-            sinkProcessInfo.setOverallPipe(sourceCreateCount);
-        }
+            + CREATE_COUNT_INFO_NAME);
+        sinkProcessInfo.setOverallPipe(sourceCreateCount);
         return sinkProcessInfo.toString();
     }
 
