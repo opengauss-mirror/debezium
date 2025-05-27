@@ -1603,6 +1603,10 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
                 resultSet.close();
             }
 
+            if (!isSystemAdmin(connection)) {
+                return;
+            }
+
             int walSenderTimeout = walSenderTimeout();
             if (parseOriginWalSenderTimeout(originalWalSenderTimeout) < walSenderTimeout) {
                 statement.execute("alter system set wal_sender_timeout to '" + walSenderTimeout + "';");
@@ -1611,8 +1615,26 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
                 statement.execute("alter system set wal_receiver_timeout to '" + walSenderTimeout + "';");
             }
         } catch (SQLException e) {
-            LOGGER.error("{}GUC parameter: wal_sender_timeout, setting failed.", ErrorCode.SQL_EXCEPTION, e);
+            LOGGER.warn("GUC parameter: wal_sender_timeout, setting failed. Error: {}", e.getMessage());
         }
+    }
+
+    private boolean isSystemAdmin(Connection connection) {
+        String username = user();
+        String checkSql = String.format("select rolsystemadmin from pg_roles where rolname= '%s';", username);
+
+        boolean isAdmin = false;
+        try (Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(checkSql)
+        ) {
+            if (resultSet.next()) {
+                String permissionStr = resultSet.getString("rolsystemadmin");
+                isAdmin = "1".equals(permissionStr) || "t".equals(permissionStr);
+            }
+        } catch (SQLException e) {
+            LOGGER.warn("Check user {} sysadmin permission failed. Error: {}", username, e.getMessage());
+        }
+        return isAdmin;
     }
 
     private int parseOriginWalSenderTimeout(String timeout) {
@@ -1751,10 +1773,14 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
 
         try (Connection connection = getConnection(this);
              Statement statement = connection.createStatement()) {
+            if (!isSystemAdmin(connection)) {
+                return;
+            }
+
             statement.execute("alter system set wal_sender_timeout to '" + originalWalSenderTimeout + "';");
             statement.execute("alter system set wal_receiver_timeout to '" + originalWalReceiverTimeout + "';");
         } catch (SQLException exp) {
-            LOGGER.error("{}Restore to original wal_sender_timeout failed.", ErrorCode.SQL_EXCEPTION, exp);
+            LOGGER.warn("Restore to original wal_sender_timeout failed. Error: {}", exp.getMessage());
         }
     }
 }
