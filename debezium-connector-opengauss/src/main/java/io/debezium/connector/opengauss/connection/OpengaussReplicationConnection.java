@@ -718,8 +718,6 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
             LOGGER.error("{}Unexpected error while closing Postgres connection", ErrorCode.UNKNOWN, e);
         }
 
-        originalConfig.restoreToOriginalWalSenderTimeout();
-
         if (OpengaussErrorHandler.isCanRetry()) {
             LOGGER.info("Closing replication connection before attempting to reconnect."
                     + " Skipped deleting the logical replication slot.");
@@ -727,6 +725,8 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
         }
 
         if (dropSlotOnClose && shouldDropSlot) {
+            originalConfig.restoreToOriginalWalSenderTimeout();
+
             // we're dropping the replication slot via a regular - i.e. not a replication - connection
             try (OpengaussConnection connection = new OpengaussConnection(originalConfig.getJdbcConfig())) {
                 connection.dropReplicationSlot(slotName);
