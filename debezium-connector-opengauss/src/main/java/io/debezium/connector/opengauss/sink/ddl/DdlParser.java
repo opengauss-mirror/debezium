@@ -163,4 +163,14 @@ public interface DdlParser {
         STRING_LITERAL,
         TYPE_NAME
     }
+
+    interface JsonValueAdjuster {
+        /**
+         * JsonValue adjuster
+         *
+         * @param jsonValue jsonValue
+         * @return result
+         */
+        String adjust(String jsonValue);
+    }
 }
