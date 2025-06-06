@@ -15,36 +15,20 @@
 
 package org.full.migration.source.service;
 
-import org.apache.commons.lang3.StringUtils;
-import org.full.migration.constants.CommonConstants;
-import org.full.migration.coordinator.QueueManager;
 import org.full.migration.model.config.SourceConfig;
 import org.full.migration.model.table.Column;
 import org.full.migration.model.table.PartitionDefinition;
-import org.full.migration.model.table.SliceInfo;
 import org.full.migration.model.table.Table;
-import org.full.migration.model.table.TableData;
-import org.full.migration.translator.SqlServerColumnType;
-import org.full.migration.translator.SqlServerFuncTranslator;
-import org.full.migration.utils.FileUtils;
-import org.full.migration.utils.HexConverter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.util.CollectionUtils;
 
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.charset.Charset;
 import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.util.ArrayList;
+import java.sql.ResultSetMetaData;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.StringJoiner;
-import java.util.stream.Collectors;
 
 /**
  * TableService
@@ -163,212 +147,17 @@ public class SourceTableService {
      * getCreateTableSql
      *
      * @param table table
-     * @param columns columns
+     * @param columnDdl columnDdl
      * @param partitionDdl partitionDdl
      * @return sql for creating table
      */
-    public Optional<String> getCreateTableSql(Table table, List<Column> columns, String partitionDdl) {
-        StringJoiner columnDdl = new StringJoiner(", ");
-        for (Column column : columns) {
-            String colName = column.getName();
-            String colType = getColTypeStr(column);
-            if (SqlServerColumnType.isTimesTypes(colType) && !sourceConfig.getIsTimeMigrate()) {
-                LOGGER.error("{}.{} has column type {}, don't migrate this table according to the configuration",
-                    table.getSchemaName(), table.getTableName(), colType);
-                return Optional.empty();
-            }
-            if (SqlServerColumnType.isMoneyTypes(colType) && !sourceConfig.getIsMoneyMigrate()) {
-                LOGGER.error("{}.{} has column type {}, don't migrate this table according to the configuration",
-                    table.getSchemaName(), table.getTableName(), colType);
-                return Optional.empty();
-            }
-            if (SqlServerColumnType.isGeometryTypes(colName)) {
-                LOGGER.error("{}.{} has column type {}, can't migrate this table", table.getSchemaName(),
-                    table.getTableName(), colType);
-                return Optional.empty();
-            }
-            String nullType = column.isOptional() ? "" : " NOT NULL ";
-            columnDdl.add(String.format("%s %s %s", colName, colType, nullType));
-        }
-        String defCols = columnDdl.toString();
-        String sql = String.format("CREATE TABLE if not exists %s.%s ( %s ) %s", table.getTargetSchemaName(),
-            table.getTableName(), defCols, partitionDdl == null ? "" : partitionDdl);
+    public Optional<String> getCreateTableSql(Table table, String columnDdl, String partitionDdl, String inheritsDdl) {
+
+        String sql = String.format("CREATE TABLE if not exists %s.%s ( %s ) %s %s", table.getTargetSchemaName(),
+                table.getTableName(), columnDdl, partitionDdl == null ? "" : partitionDdl,
+                inheritsDdl == null ? "" : inheritsDdl);
+
         return Optional.ofNullable(sql);
-    }
-
-    private String getColTypeStr(Column column) {
-        if (column.isAutoIncremented()) {
-            return "serial";
-        }
-        String typeName = column.getTypeName().split(" ")[0];
-        String ogType = SqlServerColumnType.convertType(typeName);
-        StringBuilder builder = new StringBuilder(ogType);
-        if (SqlServerColumnType.isTypeWithLength(typeName)) {
-            long length = column.getLength();
-            Integer scale = column.getScale();
-            // 大文本类型varchar(max),nvarchar(max),varbinary(max)
-            if ((SqlServerColumnType.isVarsTypes(typeName) || SqlServerColumnType.isBinaryTypes(typeName))
-                && length == Integer.MAX_VALUE) {
-                return SqlServerColumnType.convertType(typeName + "(max)");
-            }
-            if (SqlServerColumnType.isTimesTypes(typeName)) {
-                if (!sourceConfig.getIsTimeMigrate()) {
-                    return typeName;
-                }
-                builder.append("(").append(scale > 6 ? 6 : scale).append(")");
-                if (SqlServerColumnType.SS_DATETIMEOFFSET.getSsType().equals(typeName)) {
-                    builder.append(" with time zone ");
-                }
-            } else {
-                // 可变长类型length == Integer.MAX_VALUE时表示没指定长度, numeric类型length==0时没指定长度和精度。
-                if (hasLengthLimit(typeName, length)) {
-                    builder.append("(").append(length);
-                }
-                // numeric类型获取scale
-                if (SqlServerColumnType.isNumericType(typeName) && length > 0 && scale != null && scale > 0) {
-                    builder.append(",").append(scale);
-                }
-                if (hasLengthLimit(typeName, length)) {
-                    builder.append(")");
-                }
-            }
-        }
-        if (column.isGenerated()) {
-            builder.append("GENERATED ALWAYS AS")
-                .append(column.getGenerateInfo().getDefine())
-                .append(column.getGenerateInfo().getIsStored() ? " STORED " : "VIRTUAL");
-        }
-        String defaultValue = column.getDefaultValueExpression();
-        if (StringUtils.isNoneEmpty(defaultValue)) {
-            builder.append(" default ").append(SqlServerFuncTranslator.convertDefinition(defaultValue));
-        }
-        return builder.toString();
-    }
-
-    private static boolean hasLengthLimit(String typeName, long length) {
-        return (SqlServerColumnType.isVarsTypes(typeName) && length != Integer.MAX_VALUE) || (
-            SqlServerColumnType.isNumericType(typeName) && length > 0) || (!SqlServerColumnType.isVarsTypes(typeName)
-            && !SqlServerColumnType.isNumericType(typeName) && !SqlServerColumnType.isBinaryTypes(typeName));
-    }
-
-    /**
-     * exportResultSetToCsv
-     *
-     * @param rs rs
-     * @param table table
-     * @param columns columns
-     * @param pageRows pageRows
-     * @param snapshotPoint snapshotPoint
-     * @throws SQLException SQLException
-     * @throws IOException IOException
-     */
-    public void exportResultSetToCsv(ResultSet rs, Table table, List<Column> columns, int pageRows,
-        String snapshotPoint) throws SQLException, IOException {
-        String tableCsvPath = sourceConfig.getCsvDir();
-        FileUtils.createDir(tableCsvPath);
-        int fileIndex = 1;
-        BufferedWriter writer = null;
-        try {
-            int rowCount = 0;
-            long totalSlice = table.getRowCount() / pageRows + 1;
-            while (rs.next()) {
-                if (rowCount == 0) {
-                    writer = initializeWriter(table, tableCsvPath, fileIndex, columns);
-                }
-                rowCount++;
-                String line = formatData(rs, columns);
-                writer.write(line);
-                writer.newLine();
-                if (rowCount % pageRows == 0) {
-                    writer.flush();
-                    writer.close();
-                    SliceInfo sliceInfo = new SliceInfo(fileIndex, totalSlice, pageRows, false);
-                    TableData tableData = new TableData(table,
-                        FileUtils.getCurrentFilePath(table, tableCsvPath, fileIndex), snapshotPoint, sliceInfo);
-                    updateTableDataQueue(tableData);
-                    fileIndex++;
-                    rowCount = 0;
-                }
-            }
-            writer.flush();
-            writer.close();
-            TableData tableData = new TableData(table, FileUtils.getCurrentFilePath(table, tableCsvPath, fileIndex),
-                snapshotPoint, new SliceInfo(fileIndex, totalSlice, rowCount, true));
-            updateTableDataQueue(tableData);
-        } catch (IOException e) {
-            LOGGER.error("write csv file has occurred an IOException, error message:{}", e.getMessage());
-        } finally {
-            if (writer != null) {
-                writer.close();
-            }
-        }
-        LOGGER.info("finished to read table:{}, generate {} csv files", table.getTableName(), fileIndex);
-    }
-
-    private BufferedWriter initializeWriter(Table table, String tableCsvPath, int fileIndex, List<Column> columns)
-        throws IOException {
-        BufferedWriter writer = FileUtils.createNewFileWriter(table, tableCsvPath, fileIndex);
-        String header = formatHeader(columns);
-        writer.write(header);
-        writer.newLine();
-        return writer;
-    }
-
-    private void updateTableDataQueue(TableData tableData) {
-        QueueManager.getInstance().putToQueue(QueueManager.TABLE_DATA_QUEUE, tableData);
-    }
-
-    private String formatHeader(List<Column> columns) {
-        return columns.stream().map(Column::getName).collect(Collectors.joining(CommonConstants.DELIMITER));
-    }
-
-    private String formatData(ResultSet rs, List<Column> columns) throws SQLException {
-        int columnCount = columns.size();
-        final List<Object> rowList = new ArrayList<>(columnCount);
-        for (int i = 0; i < columnCount; i++) {
-            Object value;
-            // getObject 对time类型截断小数位，所有使用getString读取该类型
-            if ("time".equalsIgnoreCase(columns.get(i).getTypeName())) {
-                value = rs.getString(i + 1);
-            } else {
-                value = rs.getObject(i + 1);
-            }
-            if (SqlServerColumnType.isGeometryTypes(columns.get(i).getTypeName())) {
-                if (value.toString().toLowerCase(Locale.ROOT).contains("point")) {
-                    value = SqlServerFuncTranslator.convertDefinition(value.toString());
-                }
-            }
-            rowList.add(value);
-        }
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < columnCount; i++) {
-            Object value = rowList.get(i);
-            if (value instanceof ByteBuffer) {
-                ByteBuffer object = (ByteBuffer) value;
-                value = new String(object.array(), object.position(), object.limit(), Charset.defaultCharset());
-            }
-            if (value instanceof byte[]) {
-                StringBuilder bytes = new StringBuilder();
-                byte[] obj = (byte[]) value;
-                if (obj.length > 0) {
-                    bytes.append("\\x");
-                }
-                bytes.append(HexConverter.convertToHexString(obj));
-                value = bytes.toString();
-            }
-            if (value != null) {
-                sb.append("\"")
-                    .append(value.toString().replace("\"", "\"\""))
-                    .append("\"")
-                    .append(CommonConstants.DELIMITER);
-            } else {
-                sb.append(value).append(CommonConstants.DELIMITER);
-            }
-            if (i == columnCount - 1) {
-                sb.deleteCharAt(sb.length() - 1);
-            }
-        }
-        return sb.toString();
     }
 
     /**

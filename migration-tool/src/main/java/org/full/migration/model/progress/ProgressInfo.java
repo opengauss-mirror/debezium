@@ -24,6 +24,7 @@ import lombok.Data;
  */
 @Data
 public class ProgressInfo {
+    private String schema;
     private String name;
     private int status = ProgressStatus.NOT_MIGRATED.getCode();
     private float percent;

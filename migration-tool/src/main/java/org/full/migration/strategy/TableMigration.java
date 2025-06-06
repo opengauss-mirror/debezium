@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit;
  * @since 2025-04-18
  */
 public class TableMigration extends MigrationStrategy {
-    private static final Logger LOGGER = LoggerFactory.getLogger(TableMigration.class);
+    private static final Logger logger = LoggerFactory.getLogger(TableMigration.class);
 
     /**
      * TableMigration
@@ -48,18 +48,24 @@ public class TableMigration extends MigrationStrategy {
     }
 
     @Override
-    public void migration() {
+    public void migration(String sourceDbType) {
+        if (source == null) {
+            throw new IllegalStateException("Source is not initialized.");
+        }
         SourceConfig sourceConfig = source.getSourceConfig();
         // 1. 迁移schema
         target.createSchemas(new HashSet<>(sourceConfig.getSchemaMappings().values()));
         // 2. 迁移表
         int readerCount = sourceConfig.getReaderNum();
+        logger.info("readerCount is: {}", readerCount);
         int writeCount = sourceConfig.getWriterNum();
+        logger.info("writeCount is: {}", writeCount);
         ThreadPoolExecutor metaReadExecutor = getThreadPool("MetaReader-", readerCount);
         ThreadPoolExecutor metaWriteExecutor = getThreadPool("MetaWriter-", readerCount);
         ThreadPoolExecutor dataReadExecutor = getThreadPool("DataReader-", writeCount);
         ThreadPoolExecutor dataWriteExecutor = getThreadPool("DataWriter-", writeCount);
         Set<String> schemaSet = source.getSchemaSet();
+        metaReadExecutor.submit(() -> source.initializeLogicalReplication(schemaSet));
         metaReadExecutor.submit(() -> source.queryTables(schemaSet));
         for (int i = 0; i < readerCount; i++) {
             metaReadExecutor.submit(source::readTableConstruct);

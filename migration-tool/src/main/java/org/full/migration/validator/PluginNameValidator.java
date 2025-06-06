@@ -13,25 +13,22 @@
  * See the Mulan PSL v2 for more details.
  */
 
-package org.full.migration.model.table;
+package org.full.migration.validator;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.util.List;
+import javax.validation.ConstraintValidator;
+import javax.validation.ConstraintValidatorContext;
 
 /**
- * TableMeta
+ * PluginNameValidator
  *
- * @since 2025-04-18
+ * @since 2025-06-10
  */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class TableMeta {
-    private Table table;
-    private String createTableSql;
-    private List<Column> columns;
-    private String parents;
+public class PluginNameValidator implements ConstraintValidator<ValidPluginName, String> {
+    @Override
+    public boolean isValid(String pluginName, ConstraintValidatorContext constraintValidatorContext) {
+        if ("pgoutput".equalsIgnoreCase(pluginName) || "wal2json".equalsIgnoreCase(pluginName)) {
+            return true;
+        }
+        return false;
+    }
 }

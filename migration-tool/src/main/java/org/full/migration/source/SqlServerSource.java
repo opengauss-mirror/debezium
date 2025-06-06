@@ -28,6 +28,8 @@ import org.full.migration.model.table.GenerateInfo;
 import org.full.migration.model.table.PartitionDefinition;
 import org.full.migration.model.table.Table;
 import org.full.migration.model.table.TableIndex;
+import org.full.migration.translator.SqlServerColumnType;
+import org.full.migration.translator.SqlServerFuncTranslator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,10 +38,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -56,9 +55,55 @@ public class SqlServerSource extends SourceDatabase {
         this.connection = new SqlServerConnection();
     }
 
+
     @Override
-    protected String getQueryTableSql(String schema) {
-        return String.format(SqlServerSqlConstants.QUERY_TABLE_SQL, schema);
+    public void createSourceLogicalReplicationSlot(Connection conn) {
+
+    }
+
+    @Override
+    public void dropSourceLogicalReplicationSlot(Connection conn) {
+
+    }
+
+    /**
+     * setReplicaIdentity
+     *
+     * @param table
+     */
+    protected void setReplicaIdentity(Table table) {
+
+    }
+
+    @Override
+    protected void initPublication(Connection conn, List<String> migraTableNames) {
+
+    }
+
+    @Override
+    protected void createCustomOrDomainTypesSql(Connection conn, String schema) {
+
+    }
+
+    @Override
+    protected List<Table> getSchemaAllTables(String schema, Connection conn) {
+        List<Table> tables = new ArrayList<>();
+        String queryTableSql = String.format(SqlServerSqlConstants.QUERY_TABLE_SQL, schema);
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(queryTableSql)) {
+            while (rs.next()) {
+                String tableName = rs.getString("TableName");
+                Table table = new Table(sourceConfig.getDbConn().getDatabase(), schema, tableName);
+                table.setTargetSchemaName(sourceConfig.getSchemaMappings().get(schema));
+                table.setAveRowLength(rs.getLong("avgRowLength"));
+                table.setRowCount(rs.getInt("tableRows"));
+                table.setPartition(rs.getBoolean("isPartitioned"));
+                tables.add(table);
+            }
+        } catch (SQLException e) {
+            LOGGER.error("fail to query table list, error message:{}.", e.getMessage());
+        }
+        return tables;
     }
 
     @Override
@@ -95,7 +140,93 @@ public class SqlServerSource extends SourceDatabase {
     }
 
     @Override
-    protected PartitionDefinition getPartitionDefinition(Connection conn, String schema, String table)
+    public String convertToOpenGaussSyntax(String sqlServerDefinition) {
+        return SqlServerFuncTranslator.convertDefinition(sqlServerDefinition);
+    }
+
+    @Override
+    public boolean isGeometryTypes(String typeName) {
+        return SqlServerColumnType.isGeometryTypes(typeName);
+    }
+
+    @Override
+    public String getColumnDdl(Table table, List<Column> columns) {
+        StringJoiner columnDdl = new StringJoiner(", ");
+        for (Column column : columns) {
+            String colName = column.getName();
+            String colType = getColumnType(column);
+            if (SqlServerColumnType.isTimesTypes(colType) && !sourceConfig.getIsTimeMigrate()) {
+                LOGGER.error("{}.{} has column type {}, don't migrate this table according to the configuration",
+                        table.getSchemaName(), table.getTableName(), colType);
+                return "";
+            }
+            String nullType = column.isOptional() ? "" : " NOT NULL ";
+            columnDdl.add(String.format("%s %s %s", colName, colType, nullType));
+        }
+        return columnDdl.toString();
+    }
+
+    private String getColumnType(Column column) {
+        if (column.isAutoIncremented()) {
+            return "serial";
+        }
+        String typeName = column.getTypeName().split(" ")[0];
+        String ogType = SqlServerColumnType.convertType(typeName);
+        StringBuilder builder = new StringBuilder(ogType);
+        if (SqlServerColumnType.isTypeWithLength(typeName)) {
+            long length = column.getLength();
+            Integer scale = column.getScale();
+            // 大文本类型varchar(max),nvarchar(max),varbinary(max)
+            if ((SqlServerColumnType.isVarsTypes(typeName) || SqlServerColumnType.isBinaryTypes(typeName))
+                    && length == Integer.MAX_VALUE) {
+                return SqlServerColumnType.convertType(typeName + "(max)");
+            }
+            if (SqlServerColumnType.isTimesTypes(typeName)) {
+                if (!sourceConfig.getIsTimeMigrate()) {
+                    return typeName;
+                }
+                builder.append("(").append(scale > 6 ? 6 : scale).append(")");
+                if (SqlServerColumnType.SS_DATETIMEOFFSET.getSsType().equals(typeName)) {
+                    builder.append(" with time zone ");
+                }
+            } else {
+                // 可变长类型length == Integer.MAX_VALUE时表示没指定长度, numeric类型length==0时没指定长度和精度。
+                if (hasLengthLimit(typeName, length)) {
+                    builder.append("(").append(length);
+                }
+                // numeric类型获取scale
+                if (SqlServerColumnType.isNumericType(typeName) && length > 0 && scale != null && scale > 0) {
+                    builder.append(",").append(scale);
+                }
+                if (hasLengthLimit(typeName, length)) {
+                    builder.append(")");
+                }
+            }
+        }
+        if (column.isGenerated()) {
+            builder.append("GENERATED ALWAYS AS")
+                    .append(column.getGenerateInfo().getDefine())
+                    .append(column.getGenerateInfo().getIsStored() ? " STORED " : "VIRTUAL");
+        }
+        String defaultValue = column.getDefaultValueExpression();
+        if (StringUtils.isNoneEmpty(defaultValue)) {
+            builder.append(" default ").append(SqlServerFuncTranslator.convertDefinition(defaultValue));
+        }
+        return builder.toString();
+    }
+
+    private static boolean hasLengthLimit(String typeName, long length) {
+        return (SqlServerColumnType.isVarsTypes(typeName) && length != Integer.MAX_VALUE) || (
+                SqlServerColumnType.isNumericType(typeName) && length > 0) || (!SqlServerColumnType.isVarsTypes(typeName)
+                && !SqlServerColumnType.isNumericType(typeName) && !SqlServerColumnType.isBinaryTypes(typeName));
+    }
+
+    @Override
+    public boolean isPartitionChildTable(String schema, String table, Connection connection){
+        return false;
+    }
+
+    private static PartitionDefinition getPartitionDefinition(Connection conn, String schema, String table)
         throws SQLException {
         // 获取分区列和分区函数信息
         PartitionDefinition partitionDef = new PartitionDefinition();
@@ -138,20 +269,115 @@ public class SqlServerSource extends SourceDatabase {
     }
 
     @Override
+    public String getParentTables(Connection conn, Table table) throws SQLException {
+        return null;
+    }
+
+    /**
+     * getPartitionDdl
+     *
+     * @param conn conn,schema schema, tableName tableName
+     * @return partitionDdl
+     */
+    @Override
+    public String getPartitionDdl(Connection conn, String schema, String tableName) throws SQLException {
+        PartitionDefinition partitionDef = getPartitionDefinition(conn, schema, tableName);
+        StringBuilder partitionDdl = new StringBuilder("\n PARTITION BY ").append(partitionDef.getPartitionType())
+                .append(" (")
+                .append(partitionDef.getPartitionColumn())
+                .append(")");
+        if (partitionDef.isRangePartition()) {
+            partitionDdl.append(generateRangePartitionDdl(partitionDef));
+        } else if (partitionDef.isListPartition()) {
+            partitionDdl.append(generateListPartitionDdl(partitionDef));
+        } else if (partitionDef.isHashPartition()) {
+            partitionDdl.append(generateHashPartitionDdl(partitionDef));
+        } else {
+            return null;
+        }
+        return partitionDdl.toString();
+    }
+
+    private String generateRangePartitionDdl(PartitionDefinition partitionDef) {
+        StringBuilder rangePartitionDdl = new StringBuilder();
+        rangePartitionDdl.append(" (");
+        List<String> boundaries = partitionDef.getBoundaries();
+        for (int i = 0; i <= boundaries.size(); i++) {
+            String partitionName = "p" + i;
+            String condition;
+            if (i == boundaries.size()) {
+                condition = "VALUES LESS THAN (MAXVALUE)";
+            } else {
+                condition = "VALUES LESS THAN ('" + boundaries.get(i) + "')";
+            }
+            rangePartitionDdl.append("\n  PARTITION ").append(partitionName).append(" ").append(condition).append(",");
+        }
+        rangePartitionDdl.deleteCharAt(rangePartitionDdl.length() - 1);
+        rangePartitionDdl.append("\n)");
+        return rangePartitionDdl.toString();
+    }
+
+    private String generateListPartitionDdl(PartitionDefinition partitionDef) {
+        StringBuilder listPartitionDdl = new StringBuilder();
+        listPartitionDdl.append(" (");
+        List<String> boundaries = partitionDef.getBoundaries();
+        for (int i = 0; i < boundaries.size(); i++) {
+            String partitionName = "p" + i;
+            listPartitionDdl.append("\n  PARTITION ")
+                    .append(partitionName)
+                    .append(" VALUES (")
+                    .append(boundaries.get(i))
+                    .append("),");
+        }
+        // 添加默认分区
+        listPartitionDdl.append("\n  PARTITION p_default VALUES (DEFAULT)");
+        listPartitionDdl.append("\n)");
+        return listPartitionDdl.toString();
+    }
+
+    private String generateHashPartitionDdl(PartitionDefinition partitionDef) {
+        StringBuilder hashPartitionDdl = new StringBuilder();
+        hashPartitionDdl.append(" (");
+        int partitionCount = partitionDef.getPartitionCount();
+        for (int i = 0; i < partitionCount; i++) {
+            hashPartitionDdl.append("\n  PARTITION p").append(i).append(",");
+        }
+        hashPartitionDdl.deleteCharAt(hashPartitionDdl.length() - 1);
+        hashPartitionDdl.append("\n)");
+        return hashPartitionDdl.toString();
+    }
+
+    @Override
     protected String getIsolationSql() {
         return SqlServerSqlConstants.SET_SNAPSHOT_SQL;
     }
 
     @Override
-    protected String getQueryWithLock(Table table, List<Column> columns) {
-        List<String> columnNames = columns.stream().map(Column::getName).collect(Collectors.toList());
+    protected void lockTable(Table table, Connection conn) throws SQLException {
+
+    }
+
+    @Override
+    protected void readAndSendXlogLocation(Connection conn, Table table) throws SQLException, InterruptedException {
+
+    }
+
+    @Override
+    protected String getQueryWithLock(Table table, List<Column> columns, Connection conn) {
+        List<String> columnNames = columns.stream().map(column -> {
+            String name = column.getName();
+            if (SqlServerColumnType.isGeometryTypes(column.getTypeName())) {
+                return name + ".STAsText() AS " + name;
+            }
+            return name;
+        }).collect(Collectors.toList());
         return String.format(SqlServerSqlConstants.QUERY_WITH_LOCK_SQL,
             String.join(CommonConstants.DELIMITER, columnNames), table.getCatalogName(), table.getSchemaName(),
             table.getTableName());
     }
 
     @Override
-    protected String getSnapShotPoint() {
+    protected String getSnapShotPoint(Connection conn) {
         return SqlServerSqlConstants.MAX_LSN_SQL;
     }
 

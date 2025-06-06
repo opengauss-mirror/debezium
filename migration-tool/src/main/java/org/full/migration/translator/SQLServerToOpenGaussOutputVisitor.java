@@ -120,7 +120,7 @@ public class SQLServerToOpenGaussOutputVisitor extends SQLServerOutputVisitor {
     private boolean isColumnCaseSensitive;
 
     public SQLServerToOpenGaussOutputVisitor(Appendable appender) {
-        super(appender);
+        super((StringBuilder) appender);
     }
 
     /**
@@ -130,7 +130,7 @@ public class SQLServerToOpenGaussOutputVisitor extends SQLServerOutputVisitor {
      * @param isColumnCaseSensitive columnCaseSensitive
      */
     public SQLServerToOpenGaussOutputVisitor(Appendable appender, boolean isColumnCaseSensitive) {
-        super(appender);
+        super((StringBuilder) appender);
         this.isColumnCaseSensitive = isColumnCaseSensitive;
     }
 

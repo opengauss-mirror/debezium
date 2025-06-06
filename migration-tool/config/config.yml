@@ -1,6 +1,8 @@
 # global settings
 # 是否记录进度
 isDumpJson: true
+# 进度文件地址
+statusDir: /**/**
 # 是否删除迁移成功的csv文件
 isDeleteCsv: true
 # 是否保留原有schema
@@ -46,4 +48,8 @@ sourceConfig:
   # 是否迁移源库的默认值到openGauss
   isMigrateDefaultValue: Yes
   # 是否记录快照
-  isRecordSnapshot: No
+  isRecordSnapshot: Yes
+  # postgres逻辑复制槽名称
+  slotName: "test_slot"
+  # 创建逻辑复制槽插件名称(版本大于10时优选pgoutput，wal2json次之)
+  pluginName: "pgoutput"

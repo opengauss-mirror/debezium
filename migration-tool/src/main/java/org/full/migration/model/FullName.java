@@ -13,25 +13,26 @@
  * See the Mulan PSL v2 for more details.
  */
 
-package org.full.migration.model.table;
+package org.full.migration.model;
 
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.util.List;
 
 /**
- * TableMeta
+ * DbObject
  *
- * @since 2025-04-18
+ * @since 2025-05-16
  */
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class TableMeta {
-    private Table table;
-    private String createTableSql;
-    private List<Column> columns;
-    private String parents;
+public class FullName {
+    private String schema;
+    private String name;
+
+    public FullName(String schema, String name) {
+        this.schema = schema;
+        this.name = name;
+    }
+
+    public String getFullName() {
+        return String.format("%s.%s", schema, name);
+    }
 }

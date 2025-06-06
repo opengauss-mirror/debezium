@@ -24,6 +24,8 @@ import org.full.migration.coordinator.QueueManager;
 import org.full.migration.jdbc.JdbcConnection;
 import org.full.migration.jdbc.OpenGaussConnection;
 import org.full.migration.model.DbObject;
+import org.full.migration.model.FullName;
+import org.full.migration.model.PostgresCustomTypeMeta;
 import org.full.migration.model.config.DatabaseConfig;
 import org.full.migration.model.config.GlobalConfig;
 import org.full.migration.model.progress.ProgressInfo;
@@ -35,7 +37,7 @@ import org.full.migration.model.table.TableForeignKey;
 import org.full.migration.model.table.TableIndex;
 import org.full.migration.model.table.TableMeta;
 import org.full.migration.model.table.TablePrimaryKey;
-import org.full.migration.translator.SqlServer2OpenGaussTranslator;
+import org.full.migration.translator.TranslatorFactory;
 import org.full.migration.utils.FileUtils;
 import org.opengauss.copy.CopyManager;
 import org.opengauss.core.BaseConnection;
@@ -56,14 +58,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
@@ -101,6 +96,7 @@ public class TargetDatabase {
     private boolean isDeleteCsv;
     private boolean isKeepExistingSchema;
     private Map<String, String> schemaMappings;
+    private List<String> createdTables = new ArrayList<>();
 
     /**
      * Constructor
@@ -115,6 +111,20 @@ public class TargetDatabase {
         this.isKeepExistingSchema = globalConfig.getIsKeepExistingSchema();
         this.schemaMappings = globalConfig.getSourceConfig().getSchemaMappings();
         this.connection = new OpenGaussConnection();
+        initSnapshotRecordTable();
+    }
+
+    private void initSnapshotRecordTable() {
+        try (Connection connection = this.connection.getConnection(this.dbConfig);
+             Statement statement = connection.createStatement();) {
+            for (String sql : CommonConstants.SNAPSHOT_TABLE_CREATE_SQL) {
+                statement.addBatch(sql);
+            }
+            statement.executeBatch();
+            LOGGER.info("create snapshot record table successfully");
+        } catch (SQLException e) {
+            LOGGER.error("create snapshot record table occurred error: ", e);
+        }
     }
 
     /**
@@ -135,7 +145,7 @@ public class TargetDatabase {
                     conn.commit();
                 }
             }
-            LOGGER.info("finish to create schemas.");
+            LOGGER.info("finish to create schemas.{}", schemas);
         } catch (SQLException e) {
             LOGGER.error("fail to create schema:{}, error message:{}.", schemas, e.getMessage());
         }
@@ -146,6 +156,7 @@ public class TargetDatabase {
      */
     public void writeTableConstruct() {
         try (Connection conn = connection.getConnection(dbConfig)) {
+            createCustomOrDomainTypes(conn);
             while (!QueueManager.getInstance().isQueuePollEnd(QueueManager.SOURCE_TABLE_META_QUEUE)) {
                 TableMeta tableMeta = (TableMeta) QueueManager.getInstance()
                     .pollQueue(QueueManager.SOURCE_TABLE_META_QUEUE);
@@ -158,7 +169,15 @@ public class TargetDatabase {
                     if (isKeepExistingSchema && isTableExist(conn, table)) {
                         continue;
                     }
-                    copyMeta(tableMeta, conn);
+                    String parents = tableMeta.getParents();
+                    List<String> parentTables = parseParents(parents, tableMeta.getTable().getTargetSchemaName());
+                    if (canCreateTable(parentTables)) {
+                        copyMeta(tableMeta, conn);
+                    } else {
+                        QueueManager.getInstance()
+                                .putToQueue(QueueManager.SOURCE_TABLE_META_QUEUE, tableMeta);
+                        continue;
+                    }
                 } catch (SQLException e) {
                     conn.rollback();
                     LOGGER.error("fail to create table {}.{}, errMsg:{}", table.getTargetSchemaName(),
@@ -173,6 +192,71 @@ public class TargetDatabase {
                     + "config file", dbConfig.getHost(), dbConfig.getDatabase(), e.getMessage());
         }
         Thread.currentThread().interrupt();
+    }
+
+    /**
+     * createCustomOrDomainTypes
+     *
+     * @param conn
+     * @throws SQLException
+     */
+    private void createCustomOrDomainTypes(Connection conn) throws SQLException {
+        while (!QueueManager.getInstance().isQueuePollEnd(QueueManager.TYPES_QUEUE)) {
+            PostgresCustomTypeMeta typeMeta = (PostgresCustomTypeMeta) QueueManager.getInstance()
+                    .pollQueue(QueueManager.TYPES_QUEUE);
+            if (typeMeta == null) {
+                continue;
+            }
+            String sourceSchema = typeMeta.getSchemaName();
+            String sinkSchema = schemaMappings.get(sourceSchema);
+            String typeName = typeMeta.getTypeName();
+            String createTypeSql = typeMeta.getCreateTypeSql().replace(sourceSchema+".", sinkSchema+".");
+            LOGGER.info("start to migration custom types:{}.{}", sourceSchema, typeName);
+            try (Statement statement = conn.createStatement()) {
+                conn.setAutoCommit(false);
+                statement.execute(createTypeSql);
+                conn.commit();
+                LOGGER.info("create type: {}.{} success", sinkSchema, typeName);
+            } catch (SQLException e) {
+                conn.rollback();
+                LOGGER.error("fail to create type {}.{}, errMsg:{}", sinkSchema, typeName, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * parseParents
+     *
+     * @param parentsStr
+     * @param schema
+     * @return parents
+     */
+    private List<String> parseParents(String parentsStr, String schema) {
+        if ("".equals(parentsStr)) {
+            return new ArrayList<>();
+        }
+        List<String> parents = new ArrayList<>();
+        Arrays.asList(parentsStr.split(",")).forEach((parentTable) -> {
+            parents.add(schema + "." + parentTable);
+        });
+        return parents;
+    }
+
+    /**
+     * canCreateTable
+     *
+     * @param parentTables
+     * @return canCreate
+     */
+    private boolean canCreateTable(List<String> parentTables) {
+        boolean canCreate = true;
+        for (String parent : parentTables) {
+            if (!createdTables.contains(parent)) {
+                canCreate = false;
+                break;
+            }
+        }
+        return canCreate;
     }
 
     private boolean isTableExist(Connection conn, Table table) throws SQLException {
@@ -200,11 +284,12 @@ public class TargetDatabase {
                 }
                 LOGGER.debug("start to migration table:{}.", tableData.getTable().getTableName());
                 try {
+                    insertTableSnapshotInfo(conn, tableData);
                     copyData(tableData, conn);
                 } catch (SQLException | IOException e) {
                     Table table = tableData.getTable();
                     LOGGER.warn("fail to write table {}.{}, errMsg:{}", table.getSchemaName(), table.getTableName(),
-                        e.getMessage());
+                            e.getMessage());
                 }
             }
             LOGGER.info("{} finished to write table.", Thread.currentThread().getName());
@@ -212,6 +297,29 @@ public class TargetDatabase {
             LOGGER.warn("fail to write table, errMsg:{}", e.getMessage());
         }
         Thread.currentThread().interrupt();
+    }
+
+    /**
+     * Generates an SQL INSERT statement for the given sink data record.
+     * This method is responsible for constructing the SQL statement to insert a record into the replica tables.
+     *
+     * @param conn
+     * @param tableData The sink data record containing the source field information.
+     * @return The SQL INSERT statement as a string.
+     */
+    public void insertTableSnapshotInfo(Connection conn, TableData tableData) {
+        String schemaName = tableData.getTable().getSchemaName();
+        String tableName = tableData.getTable().getTableName();
+        String xlogLocation = tableData.getSnapshotPoint();
+        try (Statement stmt = conn.createStatement()) {
+            String sql = String.format(CommonConstants.INSERT_REPLICA_TABLES_SQL, schemaName, tableName, xlogLocation, xlogLocation);
+            stmt.execute(sql);
+            LOGGER.info("{}.{} snapshot information has inserted into sch_debezium.pg_replica_tables.",
+                    schemaName, tableName);
+        } catch (SQLException e) {
+            LOGGER.error("{}.{} snapshot information has failed to insert into sch_debezium.pg_replica_tables, errMsg:{}",
+                    schemaName, tableName, e.getMessage());
+        }
     }
 
     private void copyMeta(TableMeta tableMeta, Connection conn) throws SQLException {
@@ -222,6 +330,7 @@ public class TargetDatabase {
             statement.execute(String.format(DROP_SCHEMA_SQL, table.getTableName()));
             statement.execute(tableMeta.getCreateTableSql());
             conn.commit();
+            createdTables.add(table.getTargetSchemaName() + "." + table.getTableName());
             LOGGER.info("create {}.{} success", table.getTargetSchemaName(), table.getTableName());
         }
     }
@@ -229,15 +338,16 @@ public class TargetDatabase {
     private void copyData(TableData tableTask, Connection connection) throws SQLException, IOException {
         String schemaName = tableTask.getTable().getSchemaName();
         String tableName = tableTask.getTable().getTableName();
-        String name = String.format("%s.%s", schemaName, tableName);
+        String fullName = (new FullName(schemaName, tableName).getFullName());
         String path = tableTask.getDataPath();
         ProgressInfo progressInfo = new ProgressInfo();
-        progressInfo.setName(name);
-        if (StringUtils.isEmpty(path)) {
+        progressInfo.setSchema(schemaName);
+        progressInfo.setName(tableName);
+        if (StringUtils.isEmpty(path) && !tableTask.getTable().isPartition()) {
             if (isJsonDump) {
                 progressInfo.setPercent(1);
                 progressInfo.setStatus(ProgressStatus.MIGRATED_COMPLETE.getCode());
-                ProgressTracker.getInstance().upgradeTableProgress(name, progressInfo);
+                ProgressTracker.getInstance().upgradeTableProgress(fullName, progressInfo);
             }
             LOGGER.debug("{}.{} is an empty table, no need to copy data.", schemaName, tableName);
             return;
@@ -272,7 +382,7 @@ public class TargetDatabase {
             insertToTable(connection, String.format("%s.%s", targetSchema, tableName), path);
         } finally {
             if (isJsonDump) {
-                ProgressTracker.getInstance().upgradeTableProgress(name, progressInfo);
+                ProgressTracker.getInstance().upgradeTableProgress(fullName, progressInfo);
             }
         }
     }
@@ -337,33 +447,36 @@ public class TargetDatabase {
      * writeObjects
      *
      * @param objectType objectType
-     * @param schema schema
      */
-    public void writeObjects(String objectType, String schema) {
+    public void writeObjects(String sourceDbType, String objectType) {
         try (Connection conn = connection.getConnection(dbConfig); Statement statement = conn.createStatement()) {
             while (!QueueManager.getInstance().isQueuePollEnd(QueueManager.OBJECT_QUEUE)) {
                 DbObject object = (DbObject) QueueManager.getInstance().pollQueue(QueueManager.OBJECT_QUEUE);
                 if (object == null) {
                     continue;
                 }
-                String targetSchema = schemaMappings.get(schema);
-                String fullName = String.format("%s.%s", schema, object.getName());
+                String sourceSchema = object.getSchema();
+                String targetSchema = schemaMappings.get(sourceSchema);
+                FullName sourceFullName = new FullName(sourceSchema, object.getName());
                 String createObjectSql = object.getDefinition();
+                if (createObjectSql.contains(sourceSchema + ".")) {
+                    createObjectSql = createObjectSql.replace(sourceSchema + ".", targetSchema + ".");
+                }
                 try {
-                    executeCreateObject(targetSchema, conn, statement, createObjectSql, fullName);
+                    executeCreateObject(sourceDbType, objectType, targetSchema, conn, statement, createObjectSql, sourceFullName);
                 } catch (SQLException e) {
                     LOGGER.warn(
-                        "Method 1 directly execute create {} {} has occurred an exception, detail:{}, so translate it"
-                            + " according to sql-translator.", objectType, fullName, e.getMessage());
-                    Optional<String> translatedSql = SqlServer2OpenGaussTranslator.translateSQLServer2openGauss(
-                        createObjectSql, false, false);
+                            "Method 1 directly execute create {} {} has occurred an exception, detail:{}, so translate it"
+                                    + " according to sql-translator.", objectType, sourceFullName.getFullName(), e.getMessage());
+                    Optional<String> translatedSql = TranslatorFactory.translate(sourceDbType,
+                            createObjectSql, false, false);
                     if (!translatedSql.isPresent()) {
-                        handleCreateFailure(objectType, fullName, "sql-translator failed");
+                        handleCreateFailure(objectType, sourceFullName, "sql-translator failed");
                     } else {
                         try {
-                            executeCreateObject(targetSchema, conn, statement, translatedSql.get(), fullName);
+                            executeCreateObject(sourceDbType, objectType, targetSchema, conn, statement, translatedSql.get(), sourceFullName);
                         } catch (SQLException ex) {
-                            handleCreateFailure(objectType, fullName, e.getMessage());
+                            handleCreateFailure(objectType, sourceFullName, e.getMessage());
                         }
                     }
                 }
@@ -374,12 +487,16 @@ public class TargetDatabase {
         }
     }
 
-    private void executeCreateObject(String schema, Connection conn, Statement statement, String sqlStr,
-        String fullName) throws SQLException {
+    private void executeCreateObject(String sourceDbType, String objectType, String sinkSchema, Connection conn,
+                                     Statement statement, String sqlStr, FullName sourceFullName) throws SQLException {
         try {
             conn.setAutoCommit(false);
-            conn.setSchema(schema);
-            if (sqlStr.contains(";")) {
+            conn.setSchema(sinkSchema);
+
+            if (sqlStr.contains(";") &&
+                    !(sourceDbType.equalsIgnoreCase("postgresql") &&
+                            (objectType.equalsIgnoreCase("function") ||
+                                    objectType.equalsIgnoreCase("procedure")))) {
                 String[] sqls = sqlStr.split(";");
                 for (String sql : sqls) {
                     statement.execute(sql);
@@ -390,7 +507,7 @@ public class TargetDatabase {
             conn.commit();
             if (isJsonDump) {
                 ProgressTracker.getInstance()
-                    .upgradeObjectProgressMap(fullName, ProgressStatus.MIGRATED_COMPLETE, StringUtils.EMPTY);
+                        .upgradeObjectProgressMap(sourceFullName, ProgressStatus.MIGRATED_COMPLETE, StringUtils.EMPTY);
             }
         } catch (SQLException e) {
             conn.rollback();
@@ -398,8 +515,8 @@ public class TargetDatabase {
         }
     }
 
-    private void handleCreateFailure(String objectType, String fullName, String errMsg) {
-        LOGGER.error("Method 2 execute failed to create {} {}. detail:{}.", objectType, fullName, errMsg);
+    private void handleCreateFailure(String objectType, FullName fullName, String errMsg) {
+        LOGGER.error("Method 2 execute failed to create {} {}. detail:{}.", objectType, fullName.getFullName(), errMsg);
         if (isJsonDump) {
             ProgressTracker.getInstance().upgradeObjectProgressMap(fullName, ProgressStatus.MIGRATED_FAILURE, errMsg);
         }
@@ -454,6 +571,22 @@ public class TargetDatabase {
                     continue;
                 }
                 LOGGER.info("{} has finished to write {}", Thread.currentThread().getName(), logPrefix);
+
+                if (isJsonDump) {
+                    if (object instanceof TablePrimaryKey) {
+                        TablePrimaryKey tablePrimaryKey = (TablePrimaryKey) object;
+                        ProgressTracker.getInstance()
+                            .upgradeKeyAndIndexProgressMap(tablePrimaryKey.getSchemaName()+tablePrimaryKey.getPkName(), ProgressStatus.MIGRATED_COMPLETE, StringUtils.EMPTY);
+                    } else if (object instanceof TableForeignKey) {
+                        TableForeignKey  tableForeignKey= (TableForeignKey) object;
+                        ProgressTracker.getInstance()
+                                .upgradeKeyAndIndexProgressMap(tableForeignKey.getSchemaName()+tableForeignKey.getFkName(), ProgressStatus.MIGRATED_COMPLETE, StringUtils.EMPTY);
+                    } else if (object instanceof TableIndex) {
+                        TableIndex  tableIndex= (TableIndex) object;
+                        ProgressTracker.getInstance()
+                                .upgradeKeyAndIndexProgressMap(tableIndex.getSchemaName()+tableIndex.getIndexName(), ProgressStatus.MIGRATED_COMPLETE, StringUtils.EMPTY);
+                    }
+                }
             }
         } catch (SQLException e) {
             LOGGER.warn("Initial connection error while writing {}, detail: {}", logPrefix, e.getMessage());
@@ -464,8 +597,8 @@ public class TargetDatabase {
         Optional<String> indexSqlTempOptional = getIndexSqlTemp(tableIndex);
         if (indexSqlTempOptional.isPresent()) {
             StringBuilder builder = new StringBuilder(
-                String.format(indexSqlTempOptional.get(), tableIndex.getIndexName(), tableIndex.getSchemaName(),
-                    tableIndex.getTableName(), tableIndex.getColumnName()));
+                    String.format(indexSqlTempOptional.get(), tableIndex.getIndexName(), tableIndex.getSchemaName(),
+                            tableIndex.getTableName(), tableIndex.getIndexprs().isEmpty() ? tableIndex.getColumnName() : tableIndex.getIndexprs()));
             if (StringUtils.isNotEmpty(tableIndex.getIncludedColumns())) {
                 builder.append(" INCLUDE (").append(tableIndex.getIncludedColumns()).append(")");
             }
@@ -511,6 +644,19 @@ public class TargetDatabase {
                 tableForeignKey.getFkName(), tableForeignKey.getParentColumn(), tableForeignKey.getSchemaName(),
                 tableForeignKey.getReferencedTable(), tableForeignKey.getReferencedColumn()));
     }
+
+    /**
+     * writeObjects
+     */
+    public void dropReplicaSchema() {
+        try (Connection conn = connection.getConnection(dbConfig); Statement statement = conn.createStatement()) {
+            statement.execute(CommonConstants.DROP_REPLICA_SCHEMA_SQL);
+            LOGGER.info("drop replica schema(sch_debezium) success.");
+        } catch (SQLException e) {
+        LOGGER.warn("drop replica schema(sch_debezium) has occurred an exception, detail:{}", e.getMessage());
+    }
+    }
+
 
     public void writeConstraints() {
         try (Connection conn = connection.getConnection(dbConfig); Statement statement = conn.createStatement()) {

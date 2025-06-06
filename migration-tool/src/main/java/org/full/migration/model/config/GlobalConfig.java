@@ -30,6 +30,7 @@ import javax.validation.constraints.NotNull;
 @Data
 public class GlobalConfig {
     private String pidDir;
+    private String statusDir;
     private String logDir;
     private String logDest;
     private String logLevel;

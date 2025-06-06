@@ -27,15 +27,16 @@ import lombok.Getter;
 @AllArgsConstructor
 public enum TaskTypeEnum {
     TABLE("table"),
+    SEQUENCE("sequence"),
     PRIMARY_KEY("primarykey"),
     FOREIGN_KEY("foreignkey"),
     INDEX("index"),
+    CONSTRAINT("constraint"),
     VIEW("view"),
     FUNCTION("function"),
     TRIGGER("trigger"),
     PROCEDURE("procedure"),
-    SEQUENCE("sequence"),
-    CONSTRAINT("constraint"),
+    DROP_REPLICA_SCHEMA("drop_replica_schema"),
     UNKNOWN("unknown");
 
     private String taskType;

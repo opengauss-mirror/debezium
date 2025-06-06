@@ -58,7 +58,7 @@ public abstract class MigrationStrategy {
     /**
      * migration
      */
-    public abstract void migration();
+    public abstract void migration(String sourceDbType);
 
     /**
      * sleep
@@ -120,7 +120,11 @@ public abstract class MigrationStrategy {
             if (source.isDumpJson()) {
                 ProgressTracker.getInstance().setIsTaskStop(true);
             }
-            LOGGER.info("table migration task has been completed.");
+            if (queueName.equalsIgnoreCase(QueueManager.TABLE_CONSTRAINT_QUEUE)) {
+                LOGGER.info("constraint migration complete. full report thread is close.");
+            } else {
+                LOGGER.info("table migration task has been completed.");
+            }
         } else {
             QueueManager.getInstance().setReadFinished(queueName, true);
             LOGGER.info("the {} has been consumed completely.", queueName);

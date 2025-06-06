@@ -16,6 +16,7 @@
 package org.full.migration.coordinator;
 
 import org.full.migration.YAMLLoader;
+import org.full.migration.model.TaskTypeEnum;
 import org.full.migration.model.config.GlobalConfig;
 import org.full.migration.source.SourceDatabase;
 import org.full.migration.source.SourceDatabaseFactory;
@@ -74,14 +75,10 @@ public class MigrationEngine {
             LOGGER.error("--start parameter is invalid, please modify and retry");
             return;
         }
-        if (globalConfig.getIsDumpJson() && isRecordProgressType()) {
-            ProgressTracker.initInstance(configPath, taskType);
+        if (globalConfig.getIsDumpJson()) {
+            String statusDir = globalConfig.getStatusDir().replace("~", System.getProperty("user.home"));
+            ProgressTracker.initInstance(statusDir, taskType);
         }
-        strategy.migration();
-    }
-
-    private boolean isRecordProgressType() {
-        return !(taskType.equalsIgnoreCase("primarykey") || taskType.equalsIgnoreCase("foreignkey")
-            || taskType.equalsIgnoreCase("index"));
+        strategy.migration(sourceDbType);
     }
 }
