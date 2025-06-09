@@ -67,7 +67,8 @@ public class MysqlSinkProcessInfo extends BaseSinkProcessInfo {
      * @param createCount Long the overall pipe
      */
     public void setOverallPipe(long createCount) {
-        this.overallPipe = createCount - getReplayedCount() - skippedCount - skippedExcludeEventCount;
+        long res = createCount - getReplayedCount() - skippedCount - skippedExcludeEventCount;
+        this.overallPipe = res >= 0 ? res : 0;
     }
 
     /**
