@@ -34,6 +34,8 @@ import java.util.function.Consumer;
 @Getter
 public enum TableMigrationType {
     INDEX(TaskTypeEnum.INDEX.getTaskType(), SourceDatabase::readTableIndex, TargetDatabase::writeTableIndex),
+    CONSTRAINT(TaskTypeEnum.CONSTRAINT.getTaskType(), SourceDatabase::readConstraints,
+        TargetDatabase::writeConstraints),
     PRIMARY_KEY(TaskTypeEnum.PRIMARY_KEY.getTaskType(), SourceDatabase::readTablePk, TargetDatabase::writeTablePk),
     FOREIGN_KEY(TaskTypeEnum.FOREIGN_KEY.getTaskType(), SourceDatabase::readTableFk, TargetDatabase::writeTableFk);
 

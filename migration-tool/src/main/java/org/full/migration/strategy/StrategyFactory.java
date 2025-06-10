@@ -45,6 +45,8 @@ public class StrategyFactory {
             new KeyAndIndexMigration(sourceDatabase, targetDatabase, TaskTypeEnum.PRIMARY_KEY.getTaskType()));
         strategyMap.put(TaskTypeEnum.FOREIGN_KEY.getTaskType(),
             new KeyAndIndexMigration(sourceDatabase, targetDatabase, TaskTypeEnum.FOREIGN_KEY.getTaskType()));
+        strategyMap.put(TaskTypeEnum.CONSTRAINT.getTaskType(),
+            new KeyAndIndexMigration(sourceDatabase, targetDatabase, TaskTypeEnum.CONSTRAINT.getTaskType()));
         strategyMap.put(TaskTypeEnum.VIEW.getTaskType(),
             new ObjectMigration(sourceDatabase, targetDatabase, TaskTypeEnum.VIEW.getTaskType()));
         strategyMap.put(TaskTypeEnum.FUNCTION.getTaskType(),

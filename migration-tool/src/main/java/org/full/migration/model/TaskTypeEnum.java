@@ -35,6 +35,7 @@ public enum TaskTypeEnum {
     TRIGGER("trigger"),
     PROCEDURE("procedure"),
     SEQUENCE("sequence"),
+    CONSTRAINT("constraint"),
     UNKNOWN("unknown");
 
     private String taskType;

@@ -33,6 +33,4 @@ public class TableMeta {
     private Table table;
     private String createTableSql;
     private List<Column> columns;
-    private List<String> uniqueSqlList;
-    private List<String> checkSqlList;
 }

@@ -67,6 +67,11 @@ public class QueueManager {
     public static final String TABLE_INDEX_QUEUE = "tableIndexQueue";
 
     /**
+     * tableConstraintQueue
+     */
+    public static final String TABLE_CONSTRAINT_QUEUE = "tableConstraintQueue";
+
+    /**
      * objectQueue
      */
     public static final String OBJECT_QUEUE = "objectQueue";
