@@ -1,12 +1,23 @@
 /*
  * Copyright Debezium Authors.
  *
- * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package io.debezium.connector.postgresql;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -17,6 +28,7 @@ import java.util.Optional;
 import java.util.Iterator;
 import java.util.stream.Collectors;
 
+import io.debezium.connector.process.BaseSourceProcessInfo;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.postgresql.core.BaseConnection;
@@ -58,6 +70,7 @@ public class PostgresChangeRecordEmitter extends RelationalChangeRecordEmitter {
     private final boolean unchangedToastColumnMarkerMissing;
     private final boolean nullToastedValuesMissingFromOld;
     private final Map<String, Object> cachedOldToastedValues = new HashMap<>();
+    private final List<String> operationList = Arrays.asList("CREATE", "UPDATE", "DELETE");
 
     public PostgresChangeRecordEmitter(Partition partition, OffsetContext offset, Clock clock, PostgresConnectorConfig connectorConfig, PostgresSchema schema,
                                        PostgresConnection connection, TableId tableId,
@@ -95,6 +108,9 @@ public class PostgresChangeRecordEmitter extends RelationalChangeRecordEmitter {
     public void emitChangeRecords(DataCollectionSchema schema, Receiver receiver) throws InterruptedException {
         schema = synchronizeTableSchema(schema);
         super.emitChangeRecords(schema, receiver);
+        if (operationList.contains(getOperation().name())) {
+            BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreasePollCount(1);
+        }
     }
 
     @Override
@@ -113,6 +129,7 @@ public class PostgresChangeRecordEmitter extends RelationalChangeRecordEmitter {
                 case UPDATE:
                     return columnValues(message.getOldTupleList(), tableId, true, message.hasTypeMetadata(), true, true);
                 default:
+                    BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreaseConvertCount(1);
                     return columnValues(message.getOldTupleList(), tableId, true, message.hasTypeMetadata(), false, true);
             }
         }
@@ -124,6 +141,7 @@ public class PostgresChangeRecordEmitter extends RelationalChangeRecordEmitter {
     @Override
     protected Object[] getNewColumnValues() {
         try {
+            BaseSourceProcessInfo.TABLE_SOURCE_PROCESS_INFO.autoIncreaseConvertCount(1);
             switch (getOperation()) {
                 case CREATE:
                     return columnValues(message.getNewTupleList(), tableId, true, message.hasTypeMetadata(), false, false);
