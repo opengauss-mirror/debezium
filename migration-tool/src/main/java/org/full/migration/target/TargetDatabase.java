@@ -41,7 +41,6 @@ import org.opengauss.copy.CopyManager;
 import org.opengauss.core.BaseConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.util.CollectionUtils;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -223,25 +222,7 @@ public class TargetDatabase {
             statement.execute(String.format(DROP_SCHEMA_SQL, table.getTableName()));
             statement.execute(tableMeta.getCreateTableSql());
             conn.commit();
-            executeAlterTable(conn, statement, tableMeta.getCheckSqlList());
-            executeAlterTable(conn, statement, tableMeta.getUniqueSqlList());
             LOGGER.info("create {}.{} success", table.getTargetSchemaName(), table.getTableName());
-        }
-    }
-
-    private void executeAlterTable(Connection connection, Statement statement, List<String> alterSqlList)
-        throws SQLException {
-        if (!CollectionUtils.isEmpty(alterSqlList)) {
-            for (String alterSql : alterSqlList) {
-                try {
-                    connection.setAutoCommit(false);
-                    statement.execute(alterSql);
-                    connection.commit();
-                } catch (SQLException e) {
-                    connection.rollback();
-                    LOGGER.error("failed to create constraint, sql:{}", alterSql);
-                }
-            }
         }
     }
 
@@ -529,5 +510,30 @@ public class TargetDatabase {
             String.format(CREATE_FK_SQL, tableForeignKey.getSchemaName(), tableForeignKey.getParentTable(),
                 tableForeignKey.getFkName(), tableForeignKey.getParentColumn(), tableForeignKey.getSchemaName(),
                 tableForeignKey.getReferencedTable(), tableForeignKey.getReferencedColumn()));
+    }
+
+    public void writeConstraints() {
+        try (Connection conn = connection.getConnection(dbConfig); Statement statement = conn.createStatement()) {
+            while (!QueueManager.getInstance().isQueuePollEnd(QueueManager.TABLE_CONSTRAINT_QUEUE)) {
+                String alterSql = (String) QueueManager.getInstance().pollQueue(QueueManager.TABLE_CONSTRAINT_QUEUE);
+                if (alterSql == null) {
+                    LOGGER.debug("{} poll from queue is null, to write table constraints.",
+                        Thread.currentThread().getName());
+                    continue;
+                }
+                try {
+                    conn.setAutoCommit(false);
+                    statement.execute(alterSql);
+                    conn.commit();
+                } catch (SQLException e) {
+                    conn.rollback();
+                    LOGGER.error("write table constraints has occurred an exception,  detail:{}", e.getMessage());
+                    continue;
+                }
+                LOGGER.info("{} has finished to write table constraints", Thread.currentThread().getName());
+            }
+        } catch (SQLException e) {
+            LOGGER.warn("Initial connection error while writing table constraints, detail: {}", e.getMessage());
+        }
     }
 }

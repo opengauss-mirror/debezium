@@ -295,11 +295,9 @@ public abstract class SourceDatabase {
                 if (!createTableSqlOptional.isPresent()) {
                     continue;
                 }
-                List<String> uniqueSqlList = getUniqueSqlList(conn, table);
-                List<String> checkSqlList = getCheckSqlList(conn, table);
                 QueueManager.getInstance()
                     .putToQueue(QueueManager.SOURCE_TABLE_META_QUEUE,
-                        new TableMeta(table, createTableSqlOptional.get(), columns, uniqueSqlList, checkSqlList));
+                        new TableMeta(table, createTableSqlOptional.get(), columns));
             }
         } catch (SQLException e) {
             LOGGER.error(
@@ -307,55 +305,6 @@ public abstract class SourceDatabase {
                     + "config file", sourceConfig.getDbConn().getHost(), sourceConfig.getDbConn().getDatabase(),
                 e.getMessage());
         }
-    }
-
-    private List<String> getCheckSqlList(Connection conn, Table table) throws SQLException {
-        String queryCheckConstraintSql = getQueryCheckConstraint();
-        List<String> checkSqlList = new ArrayList<>();
-        try (PreparedStatement pstmt = conn.prepareStatement(queryCheckConstraintSql)) {
-            pstmt.setString(1, table.getTableName());
-            pstmt.setString(2, table.getSchemaName());
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) {
-                    String constraintName = rs.getString("constraint_name");
-                    String definition = SqlServerFuncTranslator.convertDefinition(rs.getString("definition"));
-                    checkSqlList.add(
-                        buildCheckConstraintSql(table.getTargetSchemaName(), table.getTableName(), constraintName,
-                            definition));
-                }
-            }
-        }
-        return checkSqlList;
-    }
-
-    private List<String> getUniqueSqlList(Connection conn, Table table) throws SQLException {
-        List<String> uniqueSqlList = new ArrayList<>();
-        try (PreparedStatement pstmt = conn.prepareStatement(getQueryUniqueConstraint())) {
-            pstmt.setString(1, table.getTableName());
-            pstmt.setString(2, table.getSchemaName());
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) {
-                    String constraintName = rs.getString("constraint_name");
-                    String uniqueColumns = rs.getString("columns");
-                    uniqueSqlList.add(
-                        buildUniqueConstraintSql(table.getTargetSchemaName(), table.getTableName(), constraintName,
-                            uniqueColumns));
-                }
-            }
-        }
-        return uniqueSqlList;
-    }
-
-    private String buildUniqueConstraintSql(String schemaName, String tableName, String constraintName,
-        String uniqueColumns) {
-        String columns = String.join(", ", uniqueColumns.split(","));
-        return String.format("ALTER TABLE %s.%s ADD CONSTRAINT \"%s\" UNIQUE (%s)", schemaName, tableName,
-            constraintName, columns);
-    }
-
-    private String buildCheckConstraintSql(String schema, String tableName, String constraintName, String definition) {
-        return String.format("ALTER TABLE %s.%s ADD CONSTRAINT %s CHECK (%s)", schema, tableName, constraintName,
-            definition);
     }
 
     /**
@@ -547,5 +496,71 @@ public abstract class SourceDatabase {
         }
         QueueManager.getInstance().setReadFinished(QueueManager.TABLE_FOREIGN_KEY_QUEUE, true);
         LOGGER.info("end to read table foreign keys.");
+    }
+
+    /**
+     * readConstraints,including unique constraints and check constraints
+     *
+     * @param schemaSet schemaSet
+     */
+    public void readConstraints(Set<String> schemaSet) {
+        try (Connection conn = connection.getConnection(sourceConfig.getDbConn())) {
+            for (String schema : schemaSet) {
+                processSchemaConstraints(conn, schema);
+            }
+        } catch (SQLException e) {
+            LOGGER.error("fail to read table constraints, errorMsg:{}", e.getMessage());
+        }
+        QueueManager.getInstance().setReadFinished(QueueManager.TABLE_CONSTRAINT_QUEUE, true);
+        LOGGER.info("end to read table constraints.");
+    }
+
+    private void processSchemaConstraints(Connection conn, String schema) throws SQLException {
+        String targetSchema = sourceConfig.getSchemaMappings().get(schema);
+        processConstraints(conn, schema, getQueryUniqueConstraint(),
+            (tableName, constraintName, columns) -> buildUniqueConstraintSql(targetSchema, tableName, constraintName,
+                columns), "unique");
+        processConstraints(conn, schema, getQueryCheckConstraint(), (tableName, constraintName, definition) -> {
+            String convertedDef = SqlServerFuncTranslator.convertDefinition(definition);
+            return buildCheckConstraintSql(targetSchema, tableName, constraintName, convertedDef);
+        }, "check");
+    }
+
+    private void processConstraints(Connection conn, String schema, String query, ConstraintProcessor processor,
+        String constraintType) throws SQLException {
+        try (PreparedStatement pstmt = conn.prepareStatement(query)) {
+            pstmt.setString(1, schema);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    String tableName = rs.getString("table_name");
+                    if (sourceTableService.isSkipTable(schema, tableName)) {
+                        continue;
+                    }
+                    String constraintName = rs.getString("constraint_name");
+                    String constraintValue = constraintType.equals("unique")
+                        ? rs.getString("columns")
+                        : rs.getString("definition");
+                    String sql = processor.process(tableName, constraintName, constraintValue);
+                    QueueManager.getInstance().putToQueue(QueueManager.TABLE_CONSTRAINT_QUEUE, sql);
+                }
+            }
+        }
+    }
+
+    @FunctionalInterface
+    private interface ConstraintProcessor {
+        String process(String tableName, String constraintName, String constraintValue);
+    }
+
+    private String buildUniqueConstraintSql(String schemaName, String tableName, String constraintName,
+        String uniqueColumns) {
+        String columns = String.join(", ", uniqueColumns.split(","));
+        return String.format("ALTER TABLE %s.%s ADD CONSTRAINT \"%s\" UNIQUE (%s)", schemaName, tableName,
+            constraintName, columns);
+    }
+
+    private String buildCheckConstraintSql(String schema, String tableName, String constraintName, String definition) {
+        return String.format("ALTER TABLE %s.%s ADD CONSTRAINT %s CHECK (%s)", schema, tableName, constraintName,
+            definition);
     }
 }

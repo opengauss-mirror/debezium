@@ -102,14 +102,14 @@ public final class SqlServerSqlConstants {
         + "    s.name AS schema_name, \n" + "    tp.name AS parent_table,\n" + "    ref.name AS referenced_table,\n"
         + "    STUFF((\n" + "        SELECT ', ' + cp.name\n" + "        FROM sys.columns cp\n"
         + "        INNER JOIN sys.foreign_key_columns fkc2 ON fkc2.parent_object_id = cp.object_id AND fkc2"
-        + ".parent_column_id = cp.column_id\n"
-        + "        WHERE fkc2.constraint_object_id = fk.object_id\n" + "        ORDER BY fkc2.constraint_column_id\n"
-        + "        FOR XML PATH('')\n" + "    ), 1, 2, '') AS parent_columns,\n" + "    STUFF((\n"
-        + "        SELECT ', ' + cref.name\n" + "        FROM sys.columns cref\n"
+        + ".parent_column_id = cp.column_id\n" + "        WHERE fkc2.constraint_object_id = fk.object_id\n"
+        + "        ORDER BY fkc2.constraint_column_id\n" + "        FOR XML PATH('')\n"
+        + "    ), 1, 2, '') AS parent_columns,\n" + "    STUFF((\n" + "        SELECT ', ' + cref.name\n"
+        + "        FROM sys.columns cref\n"
         + "        INNER JOIN sys.foreign_key_columns fkc2 ON fkc2.referenced_object_id = cref.object_id AND fkc2"
-        + ".referenced_column_id = cref.column_id\n"
-        + "        WHERE fkc2.constraint_object_id = fk.object_id\n" + "        ORDER BY fkc2.constraint_column_id\n"
-        + "        FOR XML PATH('')\n" + "    ), 1, 2, '') AS referenced_columns\n" + "FROM sys.foreign_keys fk \n"
+        + ".referenced_column_id = cref.column_id\n" + "        WHERE fkc2.constraint_object_id = fk.object_id\n"
+        + "        ORDER BY fkc2.constraint_column_id\n" + "        FOR XML PATH('')\n"
+        + "    ), 1, 2, '') AS referenced_columns\n" + "FROM sys.foreign_keys fk \n"
         + "INNER JOIN sys.schemas s ON fk.schema_id = s.schema_id\n"
         + "INNER JOIN sys.tables tp ON fk.parent_object_id = tp.object_id\n"
         + "INNER JOIN sys.tables ref ON fk.referenced_object_id = ref.object_id\n" + "WHERE s.name = '%s'\n"
@@ -118,21 +118,24 @@ public final class SqlServerSqlConstants {
     /**
      * sql for querying unique constraints
      */
-    public static final String QUERY_UNIQUE_CONSTRAINT_SQL = "SELECT kc.name AS constraint_name, " + "STUFF(( "
-        + "    SELECT ',' + c.name " + "    FROM sys.index_columns ic "
-        + "    JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id "
-        + "    WHERE ic.object_id = kc.parent_object_id  " + "      AND ic.index_id = kc.unique_index_id "
-        + "    ORDER BY ic.key_ordinal " + "    FOR XML PATH('') " + "), 1, 1, '') AS columns "
+    public static final String QUERY_UNIQUE_CONSTRAINT_SQL = "SELECT " + "    SCHEMA_NAME(t.schema_id) AS schema_name, "
+        + "    t.name AS table_name, " + "    kc.name AS constraint_name, " + "    STUFF(( "
+        + "        SELECT ',' + c.name " + "        FROM sys.index_columns ic "
+        + "        JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id "
+        + "        WHERE ic.object_id = kc.parent_object_id " + "          AND ic.index_id = kc.unique_index_id "
+        + "        ORDER BY ic.key_ordinal " + "        FOR XML PATH('') " + "    ), 1, 1, '') AS columns "
         + "FROM sys.key_constraints kc " + "JOIN sys.tables t ON kc.parent_object_id = t.object_id "
-        + "WHERE kc.type = 'UQ'  " + "  AND t.name = ?  " + "  AND SCHEMA_NAME(t.schema_id) = ? "
-        + "GROUP BY kc.name, kc.parent_object_id, kc.unique_index_id";
+        + "WHERE kc.type = 'UQ' " + "  AND SCHEMA_NAME(t.schema_id) = ? "
+        + "ORDER BY schema_name, table_name, constraint_name";
 
     /**
      * sql for querying check constraints
      */
-    public static final String QUERY_CHECK_CONSTRAINT_SQL = "SELECT cc.name AS constraint_name, cc.definition "
+    public static final String QUERY_CHECK_CONSTRAINT_SQL = "SELECT " + "    SCHEMA_NAME(t.schema_id) AS schema_name, "
+        + "    t.name AS table_name, " + "    cc.name AS constraint_name, " + "    cc.definition AS definition "
         + "FROM sys.check_constraints cc " + "JOIN sys.tables t ON cc.parent_object_id = t.object_id "
-        + "WHERE t.name = ? AND SCHEMA_NAME(t.schema_id) = ?";
+        + "WHERE SCHEMA_NAME(t.schema_id) = ? " + "ORDER BY schema_name, table_name, constraint_name";
+    ;
 
     /**
      * sql for querying partition information
