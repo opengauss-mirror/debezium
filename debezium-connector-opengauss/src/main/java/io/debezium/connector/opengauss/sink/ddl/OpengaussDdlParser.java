@@ -18,52 +18,34 @@ package io.debezium.connector.opengauss.sink.ddl;
 import com.alibaba.fastjson.JSONException;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
+import lombok.NoArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Iterator;
 
 /**
- * postgresql ddl parser
+ * openGauss ddl parser
  *
- * @author tianbin
- * @since 2024-11-11
+ * @author ybx
+ * @since 2025-6-3
  */
-public class PostgresDdlParser implements DdlParser {
-    private static final Logger LOGGER = LoggerFactory.getLogger(PostgresDdlParser.class);
-    private static final String PG_CATALOG_PG_SYSTIMESTAMP = "pg_catalog.pg_systimestamp()";
-    private static final String CURRENT_TIMESTAMP = "CURRENT_TIMESTAMP";
-    private static final String PG_CATALOG_TEXT_DATE_NOW = "pg_catalog.text_date('now'::text)";
-    private static final String CURRENT_DATE = "CURRENT_DATE";
+@NoArgsConstructor
+public class OpengaussDdlParser implements DdlParser {
+    private static final Logger LOGGER = LoggerFactory.getLogger(OpengaussDdlParser.class);
     private static final String SCHEMA_NAME = "schemaname";
-
-    private final Pattern punctuation = Pattern.compile("\\p{P}");
-    private final Map<String, String> schemaMappingMap;
+    private static final String FUNCTION_PREFIX = "CREATE OR REPLACE FUNCTION ";
+    private static final String SUFFIX = " RETURNS";
+    private static final String EMPTY_WITH = "  WITH ()";
+    private static final String SEQUENCE_CLAUSE_PREFIX = "pg_catalog.nextval('";
+    private Map<String, String> schemaMappingMap;
     private String identifier;
     private String oldSchema;
     private String owner;
-    private final String functionPrefix = "CREATE OR REPLACE FUNCTION ";
-    private final String suffix = " RETURNS";
-    private final String emptyWith = "  WITH ()";
-    private final BigDecimal bigSerialMaxValue = BigDecimal.valueOf(9223372036854775807L);
-    private final List<String> withWhiteList = Arrays.asList(
-            "fillfactor",
-            "autovacuum_vacuum_threshold",
-            "autovacuum_analyze_threshold",
-            "autovacuum_vacuum_cost_delay",
-            "autovacuum_vacuum_cost_limit",
-            "autovacuum_freeze_min_age",
-            "autovacuum_freeze_max_age",
-            "autovacuum_freeze_table_age",
-            "autovacuum_vacuum_scale_factor",
-            "autovacuum_analyze_scale_factor");
-    private final String sequenceClausePrefix = "pg_catalog.nextval('";
     private boolean isTableRefreshed = false;
     private final Map<String, String> typeNameMappingMap = new HashMap<>();
     private final Map<String, JsonValueAdjuster> adjusterMap = new HashMap<String, JsonValueAdjuster>() {
@@ -71,36 +53,20 @@ public class PostgresDdlParser implements DdlParser {
             put("function", value -> adjustFunction(value));
             put("objidentity", value -> adjustObjIdentity(value));
             put("identity", value -> adjustFieldComment(value));
-            put("large", value -> adjustLargeSerial(value));
             put("default", value -> adjustTableClauseSequenceSchema(value));
             put("query", value -> adjustViewQuery(value));
         }
     };
 
-    /**
-     * Constructor
-     *
-     * @param schemaMappingMap schemaMap
-     */
-    public PostgresDdlParser(Map<String, String> schemaMappingMap) {
+    public OpengaussDdlParser(Map<String, String> schemaMappingMap) {
         this.schemaMappingMap = schemaMappingMap;
-        initTypeNameMappingMap();
-    }
-
-    private void initTypeNameMappingMap() {
-        typeNameMappingMap.put("int1", "int2");
-        typeNameMappingMap.put("nvarchar2", "varchar");
-        typeNameMappingMap.put("clob", "text");
-        typeNameMappingMap.put("blob", "bytea");
-        typeNameMappingMap.put("raw", "bytea");
-        typeNameMappingMap.put("smalldatetime", "TIMESTAMP");
     }
 
     /**
-     * Resolve JSON-formatted string
+     * parse ddl json
      *
      * @param jsonValue DDL in JSON format
-     * @return Executable ddl statements
+     * @return
      */
     @Override
     public String parse(String jsonValue) {
@@ -119,7 +85,7 @@ public class PostgresDdlParser implements DdlParser {
             LOGGER.error("ddl parse occurred unknown error: ", e);
             return "";
         }
-        String ddl = sb.append(";").toString().replace(emptyWith, "");
+        String ddl = sb.append(";").toString().replace(EMPTY_WITH, "");
         LOGGER.info("The ddl currently being replayed is '{}'", ddl);
         return ddl;
     }
@@ -144,60 +110,13 @@ public class PostgresDdlParser implements DdlParser {
             boolean isArray = false;
             String param = null;
             String arraySep = null;
-            if (fmt.charAt(i) == '{') {
-                StringBuilder paramBuilder = new StringBuilder();
-                StringBuilder sepBuilder = new StringBuilder();
-                StringBuilder appendTo = paramBuilder;
-                i++;
-                while (i < end) {
-                    if (fmt.charAt(i) == ':') {
-                        sepBuilder = new StringBuilder();
-                        appendTo = sepBuilder;
-                        isArray = true;
-                        i++;
-                        continue;
-                    }
-                    if (fmt.charAt(i) == '}') {
-                        i++;
-                        break;
-                    }
-                    appendTo.append(fmt.charAt(i));
-                    i++;
-                }
-                param = paramBuilder.toString();
-                if (isArray) {
-                    arraySep = sepBuilder.toString();
-                }
-            }
+            parseFormatToken(fmt, i, isArray, param, arraySep);
             if (param == null) {
                 LOGGER.error("Missing conversion name in conversion specifier");
                 return;
             }
             ConversionSpecifier specifier = ConversionSpecifier.STRING;
-            char c = fmt.charAt(i);
-            switch (c) {
-                case 'I':
-                    specifier = ConversionSpecifier.IDENTIFIER;
-                    break;
-                case 'D':
-                    specifier = ConversionSpecifier.DOTTED_NAME;
-                    break;
-                case 's':
-                    specifier = ConversionSpecifier.STRING;
-                    break;
-                case 'L':
-                    specifier = ConversionSpecifier.STRING_LITERAL;
-                    break;
-                case 'T':
-                    specifier = ConversionSpecifier.TYPE_NAME;
-                    break;
-                case 'n':
-                    specifier = ConversionSpecifier.NUMBER;
-                    break;
-                default:
-                    LOGGER.warn("Invalid conversion specifier {}", c);
-                    break;
-            }
+            specifier = getSpecifier(specifier, fmt, i);
             String value = json.getString(param);
             if (isArray) {
                 expandJsonArray(result, param, value, arraySep, specifier);
@@ -207,8 +126,64 @@ public class PostgresDdlParser implements DdlParser {
         }
     }
 
+    private void parseFormatToken(String fmt, int i, boolean isArray, String param, String arraySep) {
+        if (fmt.charAt(i) == '{') {
+            StringBuilder paramBuilder = new StringBuilder();
+            StringBuilder sepBuilder = new StringBuilder();
+            StringBuilder appendTo = paramBuilder;
+            i++;
+            while (i < fmt.length()) {
+                if (fmt.charAt(i) == ':') {
+                    sepBuilder = new StringBuilder();
+                    appendTo = sepBuilder;
+                    isArray = true;
+                    i++;
+                    continue;
+                }
+                if (fmt.charAt(i) == '}') {
+                    i++;
+                    break;
+                }
+                appendTo.append(fmt.charAt(i));
+                i++;
+            }
+            param = paramBuilder.toString();
+            if (isArray) {
+                arraySep = sepBuilder.toString();
+            }
+        }
+    }
+
+    private ConversionSpecifier getSpecifier(ConversionSpecifier specifier, String fmt, int i) {
+        char c = fmt.charAt(i);
+        switch (c) {
+            case 'I':
+                specifier = ConversionSpecifier.IDENTIFIER;
+                break;
+            case 'D':
+                specifier = ConversionSpecifier.DOTTED_NAME;
+                break;
+            case 's':
+                specifier = ConversionSpecifier.STRING;
+                break;
+            case 'L':
+                specifier = ConversionSpecifier.STRING_LITERAL;
+                break;
+            case 'T':
+                specifier = ConversionSpecifier.TYPE_NAME;
+                break;
+            case 'n':
+                specifier = ConversionSpecifier.NUMBER;
+                break;
+            default:
+                LOGGER.warn("Invalid conversion specifier {}", c);
+                break;
+        }
+        return specifier;
+    }
+
     private boolean expandJsonElement(StringBuilder result, String jsonKey, String jsonValue,
-            ConversionSpecifier specifier) {
+                                      ConversionSpecifier specifier) {
         if (jsonValue == null) {
             LOGGER.error("Element {} is not found", jsonKey);
         }
@@ -252,10 +227,6 @@ public class PostgresDdlParser implements DdlParser {
         return sb.toString();
     }
 
-    private boolean isPunctuation(char ch) {
-        return punctuation.matcher(String.valueOf(ch)).matches();
-    }
-
     private void expandJsonToDottedName(StringBuilder result, String jsonKey, String jsonValue) {
         JSONObject json = JSONObject.parseObject(jsonValue);
         String schemaName = findStringInJsonObject(json, SCHEMA_NAME, true);
@@ -287,12 +258,6 @@ public class PostgresDdlParser implements DdlParser {
         boolean isExpanded = false;
         if (JSONObject.isValidObject(jsonValue)) {
             JSONObject json = JSONObject.parseObject(jsonValue);
-            String clause = json.getString("clause");
-            if (clause != null && clause.equals("maxvalue")) {
-                BigDecimal value = json.getBigDecimal("value");
-                BigDecimal newValue = value.compareTo(bigSerialMaxValue) > 0 ? bigSerialMaxValue : value;
-                json.put("value", newValue);
-            }
             Boolean isPresent = json.getBoolean("present");
             if (!Boolean.FALSE.equals(isPresent)) {
                 expandJsonRecursive(result, json);
@@ -336,8 +301,8 @@ public class PostgresDdlParser implements DdlParser {
     }
 
     private String adjustFunction(String jsonValue) {
-        int i = jsonValue.indexOf(functionPrefix) + functionPrefix.length();
-        int j = jsonValue.indexOf(suffix);
+        int i = jsonValue.indexOf(FUNCTION_PREFIX) + FUNCTION_PREFIX.length();
+        int j = jsonValue.indexOf(SUFFIX);
         String functionName = jsonValue.substring(i, j).trim();
         String[] function = functionName.split("\\.");
         function[0] = schemaMappingMap.getOrDefault(function[0], function[0]);
@@ -353,30 +318,11 @@ public class PostgresDdlParser implements DdlParser {
         return String.join(".", comment);
     }
 
-    private String adjustLargeSerial(String jsonValue) {
-        // large serial
-        if (jsonValue.equalsIgnoreCase("LARGE")) {
-            LOGGER.warn("datatype 'LARGE SERIAL' is not supported in postgres, will use 'BIG SERIAL' instead.");
-            return "";
-        }
-        return jsonValue;
-    }
-
     private String adjustTableClauseSequenceSchema(String jsonValue) {
-        // special handling for sequence clause in create table statement:
-        // "default": "pg_catalog.nextval('public.t2_test_large_serial_seq'::pg_catalog.regclass)"
-        if (jsonValue.startsWith(sequenceClausePrefix)) {
-            String oldClausePrefix = sequenceClausePrefix + oldSchema;
-            String newClausePrefix = sequenceClausePrefix + schemaMappingMap.getOrDefault(oldSchema, oldSchema);
+        if (jsonValue.startsWith(SEQUENCE_CLAUSE_PREFIX)) {
+            String oldClausePrefix = SEQUENCE_CLAUSE_PREFIX + oldSchema;
+            String newClausePrefix = SEQUENCE_CLAUSE_PREFIX + schemaMappingMap.getOrDefault(oldSchema, oldSchema);
             return jsonValue.replace(oldClausePrefix, newClausePrefix);
-        }
-        // Function pg_catalog.pg_systimestamp() does not exist in PostgreSQL, so replace it with CURRENT_TIMESTAMP
-        if (PG_CATALOG_PG_SYSTIMESTAMP.equals(jsonValue)) {
-            return jsonValue.replace(PG_CATALOG_PG_SYSTIMESTAMP, CURRENT_TIMESTAMP);
-        }
-        // function pg_catalog.text_date(text) does not exist in PostgreSQL, so replace it with CURRENT_DATE
-        if (PG_CATALOG_TEXT_DATE_NOW.equals(jsonValue)) {
-            return jsonValue.replace(PG_CATALOG_TEXT_DATE_NOW, CURRENT_DATE);
         }
         return jsonValue;
     }
@@ -384,7 +330,6 @@ public class PostgresDdlParser implements DdlParser {
     private String adjustViewQuery(String value) {
         for (String schema : schemaMappingMap.keySet()) {
             if (value.contains(schema + ".")) {
-                // "query": "SELECT  * FROM public.t1 WHERE (t1.id OPERATOR(pg_catalog.<) 5);"
                 return value.replace(schema + ".", schemaMappingMap.getOrDefault(schema, schema) + ".");
             }
         }
@@ -425,9 +370,24 @@ public class PostgresDdlParser implements DdlParser {
     }
 
     private void expandJsonArray(StringBuilder result, String param, String value, String arraySep,
-            ConversionSpecifier specifier) {
+                                 ConversionSpecifier specifier) {
         List<String> jsonObjects = JSONObject.parseObject(value, new TypeReference<List<String>>() {
         });
+        filterAndValidateLabelObjects(param, jsonObjects);
+        boolean isFirst = true;
+        for (String jsonValue : jsonObjects) {
+            StringBuilder element = new StringBuilder();
+            if (expandJsonElement(element, param, jsonValue, specifier)) {
+                if (!isFirst) {
+                    result.append(arraySep);
+                }
+                result.append(element);
+                isFirst = false;
+            }
+        }
+    }
+
+    private void filterAndValidateLabelObjects(String param, List<String> jsonObjects) {
         if ("with".equals(param)) {
             Iterator<String> iterator = jsonObjects.iterator();
             while (iterator.hasNext()) {
@@ -439,22 +399,6 @@ public class PostgresDdlParser implements DdlParser {
                 if (labelObject == null) {
                     continue;
                 }
-                String label = labelObject.getString("label");
-                if (!withWhiteList.contains(label)) {
-                    LOGGER.warn("Unrecognized parameter '{}' will be ignored", label);
-                    iterator.remove();
-                }
-            }
-        }
-        boolean isFirst = true;
-        for (String jsonValue : jsonObjects) {
-            StringBuilder element = new StringBuilder();
-            if (expandJsonElement(element, param, jsonValue, specifier)) {
-                if (!isFirst) {
-                    result.append(arraySep);
-                }
-                result.append(element);
-                isFirst = false;
             }
         }
     }
@@ -474,11 +418,6 @@ public class PostgresDdlParser implements DdlParser {
         return str == null || str.isEmpty();
     }
 
-    /**
-     * Get identifier
-     *
-     * @return objName
-     */
     @Override
     public String identifier() {
         return identifier;

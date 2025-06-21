@@ -16,6 +16,7 @@
 package io.debezium.connector.opengauss.sink.object;
 
 import io.debezium.connector.opengauss.sink.ddl.DdlParser;
+import io.debezium.connector.opengauss.sink.ddl.OpengaussDdlParser;
 import io.debezium.connector.opengauss.sink.ddl.PostgresDdlParser;
 import org.apache.kafka.connect.data.Struct;
 
@@ -35,6 +36,10 @@ public class DdlOperation extends DataOperation {
 
     private static final String MESSAGE = "message";
 
+    private static final String POSTGRES = "postgres";
+
+    private static final String OPENGAUSS = "opengauss";
+
     private String rawDdl;
     private String ddl = "";
     private String identifier;
@@ -42,7 +47,6 @@ public class DdlOperation extends DataOperation {
     private DdlParser ddlParser;
     private boolean isTableSql;
     private String relyTable;
-
     /**
      * Constructor
      *
@@ -87,8 +91,10 @@ public class DdlOperation extends DataOperation {
 
     private DdlParser buildDdlParser(Map<String, String> schemaMappingMap, String databaseType) {
         DdlParser parser = null;
-        if ("postgres".equalsIgnoreCase(databaseType)) {
+        if (POSTGRES.equalsIgnoreCase(databaseType)) {
             parser = new PostgresDdlParser(schemaMappingMap);
+        } else if (OPENGAUSS.equalsIgnoreCase(databaseType)) {
+            parser = new OpengaussDdlParser(schemaMappingMap);
         }
         return parser;
     }
