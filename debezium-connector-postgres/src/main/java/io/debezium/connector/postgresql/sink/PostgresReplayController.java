@@ -452,6 +452,9 @@ public class PostgresReplayController implements ReplayController {
             LOGGER.warn("Skip one record: {}", sourceDataField);
             return;
         }
+        if (!TRUNCATE.equals(dataReplayOperation.getOperation())) {
+            PgSinkProcessInfo.SINK_PROCESS_INFO.autoIncreaseExtractCount();
+        }
         Long kafkaOffset = sinkRecord.kafkaOffset();
         SinkDataRecord sinkDataRecord = new SinkDataRecord();
         sinkDataRecord.setDmlOperation(dataReplayOperation);

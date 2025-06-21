@@ -1,7 +1,17 @@
 /*
  * Copyright Debezium Authors.
  *
- * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package io.debezium.jdbc;
 
@@ -225,6 +235,12 @@ public interface JdbcConfiguration extends Configuration {
             }
 
             @Override
+            public Builder without(String key) {
+                builder.without(key);
+                return this;
+            }
+
+            @Override
             public Builder apply(Consumer<Builder> function) {
                 function.accept(this);
                 return this;
@@ -272,6 +288,12 @@ public interface JdbcConfiguration extends Configuration {
             @Override
             public Builder withDefault(String key, String value) {
                 builder.withDefault(key, value);
+                return this;
+            }
+
+            @Override
+            public Builder without(String key) {
+                builder.without(key);
                 return this;
             }
 
