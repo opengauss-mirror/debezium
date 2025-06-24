@@ -15,6 +15,10 @@
 
 package org.full.migration.strategy;
 
+import org.apache.commons.lang3.StringUtils;
+import org.full.migration.coordinator.ProgressTracker;
+import org.full.migration.coordinator.QueueManager;
+import org.full.migration.model.TaskTypeEnum;
 import org.full.migration.source.SourceDatabase;
 import org.full.migration.target.TargetDatabase;
 import org.slf4j.Logger;
@@ -48,7 +52,7 @@ public class KeyAndIndexMigration extends MigrationStrategy {
     }
 
     @Override
-    public void migration() {
+    public void migration(String sourceDbType) {
         int threadCount = source.getSourceConfig().getWriterNum() + 1;
         ThreadPoolExecutor executor = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS,
             new LinkedBlockingQueue<>(), getThreadFactory("worker-"));
@@ -60,5 +64,16 @@ public class KeyAndIndexMigration extends MigrationStrategy {
             executor.submit(() -> tableMigrationType.getWriteTask().accept(target));
         }
         executor.shutdown();
+        String queueName = "";
+        if (tableMigrationType.getType().equalsIgnoreCase(TaskTypeEnum.PRIMARY_KEY.getTaskType())) {
+            queueName = QueueManager.TABLE_PRIMARY_KEY_QUEUE;
+        } else if (tableMigrationType.getType().equalsIgnoreCase(TaskTypeEnum.FOREIGN_KEY.getTaskType())) {
+            queueName = QueueManager.TABLE_FOREIGN_KEY_QUEUE;
+        } else if (tableMigrationType.getType().equalsIgnoreCase(TaskTypeEnum.CONSTRAINT.getTaskType())) {
+            queueName = QueueManager.TABLE_CONSTRAINT_QUEUE;
+        } else {
+            queueName = QueueManager.TABLE_INDEX_QUEUE;
+        }
+        waitThreadsTerminated(executor, queueName, true);
     }
 }

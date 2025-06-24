@@ -30,7 +30,7 @@ import java.util.Optional;
  *
  * @since 2025-04-18
  */
-public class SqlServer2OpenGaussTranslator {
+public class SqlServer2OpenGaussTranslator extends Source2OpenGaussTranslator {
     private static final Logger LOGGER = LoggerFactory.getLogger(SqlServer2OpenGaussTranslator.class);
 
     /**
@@ -64,5 +64,10 @@ public class SqlServer2OpenGaussTranslator {
             appender.delete(0, appender.length());
         }
         return Optional.of(res.toString());
+    }
+
+    @Override
+    public Optional<String> translate(String sqlIn, boolean isDebug, boolean isColumnCaseSensitiv) {
+        return translateSQLServer2openGauss(sqlIn, isDebug, isColumnCaseSensitiv);
     }
 }

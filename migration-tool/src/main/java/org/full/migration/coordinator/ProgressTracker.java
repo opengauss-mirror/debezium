@@ -18,6 +18,7 @@ package org.full.migration.coordinator;
 import com.alibaba.fastjson.JSON;
 
 import org.apache.commons.lang3.StringUtils;
+import org.full.migration.model.FullName;
 import org.full.migration.model.TaskTypeEnum;
 import org.full.migration.model.progress.MigrationProgressInfo;
 import org.full.migration.model.progress.ProgressInfo;
@@ -62,7 +63,11 @@ public class ProgressTracker {
         this.startTime = System.currentTimeMillis();
         fullProgressReportService = Executors.newSingleThreadScheduledExecutor(
             (r) -> new Thread(r, "fullProgressReportThread"));
-        this.path = new File(path).getParent();
+        File dir = new File(path);
+        if (!dir.exists()) {
+            dir.mkdirs();  // 创建目录
+        }
+        this.path = path;
         this.file = FileUtils.initFile(this.path + File.separator + taskType + ".json");
     }
 
@@ -108,6 +113,29 @@ public class ProgressTracker {
             COMMIT_TIME_INTERVAL, TimeUnit.SECONDS);
     }
 
+    /**
+     * recordKeyAndIndexProgress
+     *
+     * @param keyAndIndexType keyAndIndexType
+     */
+    public void recordKeyAndIndexProgress(TaskTypeEnum keyAndIndexType) {
+        fullProgressReportService.scheduleAtFixedRate(() -> this.reportKeyAndIndexProgress(keyAndIndexType), COMMIT_TIME_INTERVAL,
+                COMMIT_TIME_INTERVAL, TimeUnit.SECONDS);
+    }
+
+    private void reportKeyAndIndexProgress(TaskTypeEnum keyAndIndexType) {
+        MigrationProgressInfo migrationProgressInfo = new MigrationProgressInfo();
+        for (Map.Entry<String, ProgressInfo> tableProgress : progressMap.entrySet()) {
+            ProgressInfo progressInfo = tableProgress.getValue();
+            migrationProgressInfo.addKeyAndIndex(progressInfo, keyAndIndexType);
+        }
+        FileUtils.writeToFile(file, JSON.toJSONString(migrationProgressInfo));
+        if (isTaskStop.get()) {
+            fullProgressReportService.shutdown();
+            LOGGER.info("{} migration complete. full report thread is close.", keyAndIndexType.getTaskType());
+        }
+    }
+
     private void reportObjectProgress(TaskTypeEnum objectType) {
         MigrationProgressInfo migrationProgressInfo = new MigrationProgressInfo();
         for (Map.Entry<String, ProgressInfo> tableProgress : progressMap.entrySet()) {
@@ -117,7 +145,7 @@ public class ProgressTracker {
         FileUtils.writeToFile(file, JSON.toJSONString(migrationProgressInfo));
         if (isTaskStop.get()) {
             fullProgressReportService.shutdown();
-            LOGGER.info("full data migration complete. full report thread is close.");
+            LOGGER.info("{} migration complete. full report thread is close.", objectType.getTaskType());
         }
     }
 
@@ -133,14 +161,14 @@ public class ProgressTracker {
         }
         long currentTime = System.currentTimeMillis();
         int timeInterval = (int) ((currentTime - startTime) / TIME_UNIT);
-        BigDecimal speed = new BigDecimal(totalData / (timeInterval * MEMORY_UNIT * MEMORY_UNIT));
+        BigDecimal speed = new BigDecimal(totalData / (timeInterval * MEMORY_UNIT));
         migrationProgressInfo.setTotal(
-            new TotalInfo(totalRecord, getFormatDouble(new BigDecimal(totalData / (MEMORY_UNIT * MEMORY_UNIT)), 2),
+            new TotalInfo(totalRecord, getFormatDouble(new BigDecimal(totalData / MEMORY_UNIT ), 2),
                 timeInterval, getFormatDouble(speed, 2)));
         FileUtils.writeToFile(file, JSON.toJSONString(migrationProgressInfo));
         if (isTaskStop.get()) {
             fullProgressReportService.shutdown();
-            LOGGER.info("full data migration complete. full report thread is close.");
+            LOGGER.info("table migration complete. full report thread is close.");
         }
     }
 
@@ -161,11 +189,11 @@ public class ProgressTracker {
     /**
      * upgradeTableProgress
      *
-     * @param name name
+     * @param fullName fullName
      * @param progressInfo progressInfo
      */
-    public void upgradeTableProgress(String name, ProgressInfo progressInfo) {
-        ProgressInfo preProgressInfo = progressMap.get(name);
+    public void upgradeTableProgress(String fullName, ProgressInfo progressInfo) {
+        ProgressInfo preProgressInfo = progressMap.get(fullName);
         if (preProgressInfo.getPercent() < progressInfo.getPercent()) {
             if (preProgressInfo.getStatus() == ProgressStatus.MIGRATED_FAILURE.getCode()) {
                 progressInfo.setStatus(ProgressStatus.MIGRATED_FAILURE.getCode());
@@ -174,8 +202,32 @@ public class ProgressTracker {
             progressInfo.setPercent(
                 progressInfo.getPercent() > 1 ? preProgressInfo.getPercent() : progressInfo.getPercent());
             progressInfo.setRecord(preProgressInfo.getRecord() + progressInfo.getRecord());
-            progressMap.put(name, progressInfo);
+            progressMap.put(fullName, progressInfo);
         }
+    }
+
+    /**
+     * upgradeObjectProgressMap
+     *
+     * @param fullName fullName
+     * @param status status
+     * @param errMsg errMsg
+     */
+    public void upgradeObjectProgressMap(FullName fullName, ProgressStatus status, String errMsg) {
+        if (!progressMap.containsKey(fullName.getFullName())) {
+            return;
+        }
+        ProgressInfo progressInfo = progressMap.get(fullName.getFullName());
+        progressInfo.setSchema(fullName.getSchema());
+        progressInfo.setName(fullName.getName());
+        progressInfo.setStatus(status.getCode());
+        if (status == ProgressStatus.MIGRATED_COMPLETE || status == ProgressStatus.MIGRATED_FAILURE) {
+            progressInfo.setPercent(1);
+        }
+        if (StringUtils.isNotEmpty(errMsg)) {
+            progressInfo.setError(errMsg);
+        }
+        progressMap.put(fullName.getFullName(), progressInfo);
     }
 
     /**
@@ -185,7 +237,7 @@ public class ProgressTracker {
      * @param status status
      * @param errMsg errMsg
      */
-    public void upgradeObjectProgressMap(String name, ProgressStatus status, String errMsg) {
+    public void upgradeKeyAndIndexProgressMap(String name, ProgressStatus status, String errMsg) {
         if (!progressMap.containsKey(name)) {
             return;
         }

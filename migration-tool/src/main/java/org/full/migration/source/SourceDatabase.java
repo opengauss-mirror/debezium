@@ -18,6 +18,7 @@ package org.full.migration.source;
 import lombok.Data;
 
 import org.apache.commons.lang3.StringUtils;
+import org.full.migration.constants.CommonConstants;
 import org.full.migration.coordinator.ProgressTracker;
 import org.full.migration.coordinator.QueueManager;
 import org.full.migration.jdbc.JdbcConnection;
@@ -27,7 +28,6 @@ import org.full.migration.model.config.GlobalConfig;
 import org.full.migration.model.config.SourceConfig;
 import org.full.migration.model.table.Column;
 import org.full.migration.model.table.GenerateInfo;
-import org.full.migration.model.table.PartitionDefinition;
 import org.full.migration.model.table.SliceInfo;
 import org.full.migration.model.table.Table;
 import org.full.migration.model.table.TableData;
@@ -36,23 +36,18 @@ import org.full.migration.model.table.TableIndex;
 import org.full.migration.model.table.TableMeta;
 import org.full.migration.model.table.TablePrimaryKey;
 import org.full.migration.source.service.SourceTableService;
-import org.full.migration.translator.SqlServerFuncTranslator;
+import org.full.migration.utils.FileUtils;
 import org.full.migration.utils.HexConverter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedWriter;
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Optional;
-import java.util.Set;
+import java.math.BigDecimal;
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.sql.*;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -95,7 +90,9 @@ public abstract class SourceDatabase {
      * @param schema schema
      * @return sql for querying Table
      */
-    protected abstract String getQueryTableSql(String schema);
+    protected abstract List<Table> getSchemaAllTables(String schema, Connection conn);
+
+    protected abstract void createCustomOrDomainTypesSql(Connection conn, String schema) ;
 
     /**
      * getGeneratedDefine
@@ -123,17 +120,43 @@ public abstract class SourceDatabase {
      */
     protected abstract String getQueryCheckConstraint();
 
+    public abstract String convertToOpenGaussSyntax(String sqlServerDefinition);
+
+    public abstract boolean isGeometryTypes(String typeName);
+
     /**
-     * getPartitionDefinition
+     * getPartitionDdl
      *
-     * @param conn conn
-     * @param schemaName schemaName
-     * @param tableName tableName
-     * @return PartitionDefinition
-     * @throws SQLException SQLException
+     * @param conn conn,schema schema, tableName tableName
+     * @return partitionDdl
      */
-    protected abstract PartitionDefinition getPartitionDefinition(Connection conn, String schemaName, String tableName)
-        throws SQLException;
+    public abstract String getPartitionDdl(Connection conn, String schema, String tableName) throws SQLException;
+
+    /**
+     * getPartitionDdl
+     *
+     * @param conn conn,schema schema, tableName tableName
+     * @return partitionDdl
+     */
+    public abstract String getParentTables(Connection conn, Table table) throws SQLException;
+
+    /**
+     * isPartitionChildTable
+     *
+     * @param schema
+     * @param table
+     * @param connection
+     * @return isPartitionChildTable
+     */
+    public abstract boolean isPartitionChildTable(String schema, String table, Connection connection);
+
+    /**
+     *
+     * @param table
+     * @param columns
+     * @return columnDdl
+     */
+    public abstract String getColumnDdl(Table table, List<Column> columns);
 
     /**
      * getIsolationSql
@@ -143,20 +166,40 @@ public abstract class SourceDatabase {
     protected abstract String getIsolationSql();
 
     /**
+     * lockTable
+     *
+     * @param table
+     * @param conn
+     * @throws SQLException
+     */
+    protected abstract void lockTable(Table table, Connection conn) throws SQLException;
+
+    /**
+     * readAndSendXlogLocation
+     *
+     * @param conn
+     * @param table
+     * @throws SQLException
+     * @throws InterruptedException
+     */
+    protected abstract void readAndSendXlogLocation(Connection conn, Table table)
+            throws SQLException, InterruptedException;
+
+    /**
      * getQueryWithLock
      *
      * @param table table
      * @param columns columns
      * @return sql for querying table
      */
-    protected abstract String getQueryWithLock(Table table, List<Column> columns);
+    protected abstract String getQueryWithLock(Table table, List<Column> columns, Connection conn);
 
     /**
      * getSnapShotPoint
      *
      * @return sql for querying snapShot point
      */
-    protected abstract String getSnapShotPoint();
+    protected abstract String getSnapShotPoint(Connection conn);
 
     /**
      * getQueryObjectSql
@@ -211,12 +254,89 @@ public abstract class SourceDatabase {
     protected abstract String getQueryFkSql(String schema);
 
     /**
+     * createSourceLogicalReplicationSlot
+     *
+     * @param conn
+     */
+    public abstract void createSourceLogicalReplicationSlot(Connection conn);
+
+    /**
+     * dropSourceLogicalReplicationSlot
+     *
+     * @param conn
+     */
+    public abstract void dropSourceLogicalReplicationSlot(Connection conn);
+
+    /**
+     * setReplicaIdentity
+     *
+     * @param table
+     */
+    protected abstract void setReplicaIdentity(Table table);
+
+    /**
+     * initPublication
+     *
+     * @param conn
+     * @param migraTableNames
+     */
+    protected abstract void initPublication(Connection conn, List<String> migraTableNames);
+
+    /**
      * getSchemaSet
      *
      * @return Set<String>
      */
     public Set<String> getSchemaSet() {
         return sourceConfig.getSchemaMappings().keySet();
+    }
+
+    /**
+     * isNotNeedMigraTable
+     * The tables that are configured to be skipped do not need to be migrated.
+     * And the child tables of the partitioned tables in Postgres are independent tables. No migration is required in OpenGauss.
+     *
+     * @param schema schema
+     * @param tableName tableName
+     * @param conn conn
+     * @return isSkipTable
+     */
+    private boolean isNotNeedMigraTable(String schema, String tableName, Connection conn) {
+        boolean isSkipTable = sourceTableService.isSkipTable(schema, tableName);
+        if (isSkipTable || isPartitionChildTable(schema, tableName, conn)) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * initializeLogicalReplication
+     *
+     * @param schemaSet
+     */
+    public void initializeLogicalReplication(Set<String> schemaSet) {
+        if (!sourceConfig.getIsRecordSnapshot()) {
+            return;
+        }
+        try (Connection conn = connection.getConnection(sourceConfig.getDbConn())) {
+            List<String> migraTableNames = new ArrayList<>();
+            for (String schema : schemaSet) {
+                List<Table> tables = getSchemaAllTables(schema, conn);
+                for (Table table : tables) {
+                    if (isNotNeedMigraTable(schema, table.getTableName(), conn)) {
+                        continue;
+                    }
+                    migraTableNames.add(table.getSchemaName() + "." + table.getTableName());
+                    setReplicaIdentity(table);
+                }
+            }
+            initPublication(conn, migraTableNames);
+            dropSourceLogicalReplicationSlot(conn);
+            createSourceLogicalReplicationSlot(conn);
+        } catch (SQLException e) {
+            LOGGER.warn("fail to create logical replication slot, error message:{}.", e.getMessage());
+        }
+
     }
 
     /**
@@ -228,22 +348,16 @@ public abstract class SourceDatabase {
         try (Connection conn = connection.getConnection(sourceConfig.getDbConn());
             Statement stmt = conn.createStatement()) {
             for (String schema : schemaSet) {
-                String queryTableSql = getQueryTableSql(schema);
-                try (ResultSet rs = stmt.executeQuery(queryTableSql)) {
-                    while (rs.next()) {
-                        String tableName = rs.getString("TableName");
-                        if (sourceTableService.isSkipTable(schema, tableName)) {
-                            continue;
-                        }
-                        Table table = new Table(sourceConfig.getDbConn().getDatabase(), schema, tableName);
-                        table.setTargetSchemaName(sourceConfig.getSchemaMappings().get(schema));
-                        table.setAveRowLength(rs.getLong("avgRowLength"));
-                        table.setRowCount(rs.getInt("tableRows"));
-                        table.setPartition(rs.getBoolean("isPartitioned"));
-                        QueueManager.getInstance().putToQueue(QueueManager.TABLE_QUEUE, table);
-                        if (isDumpJson) {
-                            ProgressTracker.getInstance().putProgressMap(schema, tableName);
-                        }
+                createCustomOrDomainTypesSql(conn, schema);
+                List<Table> tables = getSchemaAllTables(schema, conn);
+                for (Table table : tables) {
+                    String tableName = table.getTableName();
+                    if (isNotNeedMigraTable(schema, tableName, conn)) {
+                        continue;
+                    }
+                    QueueManager.getInstance().putToQueue(QueueManager.TABLE_QUEUE, table);
+                    if (isDumpJson) {
+                        ProgressTracker.getInstance().putProgressMap(schema, tableName);
                     }
                 }
             }
@@ -287,17 +401,24 @@ public abstract class SourceDatabase {
                 // 构造建表语句
                 String partitionDdl = null;
                 if (table.isPartition()) {
-                    PartitionDefinition partitionDef = getPartitionDefinition(conn, schema, tableName);
-                    partitionDdl = sourceTableService.getPartitionDdl(partitionDef);
+                    partitionDdl = getPartitionDdl(conn, schema, tableName);
                 }
-                Optional<String> createTableSqlOptional = sourceTableService.getCreateTableSql(table, columns,
-                    partitionDdl);
+                String inheritsDdl = null;
+                String parents = getParentTables(conn, table);
+                if (!("".equals(parents))) {
+                    inheritsDdl = String.format(" Inherits (%s)", parents);
+                }
+
+                String columnsDdl = getColumnDdl(table, columns);
+
+                Optional<String> createTableSqlOptional = sourceTableService.getCreateTableSql(table, columnsDdl,
+                    partitionDdl, inheritsDdl);
                 if (!createTableSqlOptional.isPresent()) {
                     continue;
                 }
                 QueueManager.getInstance()
                     .putToQueue(QueueManager.SOURCE_TABLE_META_QUEUE,
-                        new TableMeta(table, createTableSqlOptional.get(), columns));
+                        new TableMeta(table, createTableSqlOptional.get(), columns, parents));
             }
         } catch (SQLException e) {
             LOGGER.error(
@@ -346,35 +467,186 @@ public abstract class SourceDatabase {
     private void extractData(Table table, List<Column> columns, Connection conn)
         throws SQLException, IOException, InterruptedException {
         conn.setAutoCommit(false);
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(getIsolationSql());
-        }
+        lockTable(table, conn);
         String snapshotPoint = null;
         if (sourceConfig.getIsRecordSnapshot()) {
-            byte[] snapshotPointByte = recordSnapshotPoint(conn);
-            snapshotPoint = HexConverter.convertToHexString(snapshotPointByte);
+            snapshotPoint = recordSnapshotPoint(conn);
         }
         int pageRows = Math.max(table.getAveRowLength() == 0
             ? EMPTY_TABLE_PAGE_ROWS
-            : (int) (sourceConfig.convertFileSize().intValue() / table.getAveRowLength()), 1);
+            : (int) (sourceConfig.convertFileSize().intValue() / (table.getAveRowLength())), 1);
         LOGGER.info("start to export data for table {}.{}", table.getSchemaName(), table.getTableName());
         try (Statement stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
             stmt.setFetchSize(pageRows);
             List<Column> queryColumns = columns.stream()
                 .filter(column -> !column.isGenerated())
                 .collect(Collectors.toList());
-            String lockQuery = getQueryWithLock(table, queryColumns);
+            String lockQuery = getQueryWithLock(table, queryColumns, conn);
             try (ResultSet rs = stmt.executeQuery(lockQuery)) {
-                sourceTableService.exportResultSetToCsv(rs, table, queryColumns, pageRows, snapshotPoint);
+                exportResultSetToCsv(rs, table, queryColumns, pageRows, snapshotPoint);
             }
         }
         conn.commit();
     }
 
-    private byte[] recordSnapshotPoint(Connection conn) throws SQLException {
-        try (Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(getSnapShotPoint())) {
+
+
+    /**
+     * exportResultSetToCsv
+     *
+     * @param rs rs
+     * @param table table
+     * @param columns columns
+     * @param pageRows pageRows
+     * @param snapshotPoint snapshotPoint
+     * @throws SQLException SQLException
+     * @throws IOException IOException
+     */
+    public void exportResultSetToCsv(ResultSet rs, Table table, List<Column> columns, int pageRows,
+                                     String snapshotPoint) throws SQLException, IOException {
+        String tableCsvPath = sourceConfig.getCsvDir();
+        FileUtils.createDir(tableCsvPath);
+        int fileIndex = 1;
+        BufferedWriter writer = initializeWriter(table, tableCsvPath, fileIndex, columns);
+        try {
+            int rowCount = 0;
+            long totalSlice = table.getRowCount() / pageRows + 1;
+            while (rs.next()) {
+                rowCount++;
+                String line = formatData(rs, columns);
+                writer.write(line);
+                writer.newLine();
+                if (rowCount % pageRows == 0) {
+                    writer.flush();
+                    writer.close();
+                    SliceInfo sliceInfo = new SliceInfo(fileIndex, totalSlice, pageRows, false);
+                    TableData tableData = new TableData(table,
+                            FileUtils.getCurrentFilePath(table, tableCsvPath, fileIndex), snapshotPoint, sliceInfo);
+                    updateTableDataQueue(tableData);
+                    fileIndex++;
+                    writer = initializeWriter(table, tableCsvPath, fileIndex, columns);
+                    rowCount = 0;
+                }
+            }
+            TableData tableData = new TableData(table, FileUtils.getCurrentFilePath(table, tableCsvPath, fileIndex),
+                    snapshotPoint, new SliceInfo(fileIndex, totalSlice, rowCount, true));
+            if (rowCount == 0) {
+                String filePath = FileUtils.getCurrentFilePath(table, tableCsvPath, fileIndex - 1);
+                SliceInfo sliceInfo = new SliceInfo(fileIndex - 1, totalSlice, pageRows, true);
+                tableData.setDataPath(filePath);
+                tableData.setSliceInfo(sliceInfo);
+                updateTableDataQueue(tableData);
+            } else {
+                writer.flush();
+                writer.close();
+                updateTableDataQueue(tableData);
+            }
+        } catch (IOException e) {
+            LOGGER.error("write csv file has occurred an IOException, error message:{}", e.getMessage());
+        } finally {
+            if (writer != null) {
+                writer.close();
+            }
+        }
+        LOGGER.info("finished to read table:{}, generate {} csv files", table.getTableName(), fileIndex);
+    }
+
+    private void updateTableDataQueue(TableData tableData) {
+        QueueManager.getInstance().putToQueue(QueueManager.TABLE_DATA_QUEUE, tableData);
+    }
+
+    private BufferedWriter initializeWriter(Table table, String tableCsvPath, int fileIndex, List<Column> columns) {
+        BufferedWriter writer = FileUtils.createNewFileWriter(table, tableCsvPath, fileIndex);
+        String header = formatHeader(columns);
+        try {
+            writer.write(header);
+            writer.newLine();
+        } catch (IOException e) {
+            LOGGER.error("Failed to initialize writer. error messages: {}", e.getMessage());
+        }
+        return writer;
+    }
+
+    private String formatHeader(List<Column> columns) {
+        return columns.stream().map(Column::getName).collect(Collectors.joining(CommonConstants.DELIMITER));
+    }
+
+    private String formatData(ResultSet rs, List<Column> columns) throws SQLException {
+        int columnCount = columns.size();
+        final List<Object> rowList = new ArrayList<>(columnCount);
+        for (int i = 0; i < columnCount; i++) {
+            String typeName = columns.get(i).getTypeName();
+            Object value = getColumnValue(rs, i + 1, typeName);
+            if (isGeometryTypes(typeName)) {
+                if (value.toString().toLowerCase(Locale.ROOT).contains("point")) {
+                    value = convertToOpenGaussSyntax(value.toString());
+                }
+            }
+            rowList.add(value);
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < columnCount; i++) {
+            Object value = rowList.get(i);
+            if (value instanceof ByteBuffer) {
+                ByteBuffer object = (ByteBuffer) value;
+                value = new String(object.array(), object.position(), object.limit(), Charset.defaultCharset());
+            }
+            if (value instanceof byte[]) {
+                StringBuilder bytes = new StringBuilder();
+                byte[] obj = (byte[]) value;
+                if (obj.length > 0) {
+                    bytes.append("\\x");
+                }
+                bytes.append(HexConverter.convertToHexString(obj));
+                value = bytes.toString();
+            }
+            if (value != null) {
+                sb.append("\"")
+                        .append(value.toString().replace("\"", "\"\""))
+                        .append("\"")
+                        .append(CommonConstants.DELIMITER);
+            } else {
+                sb.append(value).append(CommonConstants.DELIMITER);
+            }
+            if (i == columnCount - 1) {
+                sb.deleteCharAt(sb.length() - 1);
+            }
+        }
+        return sb.toString();
+    }
+
+    private Object getColumnValue(ResultSet rs, int columnIndex, String typeName) throws SQLException {
+        // getObject 对time类型截断小数位，所使用getString读取该类型
+        // getObject 对timestamp和data类型的‘infinity’值会进行内部处理导致value值异常
+        if ("time".equalsIgnoreCase(typeName) || "date".equalsIgnoreCase(typeName) || "timestamp".equalsIgnoreCase(typeName)) {
+            return rs.getString(columnIndex);
+        } else if ("money".equalsIgnoreCase(typeName)) {
+            //读取的money值会有逗号分隔数值，插入时会失败
+            return handleMoneyType(rs, columnIndex);
+        } else {
+            return rs.getObject(columnIndex);
+        }
+    }
+
+    private Object handleMoneyType(ResultSet rs, int columnIndex) throws SQLException {
+        try {
+            BigDecimal decimalValue = rs.getBigDecimal(columnIndex);
+            return decimalValue != null ? decimalValue.toPlainString() : null;
+        } catch (SQLException e) {
+            try {
+                String moneyStr = rs.getString(columnIndex);
+                return moneyStr != null ? moneyStr.replace(",", "") : null;
+            } catch (SQLException ex) {
+                Object rawValue = rs.getObject(columnIndex);
+                return rawValue != null ? rawValue.toString().replace(",", "") : null;
+            }
+        }
+    }
+
+    private String recordSnapshotPoint(Connection conn) throws SQLException {
+        try (Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(getSnapShotPoint(conn))) {
             if (rs.next()) {
-                return rs.getBytes("max_lsn");
+                return rs.getString(1);
             }
         }
         return null;
@@ -386,7 +658,7 @@ public abstract class SourceDatabase {
      * @param objectType objectType
      * @param schema schema
      */
-    public void readObjects(String objectType, String schema) {
+    public void readObjects(String sourceDbType, String objectType, String schema) {
         try (Connection conn = connection.getConnection(sourceConfig.getDbConn());
             Statement statement = conn.createStatement()) {
             String querySql = String.format(getQueryObjectSql(objectType.toLowerCase(Locale.ROOT)), schema);
@@ -424,14 +696,20 @@ public abstract class SourceDatabase {
                 try (ResultSet rs = stmt.executeQuery(getQueryIndexSql(schema))) {
                     while (rs.next()) {
                         TableIndex tableIndex = getTableIndex(conn, rs);
-                        if (sourceTableService.isSkipTable(tableIndex.getSchemaName(), tableIndex.getTableName())) {
+                        if (isNotNeedMigraTable(schema, tableIndex.getTableName(), conn)) {
                             continue;
                         }
                         tableIndex.setSchemaName(sourceConfig.getSchemaMappings().get(schema));
-                        if (!(tableIndex.isPrimaryKey() && tableIndex.isUnique())) {
+                        if (!tableIndex.isPrimaryKey() && !tableIndex.isUnique()) {
                             QueueManager.getInstance().putToQueue(QueueManager.TABLE_INDEX_QUEUE, tableIndex);
                         }
+                        if (isDumpJson) {
+                            ProgressTracker.getInstance().putProgressMap(schema, tableIndex.getIndexName());
+                        }
                     }
+                }
+                if (isDumpJson) {
+                    ProgressTracker.getInstance().recordKeyAndIndexProgress(TaskTypeEnum.INDEX);
                 }
             }
         } catch (SQLException e) {
@@ -458,14 +736,19 @@ public abstract class SourceDatabase {
                             tablePrimaryKey.setTableName(rs.getString("table_name"));
                             tablePrimaryKey.setColumnName(rs.getString("pk_columns"));
                             tablePrimaryKey.setPkName(rs.getString("pk_name"));
-                            if (sourceTableService.isSkipTable(tablePrimaryKey.getSchemaName(),
-                                tablePrimaryKey.getTableName())) {
+                            if (isNotNeedMigraTable(schema, tablePrimaryKey.getTableName(), conn)) {
                                 continue;
                             }
                             QueueManager.getInstance()
                                 .putToQueue(QueueManager.TABLE_PRIMARY_KEY_QUEUE, tablePrimaryKey);
+                            if (isDumpJson) {
+                                ProgressTracker.getInstance().putProgressMap(schema, tablePrimaryKey.getPkName());
+                            }
                         }
                     }
+                }
+                if (isDumpJson) {
+                    ProgressTracker.getInstance().recordKeyAndIndexProgress(TaskTypeEnum.PRIMARY_KEY);
                 }
             }
         } catch (SQLException e) {
@@ -489,6 +772,12 @@ public abstract class SourceDatabase {
                     TableForeignKey tableForeignKey = new TableForeignKey(rs);
                     tableForeignKey.setSchemaName(sourceConfig.getSchemaMappings().get(schema));
                     QueueManager.getInstance().putToQueue(QueueManager.TABLE_FOREIGN_KEY_QUEUE, tableForeignKey);
+                    if (isDumpJson) {
+                        ProgressTracker.getInstance().putProgressMap(schema, tableForeignKey.getFkName());
+                    }
+                }
+                if (isDumpJson) {
+                    ProgressTracker.getInstance().recordKeyAndIndexProgress(TaskTypeEnum.FOREIGN_KEY);
                 }
             }
         } catch (SQLException e) {
@@ -521,7 +810,7 @@ public abstract class SourceDatabase {
             (tableName, constraintName, columns) -> buildUniqueConstraintSql(targetSchema, tableName, constraintName,
                 columns), "unique");
         processConstraints(conn, schema, getQueryCheckConstraint(), (tableName, constraintName, definition) -> {
-            String convertedDef = SqlServerFuncTranslator.convertDefinition(definition);
+            String convertedDef = convertToOpenGaussSyntax(definition);
             return buildCheckConstraintSql(targetSchema, tableName, constraintName, convertedDef);
         }, "check");
     }

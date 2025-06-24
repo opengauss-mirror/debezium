@@ -20,6 +20,7 @@ import lombok.Data;
 import org.apache.commons.lang3.StringUtils;
 import org.full.migration.constants.Unit;
 import org.full.migration.validator.ValidMap;
+import org.full.migration.validator.ValidPluginName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -82,6 +83,9 @@ public class SourceConfig {
     private Boolean isMigrateDefaultValue;
     @NotNull(message = "This parameter is required")
     private Boolean isRecordSnapshot;
+    private String slotName;
+    @ValidPluginName
+    private String pluginName;
     private Boolean isRestartConfig;
     private Boolean isCreateIndex;
     private String indexDir;

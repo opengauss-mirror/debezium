@@ -102,12 +102,29 @@ public class FileUtils {
      * @return BufferedWriter
      * @throws IOException IOException
      */
-    public static BufferedWriter createNewFileWriter(Table table, String tableCsvPath, int fileIndex)
-        throws IOException {
-        File csvFile = new File(getCurrentFilePath(table, tableCsvPath, fileIndex));
-        modifyFilePermission(csvFile.toPath());
-        return new BufferedWriter(
-            new OutputStreamWriter(Files.newOutputStream(csvFile.toPath()), StandardCharsets.UTF_8));
+    public static BufferedWriter createNewFileWriter(Table table, String tableCsvPath, int fileIndex) {
+        try {
+            File csvFile = new File(getCurrentFilePath(table, tableCsvPath, fileIndex));
+
+            if (!csvFile.exists()) {
+                boolean fileCreated = csvFile.createNewFile();
+                if (!fileCreated) {
+                    LOGGER.error("Failed to create file: {}", csvFile.getAbsolutePath());
+                    return null;
+                }
+            }
+
+            modifyFilePermission(csvFile.toPath());
+            return new BufferedWriter(
+                    new OutputStreamWriter(Files.newOutputStream(csvFile.toPath()), StandardCharsets.UTF_8));
+
+        } catch (IOException e) {
+            LOGGER.error("Error creating file writer: {}", e.getMessage());
+            return null;
+        } catch (Exception e) {
+            LOGGER.error("Unexpected error: {}", e.getMessage());
+            return null;
+        }
     }
 
     /**

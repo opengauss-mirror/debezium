@@ -39,6 +39,7 @@ public class TableIndex {
     private boolean isUnique;
     private boolean hasFilter;
     private String filterDefinition;
+    private String indexprs;
 
     /**
      * Constructor

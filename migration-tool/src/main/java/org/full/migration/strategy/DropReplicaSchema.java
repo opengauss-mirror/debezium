@@ -15,7 +15,6 @@
 
 package org.full.migration.strategy;
 
-import org.full.migration.coordinator.QueueManager;
 import org.full.migration.source.SourceDatabase;
 import org.full.migration.target.TargetDatabase;
 import org.slf4j.Logger;
@@ -27,24 +26,21 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 /**
- * ObjectMigration
+ * DropReplicaSchema
  *
  * @since 2025-04-18
  */
-public class ObjectMigration extends MigrationStrategy {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ObjectMigration.class);
-    private final String objectType;
+public class DropReplicaSchema extends MigrationStrategy {
+    private static final Logger LOGGER = LoggerFactory.getLogger(DropReplicaSchema.class);
 
     /**
      * ObjectMigration
      *
      * @param source source
      * @param target target
-     * @param objectType objectType
      */
-    public ObjectMigration(SourceDatabase source, TargetDatabase target, String objectType) {
+    public DropReplicaSchema(SourceDatabase source, TargetDatabase target) {
         super(source, target);
-        this.objectType = objectType;
     }
 
     @Override
@@ -55,13 +51,11 @@ public class ObjectMigration extends MigrationStrategy {
         Set<String> schemaSet = source.getSchemaSet();
         try {
             for (String schema : schemaSet) {
-                executor.submit(() -> source.readObjects(sourceDbType, objectType, schema));
-                executor.submit(() -> target.writeObjects(sourceDbType, objectType));
+                executor.submit(() -> target.dropReplicaSchema());
             }
         } catch (IllegalArgumentException e) {
             LOGGER.error(e.getMessage());
         }
         executor.shutdown();
-        waitThreadsTerminated(executor, QueueManager.OBJECT_QUEUE, true);
     }
 }

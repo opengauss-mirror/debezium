@@ -13,25 +13,23 @@
  * See the Mulan PSL v2 for more details.
  */
 
-package org.full.migration.model.table;
+package org.full.migration.model;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
 
 /**
- * TableMeta
+ * TypeMeta
  *
- * @since 2025-04-18
+ * @since 2025-06-16
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class TableMeta {
-    private Table table;
-    private String createTableSql;
-    private List<Column> columns;
-    private String parents;
+public class PostgresCustomTypeMeta {
+    private String schemaName;
+    private String typeName;
+    private String createTypeSql;
 }

@@ -13,25 +13,23 @@
  * See the Mulan PSL v2 for more details.
  */
 
-package org.full.migration.model.table;
+package org.full.migration.translator;
 
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.List;
+import java.util.Optional;
+
 
 /**
- * TableMeta
+ * Source2OpenGaussTranslator
  *
- * @since 2025-04-18
+ * @since 2025-06-06
  */
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class TableMeta {
-    private Table table;
-    private String createTableSql;
-    private List<Column> columns;
-    private String parents;
+public abstract class Source2OpenGaussTranslator {
+    private static final Logger LOGGER = LoggerFactory.getLogger(Source2OpenGaussTranslator.class);
+    public abstract Optional<String> translate(String sqlIn, boolean isDebug,
+                                               boolean isColumnCaseSensitiv);
 }

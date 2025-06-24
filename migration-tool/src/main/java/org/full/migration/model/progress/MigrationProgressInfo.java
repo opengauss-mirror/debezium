@@ -40,6 +40,9 @@ public class MigrationProgressInfo {
     private List<ProgressInfo> trigger = new ArrayList<>();
     private List<ProgressInfo> procedure = new ArrayList<>();
     private List<ProgressInfo> sequence = new ArrayList<>();
+    private List<ProgressInfo> primarykey = new ArrayList<>();
+    private List<ProgressInfo> foreignkey = new ArrayList<>();
+    private List<ProgressInfo> index = new ArrayList<>();
 
     /**
      * add Table progress
@@ -75,6 +78,27 @@ public class MigrationProgressInfo {
                 break;
             case SEQUENCE:
                 sequence.add(progressInfo);
+                break;
+            default:
+                LOGGER.error("unknown object Type");
+        }
+    }
+
+    /**
+     * add keyAndIndex progress
+     *
+     * @param progressInfo ProgressInfo
+     */
+    public void addKeyAndIndex(ProgressInfo progressInfo, TaskTypeEnum keyAndIndexType) {
+        switch (keyAndIndexType) {
+            case PRIMARY_KEY:
+                primarykey.add(progressInfo);
+                break;
+            case FOREIGN_KEY:
+                foreignkey.add(progressInfo);
+                break;
+            case INDEX:
+                index.add(progressInfo);
                 break;
             default:
                 LOGGER.error("unknown object Type");

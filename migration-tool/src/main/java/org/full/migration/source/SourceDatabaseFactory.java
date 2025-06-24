@@ -35,6 +35,7 @@ public class SourceDatabaseFactory {
      */
     public static void buildStrategyMap(GlobalConfig globalConfig) {
         strategyMap.put("sqlserver", new SqlServerSource(globalConfig));
+        strategyMap.put("postgresql", new PostgresSource(globalConfig));
     }
 
     /**

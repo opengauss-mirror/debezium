@@ -57,6 +57,8 @@ public class StrategyFactory {
             new ObjectMigration(sourceDatabase, targetDatabase, TaskTypeEnum.PROCEDURE.getTaskType()));
         strategyMap.put(TaskTypeEnum.SEQUENCE.getTaskType(),
             new ObjectMigration(sourceDatabase, targetDatabase, TaskTypeEnum.SEQUENCE.getTaskType()));
+        strategyMap.put(TaskTypeEnum.DROP_REPLICA_SCHEMA.getTaskType(),
+            new DropReplicaSchema(sourceDatabase, targetDatabase));
     }
 
     /**
