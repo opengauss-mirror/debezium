@@ -232,7 +232,7 @@ public class TargetDatabase {
      * @return parents
      */
     private List<String> parseParents(String parentsStr, String schema) {
-        if ("".equals(parentsStr)) {
+        if (StringUtils.isEmpty(parentsStr)) {
             return new ArrayList<>();
         }
         List<String> parents = new ArrayList<>();
@@ -597,8 +597,11 @@ public class TargetDatabase {
         Optional<String> indexSqlTempOptional = getIndexSqlTemp(tableIndex);
         if (indexSqlTempOptional.isPresent()) {
             StringBuilder builder = new StringBuilder(
-                    String.format(indexSqlTempOptional.get(), tableIndex.getIndexName(), tableIndex.getSchemaName(),
-                            tableIndex.getTableName(), tableIndex.getIndexprs().isEmpty() ? tableIndex.getColumnName() : tableIndex.getIndexprs()));
+                    String.format(indexSqlTempOptional.get(),
+                            tableIndex.getIndexName(),
+                            tableIndex.getSchemaName(),
+                            tableIndex.getTableName(),
+                            StringUtils.isEmpty(tableIndex.getIndexprs()) ? tableIndex.getColumnName() : tableIndex.getIndexprs()));
             if (StringUtils.isNotEmpty(tableIndex.getIncludedColumns())) {
                 builder.append(" INCLUDE (").append(tableIndex.getIncludedColumns()).append(")");
             }
