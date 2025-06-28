@@ -405,7 +405,7 @@ public abstract class SourceDatabase {
                 }
                 String inheritsDdl = null;
                 String parents = getParentTables(conn, table);
-                if (!("".equals(parents))) {
+                if (!(StringUtils.isEmpty(parents))) {
                     inheritsDdl = String.format(" Inherits (%s)", parents);
                 }
 
