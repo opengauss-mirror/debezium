@@ -218,6 +218,7 @@ public class PostgresSource extends SourceDatabase {
                     table.setRowCount(rs.getInt("tableRows"));
                 }
                 table.setPartition(rs.getBoolean("isPartitioned"));
+                table.setSubPartition(false);
                 table.setHasPrimaryKey(rs.getBoolean("hasPrimaryKey"));
                 tables.add(table);
             }
@@ -405,6 +406,11 @@ public class PostgresSource extends SourceDatabase {
             LOGGER.error("Error fetching partition table size for {}.{}", schemaName, tableName, e);
         }
         return result;
+    }
+
+    @Override
+    protected boolean IsColumnGenerate(Connection conn, String schema, String tableName, Column column) {
+        return column.isGenerated();
     }
 
     /**
@@ -660,7 +666,7 @@ public class PostgresSource extends SourceDatabase {
      * @return partitionDdl
      */
     @Override
-    public String getPartitionDdl(Connection conn, String schemaName, String tableName) throws SQLException {
+    public String getPartitionDdl(Connection conn, String schemaName, String tableName, boolean isSubPartition) throws SQLException{
         if (getCurrentServerVersion(conn)
                 < ServerVersion.from(PostgresSqlConstants.PG_SERVER_V10).getVersionNum()) {
             return "";
@@ -919,21 +925,6 @@ public class PostgresSource extends SourceDatabase {
     }
 
     @Override
-    protected void readAndSendXlogLocation(Connection conn, Table table)
-            throws SQLException {
-        LOGGER.info("start get and write xloglocation for table {}.{}", table.getTableName(), table.getTableName());
-        String xlogLocation = "";
-        String getSnapshotStmt =
-                getCurrentServerVersion(conn) < getServerVersionNum(PostgresSqlConstants.PG_SERVER_V10)
-                        ? PostgresSqlConstants.GET_XLOG_LOCATION_OLD : PostgresSqlConstants.GET_XLOG_LOCATION_NEW;
-        try (ResultSet rst = conn.createStatement().executeQuery(getSnapshotStmt)) {
-            if (rst.next()) {
-                xlogLocation = rst.getString(1);
-            }
-        }
-    }
-
-    @Override
     protected String getQueryWithLock(Table table, List<Column> columns, Connection conn) {
         List<String> columnNames = columns.stream().map(column -> {
             String name = column.getName();
@@ -962,7 +953,7 @@ public class PostgresSource extends SourceDatabase {
     }
 
     @Override
-    protected String getQueryObjectSql(String objectType) throws IllegalArgumentException {
+    protected String getQueryObjectSql(String objectType, Connection conn) throws IllegalArgumentException {
         switch (objectType) {
             case "view":
                 return PostgresSqlConstants.QUERY_VIEW_SQL;
@@ -1022,13 +1013,13 @@ public class PostgresSource extends SourceDatabase {
 
     private long[] getDataTypeBounds(int systemTypeId) {
         switch (systemTypeId) {
-            case 56: // int
+            case 23: // int
                 return new long[] {-2147483648L, 2147483647L};
-            case 52: // smallint
+            case 21: // smallint
                 return new long[] {-32768L, 32767L};
-            case 48: // tinyint
+            case 16: // tinyint
                 return new long[] {0L, 255L};
-            case 127: // bigint
+            case 20: // bigint
                 return new long[] {-9223372036854775808L, 9223372036854775807L};
             default:
                 throw new IllegalArgumentException("Unsupported data type ID: " + systemTypeId);

@@ -46,8 +46,17 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
-import java.sql.*;
-import java.util.*;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.PreparedStatement;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.ArrayList;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
@@ -125,12 +134,23 @@ public abstract class SourceDatabase {
     public abstract boolean isGeometryTypes(String typeName);
 
     /**
+     * IsColumnGenerate
+     *
+     * @param conn
+     * @param schema
+     * @param tableName
+     * @param column
+     * @return is column generate
+     */
+    protected abstract boolean IsColumnGenerate(Connection conn, String schema, String tableName, Column column);
+
+    /**
      * getPartitionDdl
      *
      * @param conn conn,schema schema, tableName tableName
      * @return partitionDdl
      */
-    public abstract String getPartitionDdl(Connection conn, String schema, String tableName) throws SQLException;
+    public abstract String getPartitionDdl(Connection conn, String schema, String tableName, boolean isSubPartition) throws SQLException;
 
     /**
      * getPartitionDdl
@@ -175,17 +195,6 @@ public abstract class SourceDatabase {
     protected abstract void lockTable(Table table, Connection conn) throws SQLException;
 
     /**
-     * readAndSendXlogLocation
-     *
-     * @param conn
-     * @param table
-     * @throws SQLException
-     * @throws InterruptedException
-     */
-    protected abstract void readAndSendXlogLocation(Connection conn, Table table)
-            throws SQLException, InterruptedException;
-
-    /**
      * getQueryWithLock
      *
      * @param table table
@@ -208,7 +217,7 @@ public abstract class SourceDatabase {
      * @return sql for querying object point
      * @throws IllegalArgumentException IllegalArgumentException
      */
-    protected abstract String getQueryObjectSql(String objectType) throws IllegalArgumentException;
+    protected abstract String getQueryObjectSql(String objectType, Connection connection) throws IllegalArgumentException;
 
     /**
      * convertDefinition
@@ -392,7 +401,8 @@ public abstract class SourceDatabase {
                     sourceTableService.readTableColumn(columnMetadata).ifPresent(column -> {
                         Optional<GenerateInfo> generateInfoOptional = getGeneratedDefine(conn, schema, tableName,
                             column.getName());
-                        if (column.isGenerated() && generateInfoOptional.isPresent()) {
+                        if (IsColumnGenerate(conn, schema, tableName, column) && generateInfoOptional.isPresent()) {
+                            column.setGenerated(true);
                             column.setGenerateInfo(generateInfoOptional.get());
                         }
                         columns.add(column);
@@ -401,7 +411,7 @@ public abstract class SourceDatabase {
                 // 构造建表语句
                 String partitionDdl = null;
                 if (table.isPartition()) {
-                    partitionDdl = getPartitionDdl(conn, schema, tableName);
+                    partitionDdl = getPartitionDdl(conn, schema, tableName, table.isSubPartition());
                 }
                 String inheritsDdl = null;
                 String parents = getParentTables(conn, table);
@@ -661,7 +671,7 @@ public abstract class SourceDatabase {
     public void readObjects(String sourceDbType, String objectType, String schema) {
         try (Connection conn = connection.getConnection(sourceConfig.getDbConn());
             Statement statement = conn.createStatement()) {
-            String querySql = String.format(getQueryObjectSql(objectType.toLowerCase(Locale.ROOT)), schema);
+            String querySql = String.format(getQueryObjectSql(objectType.toLowerCase(Locale.ROOT), conn), schema);
             ResultSet rs = statement.executeQuery(querySql);
             while (rs.next()) {
                 DbObject dbObject = new DbObject();

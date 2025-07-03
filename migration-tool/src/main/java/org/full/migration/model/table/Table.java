@@ -35,6 +35,7 @@ public class Table {
     private long rowCount;
     private long aveRowLength;
     private boolean isPartition;
+    private boolean isSubPartition;
     private boolean hasPrimaryKey;
 
     /**

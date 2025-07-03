@@ -58,7 +58,15 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.Locale;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
@@ -494,7 +502,8 @@ public class TargetDatabase {
             conn.setSchema(sinkSchema);
 
             if (sqlStr.contains(";") &&
-                    !(sourceDbType.equalsIgnoreCase("postgresql") &&
+                    !((sourceDbType.equalsIgnoreCase("postgresql") ||
+                            sourceDbType.equalsIgnoreCase("opengauss")) &&
                             (objectType.equalsIgnoreCase("function") ||
                                     objectType.equalsIgnoreCase("procedure")))) {
                 String[] sqls = sqlStr.split(";");

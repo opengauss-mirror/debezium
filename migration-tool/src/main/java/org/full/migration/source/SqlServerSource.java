@@ -38,7 +38,11 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.StringJoiner;
+import java.util.Optional;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
@@ -98,12 +102,18 @@ public class SqlServerSource extends SourceDatabase {
                 table.setAveRowLength(rs.getLong("avgRowLength"));
                 table.setRowCount(rs.getInt("tableRows"));
                 table.setPartition(rs.getBoolean("isPartitioned"));
+                table.setSubPartition(false);
                 tables.add(table);
             }
         } catch (SQLException e) {
             LOGGER.error("fail to query table list, error message:{}.", e.getMessage());
         }
         return tables;
+    }
+
+    @Override
+    protected boolean IsColumnGenerate(Connection conn, String schema, String tableName, Column column) {
+        return column.isGenerated();
     }
 
     @Override
@@ -280,7 +290,7 @@ public class SqlServerSource extends SourceDatabase {
      * @return partitionDdl
      */
     @Override
-    public String getPartitionDdl(Connection conn, String schema, String tableName) throws SQLException {
+    public String getPartitionDdl(Connection conn, String schema, String tableName, boolean isSubPartition) throws SQLException {
         PartitionDefinition partitionDef = getPartitionDefinition(conn, schema, tableName);
         StringBuilder partitionDdl = new StringBuilder("\n PARTITION BY ").append(partitionDef.getPartitionType())
                 .append(" (")
@@ -358,11 +368,6 @@ public class SqlServerSource extends SourceDatabase {
     }
 
     @Override
-    protected void readAndSendXlogLocation(Connection conn, Table table) throws SQLException, InterruptedException {
-
-    }
-
-    @Override
     protected String getQueryWithLock(Table table, List<Column> columns, Connection conn) {
         List<String> columnNames = columns.stream().map(column -> {
             String name = column.getName();
@@ -382,7 +387,7 @@ public class SqlServerSource extends SourceDatabase {
     }
 
     @Override
-    protected String getQueryObjectSql(String objectType) throws IllegalArgumentException {
+    protected String getQueryObjectSql(String objectType, Connection conn) throws IllegalArgumentException {
         switch (objectType) {
             case "view":
                 return SqlServerSqlConstants.QUERY_VIEW_SQL;
