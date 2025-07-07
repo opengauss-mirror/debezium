@@ -21,6 +21,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.full.migration.constants.CommonConstants;
 import org.full.migration.constants.SqlServerSqlConstants;
 import org.full.migration.jdbc.SqlServerConnection;
+import org.full.migration.model.PostgresCustomTypeMeta;
 import org.full.migration.model.TaskTypeEnum;
 import org.full.migration.model.config.GlobalConfig;
 import org.full.migration.model.table.Column;
@@ -85,8 +86,8 @@ public class SqlServerSource extends SourceDatabase {
     }
 
     @Override
-    protected void createCustomOrDomainTypesSql(Connection conn, String schema) {
-
+    protected List<PostgresCustomTypeMeta> createCustomOrDomainTypesSql(Connection conn, String schema) {
+        return new ArrayList<>();
     }
 
     @Override

@@ -233,14 +233,16 @@ public class PostgresSource extends SourceDatabase {
      *
      * @param conn conn
      * @param schema schema
+     * @return postgresCustomTypeMetas
      */
     @Override
-    protected void createCustomOrDomainTypesSql(Connection conn, String schema) {
-        createCompositeTypeSql(conn, schema);
-        createEnumTypeSql(conn, schema);
-        createDomainTypeSql(conn, schema);
-        QueueManager.getInstance().setReadFinished(QueueManager.TYPES_QUEUE, true);
+    protected List<PostgresCustomTypeMeta> createCustomOrDomainTypesSql(Connection conn, String schema) {
+        List<PostgresCustomTypeMeta> postgresCustomTypeMetas = new ArrayList<>();
+        postgresCustomTypeMetas.addAll(createCompositeTypeSql(conn, schema));
+        postgresCustomTypeMetas.addAll(createEnumTypeSql(conn, schema));
+        postgresCustomTypeMetas.addAll(createDomainTypeSql(conn, schema));
         LOGGER.info("end to read custom or domain types.");
+        return postgresCustomTypeMetas;
     }
 
     /**
@@ -248,8 +250,10 @@ public class PostgresSource extends SourceDatabase {
      *
      * @param conn conn
      * @param schema schema
+     * @return postgresCustomTypeMetas
      */
-    private void createCompositeTypeSql(Connection conn, String schema) {
+    private List<PostgresCustomTypeMeta> createCompositeTypeSql(Connection conn, String schema) {
+        List<PostgresCustomTypeMeta> postgresCustomTypeMetas = new ArrayList<>();
         String compositeTypeQuery = PostgresSqlConstants.QUERY_COMPOSITE_TYPE_SQL;
         try (PreparedStatement stmt = conn.prepareStatement(compositeTypeQuery)) {
             stmt.setString(1, schema);
@@ -264,15 +268,14 @@ public class PostgresSource extends SourceDatabase {
                                 " IS '" + typeComment.replace("'", "''") + "';";
                     }
 
-                    QueueManager.getInstance().putToQueue(
-                            QueueManager.TYPES_QUEUE,
-                            new PostgresCustomTypeMeta(schema, compositeTypeName, typeDefinition)
-                    );
+                    postgresCustomTypeMetas.add(new PostgresCustomTypeMeta(schema, compositeTypeName, typeDefinition));
                 }
+                return postgresCustomTypeMetas;
             }
         } catch (SQLException e) {
             LOGGER.error("Failed to query composite types for schema {}: {}", schema, e.getMessage());
         }
+        return postgresCustomTypeMetas;
     }
 
     /**
@@ -280,8 +283,10 @@ public class PostgresSource extends SourceDatabase {
      *
      * @param conn conn
      * @param schema schema
+     * @return postgresCustomTypeMetas
      */
-    private void createEnumTypeSql(Connection conn, String schema) {
+    private List<PostgresCustomTypeMeta> createEnumTypeSql(Connection conn, String schema) {
+        List<PostgresCustomTypeMeta> postgresCustomTypeMetas = new ArrayList<>();
         String enumTypeQuery = PostgresSqlConstants.QUERY_ENUM_TYPE_SQL;
         try (PreparedStatement stmt = conn.prepareStatement(enumTypeQuery)) {
             stmt.setString(1, schema);
@@ -302,15 +307,14 @@ public class PostgresSource extends SourceDatabase {
                                 .append(enumComment.replace("'", "''")).append("';");
                     }
 
-                    QueueManager.getInstance().putToQueue(
-                            QueueManager.TYPES_QUEUE,
-                            new PostgresCustomTypeMeta(schema, enumTypeName, sqlBuilder.toString())
-                    );
+                    postgresCustomTypeMetas.add(new PostgresCustomTypeMeta(schema, enumTypeName, sqlBuilder.toString()));
                 }
+                return postgresCustomTypeMetas;
             }
         } catch (SQLException e) {
             LOGGER.error("Failed to query enum types for schema {}: {}", schema, e.getMessage());
         }
+        return postgresCustomTypeMetas;
     }
 
     /**
@@ -318,8 +322,10 @@ public class PostgresSource extends SourceDatabase {
      *
      * @param conn conn
      * @param schema schema
+     * @return postgresCustomTypeMetas
      */
-    private void createDomainTypeSql(Connection conn, String schema) {
+    private List<PostgresCustomTypeMeta> createDomainTypeSql(Connection conn, String schema) {
+        List<PostgresCustomTypeMeta> postgresCustomTypeMetas = new ArrayList<>();
         String domainTypeQuery = PostgresSqlConstants.QUERY_DOMAIN_TYPE_SQL;
         try (PreparedStatement stmt = conn.prepareStatement(domainTypeQuery)) {
             stmt.setString(1, schema);
@@ -346,15 +352,14 @@ public class PostgresSource extends SourceDatabase {
                                 .append(" IS '").append(domainComment.replace("'", "''")).append("';");
                     }
 
-                    QueueManager.getInstance().putToQueue(
-                            QueueManager.TYPES_QUEUE,
-                            new PostgresCustomTypeMeta(schema, domainTypeName, sqlBuilder.toString())
-                    );
+                    postgresCustomTypeMetas.add(new PostgresCustomTypeMeta(schema, domainTypeName, sqlBuilder.toString()));
                 }
+                return postgresCustomTypeMetas;
             }
         } catch (SQLException e) {
             LOGGER.error("Failed to query domain types for schema {}: {}", schema, e.getMessage());
         }
+        return postgresCustomTypeMetas;
     }
 
     /**
@@ -553,8 +558,9 @@ public class PostgresSource extends SourceDatabase {
         }
 
         if (column.isGenerated()) {
-            builder.append("GENERATED ALWAYS AS")
+            builder.append("GENERATED ALWAYS AS (")
                     .append(column.getGenerateInfo().getDefine())
+                    .append(")")
                     .append(column.getGenerateInfo().getIsStored() ? " STORED " : "VIRTUAL");
         } else if (!PostgresColumnType.isSerialTypes(typeName)
                 && column.getDefaultValueExpression() != null) {
@@ -985,8 +991,8 @@ public class PostgresSource extends SourceDatabase {
                 maxValue = Math.min(bounds[1], maxValue);
             }
             int cacheSize = rs.getInt("cacheSize");
-            // SQLServer 默认50
-            cacheSize = cacheSize == 0 ? 50 : cacheSize;
+            // postgresql 默认1
+            cacheSize = cacheSize == 0 ? 1 : cacheSize;
             long increment = rs.getLong("increment");
             increment = increment == 0 ? 1 : increment;
             long startValue = rs.getLong("startValue");
