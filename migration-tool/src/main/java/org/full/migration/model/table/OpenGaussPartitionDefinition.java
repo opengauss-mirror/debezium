@@ -1,0 +1,75 @@
+/*
+ * Copyright (c) 2025-2025 Huawei Technologies Co.,Ltd.
+ *
+ * openGauss is licensed under Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ *
+ *           http://license.coscl.org.cn/MulanPSL2
+ *
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+ * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+ * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+ * See the Mulan PSL v2 for more details.
+ */
+
+package org.full.migration.model.table;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+/**
+ * subPartitionDefinition
+ *
+ * @since 2025-06-28
+ */
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class OpenGaussPartitionDefinition {
+    private long oid;
+    private String partitionName;
+    private String partColumn;
+    private String partstrategy;
+    private String partitionType;
+    private String boundary;
+    private String interval;
+
+
+    /**
+     * isRangePartition
+     *
+     * @return isRangePartition
+     */
+    public boolean isRangePartition() {
+        return "r".equalsIgnoreCase(partstrategy);
+    }
+
+    /**
+     * isIntervalPartition
+     *
+     * @return isIntervalPartition
+     */
+    public boolean isIntervalPartition() {
+        return "i".equalsIgnoreCase(partstrategy);
+    }
+
+    /**
+     * isListPartition
+     *
+     * @return isListPartition
+     */
+    public boolean isListPartition() {
+        return "l".equalsIgnoreCase(partstrategy);
+    }
+
+    /**
+     * isHashPartition
+     *
+     * @return isHashPartition
+     */
+    public boolean isHashPartition() {
+        return "h".equalsIgnoreCase(partstrategy);
+    }
+}
