@@ -17,6 +17,7 @@ package org.full.migration.target;
 
 import lombok.Data;
 
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.full.migration.constants.CommonConstants;
 import org.full.migration.coordinator.ProgressTracker;
@@ -164,7 +165,6 @@ public class TargetDatabase {
      */
     public void writeTableConstruct() {
         try (Connection conn = connection.getConnection(dbConfig)) {
-            createCustomOrDomainTypes(conn);
             while (!QueueManager.getInstance().isQueuePollEnd(QueueManager.SOURCE_TABLE_META_QUEUE)) {
                 TableMeta tableMeta = (TableMeta) QueueManager.getInstance()
                     .pollQueue(QueueManager.SOURCE_TABLE_META_QUEUE);
@@ -204,31 +204,33 @@ public class TargetDatabase {
 
     /**
      * createCustomOrDomainTypes
-     *
-     * @param conn
-     * @throws SQLException
      */
-    private void createCustomOrDomainTypes(Connection conn) throws SQLException {
-        while (!QueueManager.getInstance().isQueuePollEnd(QueueManager.TYPES_QUEUE)) {
-            PostgresCustomTypeMeta typeMeta = (PostgresCustomTypeMeta) QueueManager.getInstance()
-                    .pollQueue(QueueManager.TYPES_QUEUE);
-            if (typeMeta == null) {
-                continue;
+    public void createCustomOrDomainTypes(List<PostgresCustomTypeMeta> customTypes) {
+        LOGGER.info("start to migration custom types");
+        if (CollectionUtils.isEmpty(customTypes)) {
+            LOGGER.info("There are no custom types to be migrated.");
+            return;
+        }
+        try (Connection conn = connection.getConnection(dbConfig)) {
+            for (PostgresCustomTypeMeta customType : customTypes) {
+                String sourceSchema = customType.getSchemaName();
+                String sinkSchema = schemaMappings.get(sourceSchema);
+                String typeName = customType.getTypeName();
+                String createTypeSql = customType.getCreateTypeSql().replace(sourceSchema + ".", sinkSchema + ".");
+                LOGGER.info("start to migration custom types:{}.{}", sourceSchema, typeName);
+                try (Statement statement = conn.createStatement()) {
+                    conn.setAutoCommit(false);
+                    statement.execute(createTypeSql);
+                    conn.commit();
+                    LOGGER.info("create type: {}.{} success", sinkSchema, typeName);
+                } catch (SQLException e) {
+                    conn.rollback();
+                    LOGGER.error("fail to create type {}.{}, errMsg:{}", sinkSchema, typeName, e.getMessage());
+                }
             }
-            String sourceSchema = typeMeta.getSchemaName();
-            String sinkSchema = schemaMappings.get(sourceSchema);
-            String typeName = typeMeta.getTypeName();
-            String createTypeSql = typeMeta.getCreateTypeSql().replace(sourceSchema+".", sinkSchema+".");
-            LOGGER.info("start to migration custom types:{}.{}", sourceSchema, typeName);
-            try (Statement statement = conn.createStatement()) {
-                conn.setAutoCommit(false);
-                statement.execute(createTypeSql);
-                conn.commit();
-                LOGGER.info("create type: {}.{} success", sinkSchema, typeName);
-            } catch (SQLException e) {
-                conn.rollback();
-                LOGGER.error("fail to create type {}.{}, errMsg:{}", sinkSchema, typeName, e.getMessage());
-            }
+            LOGGER.info("finished to migration custom types.");
+        } catch (SQLException e) {
+            LOGGER.error("Unable to create custom or domain types");
         }
     }
 

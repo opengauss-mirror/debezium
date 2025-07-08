@@ -31,6 +31,7 @@ public class TranslatorFactory {
         // 注册支持的数据库类型及其翻译器
         translators.put("postgresql", new Postgresql2OpenGaussTranslator());
         translators.put("sqlserver", new SqlServer2OpenGaussTranslator());
+        translators.put("opengauss", new OpenGauss2OpenGaussTranslator());
     }
 
     /**

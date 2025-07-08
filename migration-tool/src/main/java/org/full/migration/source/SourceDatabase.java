@@ -23,6 +23,7 @@ import org.full.migration.coordinator.ProgressTracker;
 import org.full.migration.coordinator.QueueManager;
 import org.full.migration.jdbc.JdbcConnection;
 import org.full.migration.model.DbObject;
+import org.full.migration.model.PostgresCustomTypeMeta;
 import org.full.migration.model.TaskTypeEnum;
 import org.full.migration.model.config.GlobalConfig;
 import org.full.migration.model.config.SourceConfig;
@@ -101,7 +102,14 @@ public abstract class SourceDatabase {
      */
     protected abstract List<Table> getSchemaAllTables(String schema, Connection conn);
 
-    protected abstract void createCustomOrDomainTypesSql(Connection conn, String schema) ;
+    /**
+     * createCustomOrDomainTypesSql
+     *
+     * @param conn
+     * @param schema
+     * @return postgresCustomTypeMetas
+     */
+    protected abstract List<PostgresCustomTypeMeta> createCustomOrDomainTypesSql(Connection conn, String schema) ;
 
     /**
      * getGeneratedDefine
@@ -349,6 +357,26 @@ public abstract class SourceDatabase {
     }
 
     /**
+     * queryCustomOrDomainTypes
+     *
+     * @param schemaSet
+     * @return postgresCustomTypeMetas
+     */
+    public List<PostgresCustomTypeMeta> queryCustomOrDomainTypes(Set<String> schemaSet) {
+        List<PostgresCustomTypeMeta> postgresCustomTypeMetas = new ArrayList<>();
+        try (Connection conn = connection.getConnection(sourceConfig.getDbConn());
+             Statement stmt = conn.createStatement()) {
+            for (String schema : schemaSet) {
+                postgresCustomTypeMetas.addAll(createCustomOrDomainTypesSql(conn, schema));
+            }
+            return postgresCustomTypeMetas;
+        } catch (SQLException e) {
+            LOGGER.error("fail to query table list, error message:{}.", e.getMessage());
+        }
+        return postgresCustomTypeMetas;
+    }
+
+    /**
      * queryTables
      *
      * @param schemaSet schemaSet
@@ -357,7 +385,6 @@ public abstract class SourceDatabase {
         try (Connection conn = connection.getConnection(sourceConfig.getDbConn());
             Statement stmt = conn.createStatement()) {
             for (String schema : schemaSet) {
-                createCustomOrDomainTypesSql(conn, schema);
                 List<Table> tables = getSchemaAllTables(schema, conn);
                 for (Table table : tables) {
                     String tableName = table.getTableName();

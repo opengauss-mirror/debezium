@@ -17,6 +17,7 @@ package org.full.migration.strategy;
 
 import org.apache.commons.lang3.StringUtils;
 import org.full.migration.coordinator.QueueManager;
+import org.full.migration.model.PostgresCustomTypeMeta;
 import org.full.migration.model.config.SourceConfig;
 import org.full.migration.source.SourceDatabase;
 import org.full.migration.target.TargetDatabase;
@@ -24,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -65,7 +67,9 @@ public class TableMigration extends MigrationStrategy {
         ThreadPoolExecutor dataReadExecutor = getThreadPool("DataReader-", writeCount);
         ThreadPoolExecutor dataWriteExecutor = getThreadPool("DataWriter-", writeCount);
         Set<String> schemaSet = source.getSchemaSet();
-        metaReadExecutor.submit(() -> source.initializeLogicalReplication(schemaSet));
+        source.initializeLogicalReplication(schemaSet);
+        List<PostgresCustomTypeMeta> customTypes = source.queryCustomOrDomainTypes(schemaSet);
+        target.createCustomOrDomainTypes(customTypes);
         metaReadExecutor.submit(() -> source.queryTables(schemaSet));
         for (int i = 0; i < readerCount; i++) {
             metaReadExecutor.submit(source::readTableConstruct);

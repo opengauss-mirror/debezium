@@ -525,7 +525,7 @@ public final class OpenGaussConstants {
     /**
      * sql for setting table replica idntity full
      */
-    public static final String PG_SET_TABLE_REPLICA_IDNTITY_FULL = "alter table %s replica identity full;";
+    public static final String PG_SET_TABLE_REPLICA_IDNTITY_FULL = "alter table %s.%s replica identity full;";
 
     /**
      * sql for obtaining publication
