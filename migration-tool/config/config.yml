@@ -34,10 +34,10 @@ sourceConfig:
     connectTimeout: 10
   # schema映射关系
   schemaMappings:
-    test: ogtest
+  #  test: ogtest
   # 复制表白名单，不配置则复制所有表
   limitTables:
-    - test.Students
+  #  - test.Students
   # 复制表黑名单
   skipTables:
   csvDir: /**/**
