@@ -2,6 +2,9 @@
  * Copyright Debezium Authors.
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Portions Copyright (c) 2025 Huawei Technologies Co.,Ltd.
+ * This file has been modified to adapt to openGauss.
  */
 package io.debezium.pipeline.source.spi;
 
