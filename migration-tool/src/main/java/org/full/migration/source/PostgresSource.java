@@ -18,7 +18,6 @@ package org.full.migration.source;
 import lombok.EqualsAndHashCode;
 import org.full.migration.constants.CommonConstants;
 import org.full.migration.constants.PostgresSqlConstants;
-import org.full.migration.coordinator.QueueManager;
 import org.full.migration.jdbc.PostgresConnection;
 import org.full.migration.model.PostgresCustomTypeMeta;
 import org.full.migration.model.TaskTypeEnum;

@@ -20,7 +20,6 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.full.migration.constants.CommonConstants;
 import org.full.migration.constants.OpenGaussConstants;
-import org.full.migration.coordinator.QueueManager;
 import org.full.migration.jdbc.OpenGaussConnection;
 import org.full.migration.model.PostgresCustomTypeMeta;
 import org.full.migration.model.TaskTypeEnum;
@@ -48,6 +47,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.HashMap;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -591,7 +591,325 @@ public class OpenGaussSource extends SourceDatabase {
     @Override
     public String getPartitionDdl(Connection conn, String schemaName, String tableName, boolean isSubPartition)
             throws SQLException{
+        OpenGaussPartitionDefinition parentInfo = getParentTableInfo(schemaName, tableName, conn);
+        if (Objects.isNull(parentInfo)) {
+            LOGGER.error("query {}.{}'s partition definition failed.", schemaName, tableName);
+        }
+        List<OpenGaussPartitionDefinition> firstPartitionDefinitions =
+                getFirstPartitionDefinitions(parentInfo.getOid(), tableName, conn);
+        Map<String, List<OpenGaussPartitionDefinition>> secondPartitionDefinitions = new HashMap<>();
+        String subPartitionKey = "";
+        String interval = "";
+        if (isSubPartition) {
+            List<OpenGaussPartitionDefinition> secondaryInfos = new ArrayList<>();
+            for (OpenGaussPartitionDefinition firstPartitionDefinition : firstPartitionDefinitions) {
+                secondaryInfos = getSubPartitionDefinitions(firstPartitionDefinition.getOid(), conn);
+                secondPartitionDefinitions.put(firstPartitionDefinition.getPartitionName(), secondaryInfos);
+            }
+            subPartitionKey = " SUBPARTITION BY " + getPartitionkey(
+                    getSubpartitionColumn(schemaName, tableName, conn), secondaryInfos.get(0).getPartitionType());
+        }
+        String partitionKey = getPartitionkey(parentInfo.getPartColumn(), parentInfo.getPartitionType());
+        if (parentInfo.isIntervalPartition()) {
+            //Secondary partitioning does not support interval partition.
+            interval = String.format("INTERVAL ('%s')\n", parentInfo.getInterval()
+                    .replaceAll("[{}\"]", "").trim());
+        }
+        StringBuilder partitionDdl = new StringBuilder("\n PARTITION BY ")
+                .append(partitionKey)
+                .append(subPartitionKey)
+                .append("\n")
+                .append(interval)
+                .append(getPartitionValue(firstPartitionDefinitions, secondPartitionDefinitions));
+        return partitionDdl.toString();
+    }
+
+    /**
+     * getSubpartitionColumn
+     *
+     * @param conn conn,schema schema, tableName tableName
+     * @return subColumn
+     */
+    private String getSubpartitionColumn(String schemaName, String tableName, Connection conn) {
+        try (PreparedStatement stmt = conn.prepareStatement(OpenGaussConstants.GET_SECONDARY_PARTITION_COLUMN)) {
+            stmt.setString(1, schemaName);
+            stmt.setString(2, tableName);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString(1);
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.error("query subpartition column occurred SQLException.", e);
+        }
         return "";
+    }
+
+    /**
+     * getParentTableInfo
+     *
+     * @param conn conn,schema schema, tableName tableName
+     * @return partitionDefinition
+     */
+    private OpenGaussPartitionDefinition getParentTableInfo(String schemaName, String tableName, Connection conn) {
+        try (PreparedStatement stmt = conn.prepareStatement(OpenGaussConstants.GET_PARENT_PARTITION_INFO)) {
+            stmt.setString(1, schemaName);
+            stmt.setString(2, tableName);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return new OpenGaussPartitionDefinition(
+                            rs.getLong("parentid"),
+                            rs.getString("partname"),
+                            rs.getString("partcolumn"),
+                            rs.getString("partstrategy"),
+                            rs.getString("parttype"),
+                            rs.getString("boundaries"),
+                            rs.getString("interval")
+                    );
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.error("query partition definition occurred SQLException.", e);
+        }
+        return new OpenGaussPartitionDefinition();
+    }
+
+    /**
+     * getPartitionValue
+     *
+     * @param firstParts
+     * @param secondParts
+     * @return partitionValue
+     */
+    private String getPartitionValue(List<OpenGaussPartitionDefinition> firstParts,
+                                     Map<String, List<OpenGaussPartitionDefinition>> secondParts) {
+        StringBuilder builder = new StringBuilder("( ");
+        for (OpenGaussPartitionDefinition firstPart : firstParts) {
+            String firstPartName = firstPart.getPartitionName();
+            if (firstPart.isRangePartition() || firstPart.isIntervalPartition()) {
+                builder.append(getRangePartitionDdl(firstPart));
+            } else if (firstPart.isListPartition()) {
+                builder.append(getListPartitionDdl(firstPart));
+            } else if (firstPart.isHashPartition()) {
+                builder.append(getHashPartitionDdl(firstPartName));
+            } else {
+                LOGGER.error("Unknown partition: {}", firstPart.getPartitionName());
+            }
+
+            if (CollectionUtils.isNotEmpty(secondParts.get(firstPartName))) {
+                builder.append("(" + LINESEP);
+                for (OpenGaussPartitionDefinition secondPart : secondParts.get(firstPartName)) {
+                    builder.append(getSubPartitionDdl(secondPart));
+                }
+                builder.deleteCharAt(builder.length() - 1);
+                builder.append(")");
+            }
+            builder.append(",");
+        }
+        builder.deleteCharAt(builder.length() - 1);
+        builder.append(")");
+        return builder.toString();
+    }
+
+    /**
+     * getHashPartitionDdl
+     *
+     * @param firstPartName
+     * @return HashPartitionDdl
+     */
+    private String getHashPartitionDdl(String firstPartName) {
+        return String.format(" PARTITION %s ", firstPartName);
+    }
+
+    /**
+     * getListPartitionDdl
+     *
+     * @param firstPart
+     * @return ListPartitionDdl
+     */
+    private String getListPartitionDdl(OpenGaussPartitionDefinition firstPart) {
+        String boundary = firstPart.getBoundary().replaceAll("[{}\"]", "").trim();
+        String[] boundaryStr = boundary.split(",");
+        StringBuilder boundaryValues = new StringBuilder();
+        for (int i = 0; i < boundaryStr.length; i++) {
+            if (i > 0) {
+                boundaryValues.append(", ");
+            }
+            boundaryValues.append("'").append(boundaryStr[i].trim()).append("'");
+        }
+        if ("\'NULL\'".equalsIgnoreCase(boundaryValues.toString())) {
+            return String.format(" PARTITION %s values (DEFAULT) ", firstPart.getPartitionName());
+        } else {
+            return String.format(" PARTITION %s values (%s) ", firstPart.getPartitionName(), boundaryValues.toString());
+        }
+    }
+
+    /**
+     * getRangePartitionDdl
+     *
+     * @param firstPart
+     * @return RangePartitionDdl
+     */
+    private String getRangePartitionDdl(OpenGaussPartitionDefinition firstPart) {
+        String boundary = firstPart.getBoundary().replaceAll("[{}\"]", "").trim();
+        if ("NULL".equalsIgnoreCase(boundary)) {
+            return String.format(" PARTITION %s values less than (MAXVALUE) ", firstPart.getPartitionName());
+        } else {
+            return String.format(" PARTITION %s values less than ('%s') ", firstPart.getPartitionName(), boundary);
+        }
+    }
+
+    /**
+     * getPartitionkey
+     *
+     * @param partColumn
+     * @param partType
+     * @return partitionKey
+     */
+    private String getPartitionkey(String partColumn, String partType) {
+        StringBuilder partitionKey = new StringBuilder("");
+        partitionKey.append(partType).append("(").append(partColumn).append(")");
+        return partitionKey.toString();
+    }
+
+    /**
+     * getFirstPartitionDefinitions
+     *
+     * @param parentid
+     * @param tableName
+     * @param connection
+     * @return partitionDefinitions
+     */
+    private List<OpenGaussPartitionDefinition> getFirstPartitionDefinitions(
+            long parentid, String tableName, Connection connection) {
+        List<OpenGaussPartitionDefinition> partitionDefinitions = new ArrayList<>();
+        try (PreparedStatement stmt = connection.prepareStatement(OpenGaussConstants.GET_FIRST_PARTITION_INFO)) {
+            stmt.setLong(1, parentid);
+            stmt.setString(2, tableName);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    OpenGaussPartitionDefinition partitionDefinition = new OpenGaussPartitionDefinition(
+                            rs.getLong("firstOid"),
+                            rs.getString("partname"),
+                            "",
+                            rs.getString("partstrategy"),
+                            rs.getString("parttype"),
+                            rs.getString("boundaries"),
+                            rs.getString("interval")
+                    );
+                    partitionDefinitions.add(partitionDefinition);
+                }
+                return partitionDefinitions;
+            }
+        } catch (SQLException e) {
+            LOGGER.error("query first partition information occurred SQLException.", e);
+        }
+        return partitionDefinitions;
+    }
+
+    /**
+     * getSubPartitionDefinitions
+     *
+     * @param firstOid
+     * @param connection
+     * @return subPartitionDefinitions
+     */
+    private List<OpenGaussPartitionDefinition> getSubPartitionDefinitions(long firstOid, Connection connection) {
+        List<OpenGaussPartitionDefinition> subPartitionDefinitions = new ArrayList<>();
+        try (PreparedStatement stmt = connection.prepareStatement(OpenGaussConstants.GET_SECONDARY_PARTITION_INFO)) {
+            stmt.setLong(1, firstOid);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    subPartitionDefinitions.add(new OpenGaussPartitionDefinition(
+                            rs.getLong("subOid"),
+                            rs.getString("partname"),
+                            "",
+                            rs.getString("partstrategy"),
+                            rs.getString("parttype"),
+                            rs.getString("boundaries"),
+                            rs.getString("interval")));
+                }
+                return subPartitionDefinitions;
+            }
+        } catch (SQLException e) {
+            LOGGER.error("query subpartition infomation occurred SQLException.", e);
+        }
+        return subPartitionDefinitions;
+    }
+
+    /**
+     * getSubPartitionDdl
+     *
+     * @param secondPart
+     * @return subPartitionDdl
+     */
+    private String getSubPartitionDdl(OpenGaussPartitionDefinition secondPart) {
+        StringBuilder subPartitionDdl = new StringBuilder();
+        if (secondPart.isRangePartition() || secondPart.isIntervalPartition()) {
+            subPartitionDdl.append(getSubRangePartitionDdl(secondPart));
+        } else if (secondPart.isListPartition()) {
+            subPartitionDdl.append(getSubListPartitionDdl(secondPart));
+        } else if (secondPart.isHashPartition()) {
+            subPartitionDdl.append(getSubHashPartitionDdl(secondPart));
+        } else {
+            LOGGER.error("Unknown subPartition: {}", secondPart.getPartitionName());
+        }
+        return subPartitionDdl.toString();
+    }
+
+    /**
+     * getSubRangePartitionDdl
+     *
+     * @param secondPart
+     * @return subRangePartitionDdl
+     */
+    private String getSubRangePartitionDdl(OpenGaussPartitionDefinition secondPart) {
+        String boundary = secondPart.getBoundary().replaceAll("[{}\"]", "").trim();
+        String subRangePartitionDdl = "";
+        if ("NULL".equalsIgnoreCase(boundary)) {
+            subRangePartitionDdl = String.format("SUBPARTITION %s VALUES LESS THAN (MAXVALUE),",
+                    secondPart.getPartitionName());
+        } else {
+            subRangePartitionDdl = String.format("SUBPARTITION %s VALUES LESS THAN ('%s'),",
+                    secondPart.getPartitionName(), boundary);
+        }
+        return subRangePartitionDdl;
+    }
+
+    /**
+     * getSubListPartitionDdl
+     *
+     * @param secondPart
+     * @return subListPartitionDdl
+     */
+    private String getSubListPartitionDdl(OpenGaussPartitionDefinition secondPart) {
+        String[] boundary = secondPart.getBoundary().replaceAll("[{}\"]", "").trim().split(",");
+        StringBuilder boundaryValues = new StringBuilder();
+        for (int i = 0; i < boundary.length; i++) {
+            if (i > 0) {
+                boundaryValues.append(", ");
+            }
+            boundaryValues.append("'").append(boundary[i].trim()).append("'");
+        }
+        String subRangePartitionDdl = "";
+        if ("\'NULL\'".equalsIgnoreCase(boundaryValues.toString())) {
+            subRangePartitionDdl = String.format("SUBPARTITION %s VALUES (DEFAULT),",
+                    secondPart.getPartitionName());
+        } else {
+            subRangePartitionDdl = String.format("SUBPARTITION %s VALUES (%s),",
+                    secondPart.getPartitionName(), boundaryValues.toString());
+        }
+        return subRangePartitionDdl;
+    }
+
+    /**
+     * getSubHashPartitionDdl
+     *
+     * @param secondPart
+     * @return subHashPartitionDdl
+     */
+    private String getSubHashPartitionDdl(OpenGaussPartitionDefinition secondPart) {
+        return String.format("SUBPARTITION %s,", secondPart.getPartitionName());
     }
 
     /**
