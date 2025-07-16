@@ -118,7 +118,7 @@
         <!-- Database drivers, should align with databases -->
         <version.postgresql.driver>42.3.2</version.postgresql.driver>
         <version.opengauss.driver>3.1.0-og</version.opengauss.driver>
-        <version.mysql.driver>8.0.27</version.mysql.driver>
+        <version.mysql.driver>8.0.30</version.mysql.driver>
         <version.mysql.binlog>0.25.4-modified</version.mysql.binlog>
         <version.mongo.driver>4.3.3</version.mongo.driver>
         <version.sqlserver.driver>7.2.2.jre8</version.sqlserver.driver>
@@ -132,7 +132,7 @@
         <version.cassandra>3.11.10</version.cassandra>
 
         <!-- Required in protoc plug-in config, too; can't be in BOM therefore -->
-        <version.com.google.protobuf>3.19.2</version.com.google.protobuf>
+        <version.com.google.protobuf>4.31.1</version.com.google.protobuf>
     </properties>
 
     <modules>
@@ -146,6 +146,7 @@
         <module>debezium-assembly-descriptors</module>
         <module>debezium-core</module>
         <module>debezium-embedded</module>
+        <module>debezium-connector-opengauss</module>
         <module>debezium-connector-oracle</module>
         <module>debezium-connector-mysql</module>
         <module>debezium-connector-postgres</module>
@@ -158,7 +159,6 @@
         <module>debezium-testing</module>
         <module>debezium-connect-rest-extension</module>
         <module>debezium-schema-generator</module>
-        <module>debezium-connector-opengauss</module>
     </modules>
 
     <distributionManagement>
