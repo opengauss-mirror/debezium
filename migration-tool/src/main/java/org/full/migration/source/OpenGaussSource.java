@@ -202,6 +202,7 @@ public class OpenGaussSource extends SourceDatabase {
                 table.setPartition(rs.getBoolean("isPartitioned"));
                 table.setSubPartition(rs.getBoolean("isSubPartitioned"));
                 table.setHasPrimaryKey(rs.getBoolean("hasPrimaryKey"));
+                table.setHasSegment(rs.getBoolean("has_segment_on"));
                 tables.add(table);
             }
         } catch (SQLException e) {

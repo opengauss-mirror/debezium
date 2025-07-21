@@ -37,6 +37,7 @@ public class Table {
     private boolean isPartition;
     private boolean isSubPartition;
     private boolean hasPrimaryKey;
+    private boolean hasSegment = false;
 
     /**
      * Constructor

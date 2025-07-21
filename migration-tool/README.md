@@ -78,6 +78,8 @@ limitTables:
 - test.Students
 # 复制表黑名单
 skipTables:
+# 目标端建表添加with(segment=on)选项；opengauss迁移至openGauss时，源端表有with(segment=on)，迁移时会默认添加
+addSegmentTables:
 csvDir: /**/**
 # sqlserver中time,datetime2和datetimeoffset类型精度为0-7，openGauss中对应类型精度为0-6，可能会有精度损失，该参数控制是否迁移这三种类型
 isTimeMigrate: true

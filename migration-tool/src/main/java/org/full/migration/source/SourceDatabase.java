@@ -859,7 +859,7 @@ public abstract class SourceDatabase {
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
                     String tableName = rs.getString("table_name");
-                    if (sourceTableService.isSkipTable(schema, tableName)) {
+                    if (isNotNeedMigraTable(schema, tableName, conn)) {
                         continue;
                     }
                     String constraintName = rs.getString("constraint_name");

@@ -37,11 +37,6 @@ public class QueueManager {
     public static final String TABLE_QUEUE = "tableQueue";
 
     /**
-     * typesQueue
-     */
-    public static final String TYPES_QUEUE = "typesQueue";
-
-    /**
      * sourceTableMetaQueue
      */
     public static final String SOURCE_TABLE_META_QUEUE = "sourceTableMetaQueue";
