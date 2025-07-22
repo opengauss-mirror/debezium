@@ -71,6 +71,14 @@ public class SourceTableService {
         return false;
     }
 
+    public boolean migSegmentState(String schema, String tableName) {
+        List<String> segmentTables = sourceConfig.getAddSegmentTables();
+        String fullTableName = (schema + "." + tableName).toLowerCase(Locale.ROOT);
+        return segmentTables != null && segmentTables.stream()
+                .map(name -> name.toLowerCase(Locale.ROOT))
+                .anyMatch(fullTableName::equals);
+    }
+
     /**
      * getPartitionDdl
      *
@@ -152,12 +160,25 @@ public class SourceTableService {
      * @return sql for creating table
      */
     public Optional<String> getCreateTableSql(Table table, String columnDdl, String partitionDdl, String inheritsDdl) {
+        String segmentDdl = "";
+        if (table.isHasSegment() || migSegmentState(table.getSchemaName(), table.getTableName())) {
+            segmentDdl = "with(segment = on)";
+        }
 
-        String sql = String.format("CREATE TABLE if not exists %s.%s ( %s ) %s %s", table.getTargetSchemaName(),
-                table.getTableName(), columnDdl, partitionDdl == null ? "" : partitionDdl,
-                inheritsDdl == null ? "" : inheritsDdl);
+        StringBuilder sqlBuilder = new StringBuilder("CREATE TABLE IF NOT EXISTS ")
+                .append(table.getTargetSchemaName())
+                .append(".")
+                .append(table.getTableName())
+                .append("(")
+                .append(columnDdl)
+                .append(")")
+                .append(segmentDdl)
+                .append("\n")
+                .append(partitionDdl == null ? "" : partitionDdl)
+                .append("\n")
+                .append(inheritsDdl == null ? "" : inheritsDdl);
 
-        return Optional.ofNullable(sql);
+        return Optional.of(sqlBuilder.toString().replaceAll("\\s+", " ").trim());
     }
 
     /**

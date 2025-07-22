@@ -34,12 +34,20 @@ sourceConfig:
     connectTimeout: 10
   # schema映射关系
   schemaMappings:
-  #  test: ogtest
+  #  schema1: ogschema1
+  #  schema2: ogschema2
   # 复制表白名单，不配置则复制所有表
   limitTables:
-  #  - test.Students
+  # - schema1.table1
+  # - schema1.table2
+  # - schema2.table3
   # 复制表黑名单
   skipTables:
+  # - schema1.table4
+  # 目标端建表添加with(segment=on)选项；opengauss迁移至openGauss时，源端表有with(segment=on)，迁移时会默认添加）：
+  addSegmentTables:
+  # - schema1.table1
+  # - schema2.table3
   csvDir: /**/**
   # sqlserver中time,datetime2和datetimeoffset类型精度为0-7，openGauss中对应类型精度为0-6，可能会有精度损失，该参数控制是否迁移这三种类型
   isTimeMigrate: true

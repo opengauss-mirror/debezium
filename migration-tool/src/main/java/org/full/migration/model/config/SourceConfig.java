@@ -62,6 +62,7 @@ public class SourceConfig {
     private Map<String, String> schemaMappings;
     private List<String> limitTables;
     private List<String> skipTables;
+    private List<String> addSegmentTables;
     private Boolean isCompress;
     private List<String> compressTables;
     private List<String> grantRoles;
