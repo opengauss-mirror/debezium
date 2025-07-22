@@ -156,11 +156,16 @@ public class WorkThread extends Thread {
             } catch (DataException exp) {
                 failCount++;
                 if (sinkRecordObject != null) {
-                    oldTableMap.remove(schemaMappingMap.get(sinkRecordObject.getSourceField()
-                            .getSchema()) + "." + sinkRecordObject.getSourceField().getTable());
+                    String tableFullName = schemaMappingMap.get(sinkRecordObject.getSourceField()
+                        .getSchema()) + "." + sinkRecordObject.getSourceField().getTable();
+                    oldTableMap.remove(tableFullName);
+                    LOGGER.error("{}DataException occurred because of invalid field, possible reason is tables "
+                            + "of openGauss and MySQL have same table name {} but different table structure.",
+                        ErrorCode.DATA_CONVERT_EXCEPTION, tableFullName, exp);
+                    return;
                 }
                 LOGGER.error("{}DataException occurred because of invalid field, possible reason is tables "
-                        + "of OpenGauss and MySQL have same table name but different table structure.",
+                        + "of openGauss and MySQL have same table name but different table structure.",
                     ErrorCode.DATA_CONVERT_EXCEPTION, exp);
             }
         }

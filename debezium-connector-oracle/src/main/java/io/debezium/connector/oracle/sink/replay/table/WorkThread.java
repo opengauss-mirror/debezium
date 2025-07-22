@@ -25,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.oracle.sink.util.SqlTools;
+import io.debezium.enums.ErrorCode;
 
 /**
  * Description: WorkThread class
@@ -112,11 +113,17 @@ public class WorkThread extends Thread {
             catch (DataException exp) {
                 failCount++;
                 if (sinkRecordObject != null) {
-                    oldTableMap.remove(schemaMappingMap.get(sinkRecordObject.getSourceField()
-                            .getSchema()) + "." + sinkRecordObject.getSourceField().getTable());
+                    String tableFullName = schemaMappingMap.get(sinkRecordObject.getSourceField()
+                        .getSchema()) + "." + sinkRecordObject.getSourceField().getTable();
+                    oldTableMap.remove(tableFullName);
+                    LOGGER.error("{}DataException occurred because of invalid field, possible reason is tables "
+                        + "of openGauss and Oracle have same table name {} but different table structure.",
+                        ErrorCode.DATA_CONVERT_EXCEPTION, tableFullName, exp);
+                    return;
                 }
-                LOGGER.error("DataException occurred because of invalid field, possible reason is tables "
-                        + "of OpenGauss and Oracle have same table name but different table structure.", exp);
+                LOGGER.error("{}DataException occurred because of invalid field, possible reason is tables "
+                        + "of openGauss and Oracle have same table name but different table structure.",
+                    ErrorCode.DATA_CONVERT_EXCEPTION, exp);
             }
         }
     }
