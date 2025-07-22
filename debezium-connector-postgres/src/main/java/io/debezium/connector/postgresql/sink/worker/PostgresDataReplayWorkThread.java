@@ -40,6 +40,7 @@ import io.debezium.connector.postgresql.sink.object.TableMetaData;
 import io.debezium.connector.postgresql.sink.record.SinkDataRecord;
 import io.debezium.connector.postgresql.sink.utils.ConnectionUtil;
 import io.debezium.connector.postgresql.sink.utils.SqlTools;
+import io.debezium.enums.ErrorCode;
 import io.debezium.migration.BaseMigrationConfig;
 import io.debezium.sink.worker.ReplayWorkThread;
 
@@ -145,11 +146,17 @@ public class PostgresDataReplayWorkThread extends ReplayWorkThread {
             } catch (DataException exp) {
                 failCount++;
                 if (sinkDataRecord != null && isIncrementalData(sinkDataRecord)) {
-                    oldTableMap.remove(schemaMappingMap.get(sinkDataRecord.getSourceField()
-                            .getSchema()) + "." + sinkDataRecord.getSourceField().getTable());
+                    String tableFullName = schemaMappingMap.get(sinkDataRecord.getSourceField()
+                        .getSchema()) + "." + sinkDataRecord.getSourceField().getTable();
+                    oldTableMap.remove(tableFullName);
+                    LOGGER.error("{}DataException occurred because of invalid field, possible reason is tables of "
+                        + "openGauss and Postgresql have same table name {} but different table structure.",
+                        ErrorCode.DATA_CONVERT_EXCEPTION, tableFullName, exp);
+                    return;
                 }
-                LOGGER.error("DataException occurred because of invalid field, possible reason is tables "
-                        + "of OpenGauss and Postgresql have same table name but different table structure.", exp);
+                LOGGER.error("{}DataException occurred because of invalid field, possible reason is tables "
+                        + "of openGauss and Postgresql have same table name but different table structure.",
+                    ErrorCode.DATA_CONVERT_EXCEPTION, exp);
             }
         }
     }
