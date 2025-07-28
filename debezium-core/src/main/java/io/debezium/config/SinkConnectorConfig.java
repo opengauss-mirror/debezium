@@ -607,6 +607,15 @@ public class SinkConnectorConfig extends AbstractConfig {
     }
 
     /**
+     * Get password by env
+     *
+     * @return String the password
+     */
+    protected static String getPasswordByEnv() {
+        return System.getenv("database.password");
+    }
+
+    /**
      * Ininialize config map
      */
     protected void initDefaultConfigMap() {

@@ -215,12 +215,13 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
             .withDescription("Name of the database user to be used when connecting to the database.");
 
     public static final Field PASSWORD = Field.create(DATABASE_CONFIG_PREFIX + JdbcConfiguration.PASSWORD)
-            .withDisplayName("Password")
-            .withType(Type.PASSWORD)
-            .withGroup(Field.createGroupEntry(Field.Group.CONNECTION, 5))
-            .withWidth(Width.SHORT)
-            .withImportance(Importance.HIGH)
-            .withDescription("Password of the database user to be used when connecting to the database.");
+        .withDisplayName("Password")
+        .withType(Type.STRING)
+        .withDefault(getPasswordByEnv())
+        .withGroup(Field.createGroupEntry(Field.Group.CONNECTION, 5))
+        .withWidth(Width.SHORT)
+        .withImportance(Importance.HIGH)
+        .withDescription("Password of the database user to be used when connecting to the database.");
 
     public static final Field DATABASE_NAME = Field.create(DATABASE_CONFIG_PREFIX + JdbcConfiguration.DATABASE)
             .withDisplayName("Database")
@@ -1451,5 +1452,9 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
         return "provide.transaction.metadata=" + shouldProvideTransactionMetadata()
                 + System.lineSeparator()
                 + "create.count.info.path=" + createCountInfoPath();
+    }
+
+    private static String getPasswordByEnv() {
+        return System.getenv("database.password");
     }
 }
