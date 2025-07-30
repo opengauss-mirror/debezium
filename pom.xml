@@ -102,7 +102,7 @@
         <version.jackson.databind>2.10.5.1</version.jackson.databind>
         <version.org.slf4j>1.7.30</version.org.slf4j>
         <version.log4j>1.2.17</version.log4j>
-        <version.netty>4.1.51.Final</version.netty>
+        <version.netty>4.2.3.Final</version.netty>
 
         <!-- Scala version used to build Kafka -->
         <version.kafka.scala>2.12</version.kafka.scala>
@@ -116,9 +116,9 @@
         <quarkus.version>2.5.0.Final</quarkus.version>
 
         <!-- Database drivers, should align with databases -->
-        <version.postgresql.driver>42.3.2</version.postgresql.driver>
+        <version.postgresql.driver>42.7.7</version.postgresql.driver>
         <version.opengauss.driver>3.1.0-og</version.opengauss.driver>
-        <version.mysql.driver>8.0.30</version.mysql.driver>
+        <version.mysql.driver>9.3.0</version.mysql.driver>
         <version.mysql.binlog>0.25.4-modified</version.mysql.binlog>
         <version.mongo.driver>4.3.3</version.mongo.driver>
         <version.sqlserver.driver>7.2.2.jre8</version.sqlserver.driver>

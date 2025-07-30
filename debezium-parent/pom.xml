@@ -43,7 +43,7 @@
         <version.revapi-java.plugin>0.21.0</version.revapi-java.plugin>
         <version.build-helper.plugin>1.9.1</version.build-helper.plugin>
 
-        <version.commons-fileupload>1.5</version.commons-fileupload>
+        <version.commons-fileupload>1.6.0</version.commons-fileupload>
         <version.alibaba.fastjson>2.0.51</version.alibaba.fastjson>
 
         <!-- Dockerfiles -->
