@@ -237,6 +237,7 @@ public class JdbcConnection implements AutoCloseable {
                 LOGGER.trace("Config: {}", propsWithMaskedPassword(config.asProperties()));
             }
             Properties props = config.asProperties();
+            setPasswordByEnv(props);
             Field[] varsWithDefaults = combineVariables(variables,
                     JdbcConfiguration.HOSTNAME,
                     JdbcConfiguration.PORT,
@@ -266,6 +267,13 @@ public class JdbcConnection implements AutoCloseable {
             }
             return conn;
         };
+    }
+
+    public static void setPasswordByEnv(Properties props) {
+        String password = System.getenv("database.password");
+        if (password != null && props.getProperty("password") == null) {
+            props.setProperty("password", System.getenv("database.password"));
+        }
     }
 
     private static Properties propsWithMaskedPassword(Properties props) {

@@ -70,7 +70,7 @@ public class OpengaussSinkConnectorConfig extends SinkConnectorConfig {
                     "database type")
             .define(DATABASE_USERNAME, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH,
                     "database username")
-            .define(DATABASE_PASSWORD, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH,
+            .define(DATABASE_PASSWORD, ConfigDef.Type.STRING, getPasswordByEnv(), ConfigDef.Importance.HIGH,
                     "database password")
             .define(DATABASE_IP, ConfigDef.Type.STRING, ConfigDef.Importance.HIGH, "database ip")
             .define(DATABASE_PORT, ConfigDef.Type.INT, ConfigDef.Importance.HIGH, "database port")
