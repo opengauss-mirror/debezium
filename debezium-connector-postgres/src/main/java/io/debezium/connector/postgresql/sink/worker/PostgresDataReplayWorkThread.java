@@ -139,7 +139,6 @@ public class PostgresDataReplayWorkThread extends ReplayWorkThread {
                 successCount++;
                 threadSinkRecordObject = sinkDataRecord;
             } catch (SQLException exp) {
-                failCount++;
                 updateConnectionAndExecuteSql(sql, sinkDataRecord);
             } catch (InterruptedException exp) {
                 LOGGER.warn("Interrupted exception occurred", exp);
