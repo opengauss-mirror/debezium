@@ -1316,11 +1316,11 @@ numactl -C 64-95 -m 0 ./bin/connect-standalone etc/schema-registry/connect-avro-
 
 新增的debezium opengauss connector作为source端，可用于捕获数据变更并存入kafka。在此基础上添加sink端功能，功能点如下：
 
-- 支持openGauss端对schema下的数据的dml操作同步到MySQL端，不支持迁移ddl操作的迁移；
-- 支持openGauss端对schema下的数据的dml和ddl操作同步到PostgreSQL端；
+- 支持openGauss端对schema下的数据的dml操作同步到MySQL端（不包括分区表），不支持迁移ddl操作的迁移；
+- 支持openGauss端对schema下的数据的dml和ddl操作同步到PostgreSQL端（不包括分区表）；
 - Sink端支持数据按表进行并发回放；
-- 支持openGausss的多个schema下的数据迁移到指定的MySQL的多个库；
-- 支持openGausss的多个schema下的数据迁移到指定的PostgreSQL的多个schema；
+- 支持openGausss的多个schema下的数据迁移到指定的MySQL的多个库（不包括分区表）；
+- 支持openGausss的多个schema下的数据迁移到指定的PostgreSQL的多个schema（不包括分区表）；
 - 增加迁移进度上报功能，可用于读取数据迁移时延；
 - 增加反向迁移断点续传功能，用户中断后基于断点重启后继续迁移。
 
@@ -1396,6 +1396,22 @@ sink connector 可通过配置库级和表级的黑白名单，实现对特定�
 使用说明：
 （1）同级的黑白名单不能同时配置；
 （2）若要重新配置参数，使得白名单范围变大或黑名单范围变小，需修改source端配置项database.server.name, transforms.route.regex为新的值，注意参数之间的对应关系。
+
+反向增量DDL迁移只支持行存表，不支持列存和Ustore存储引擎，支持迁移的DDL操作如下：
+
+| DDL操作                                   | 备注                           |
+|-----------------------------------------|------------------------------|
+| CREATE/DROP/ALTER/TRUNCATE/RENAME TABLE | 语法不兼容，不支持分区表                 |
+| CREATE/ALTER/DROP INDEX                 | 逻辑解码限制，不支持分区索引/隐藏索引/重建索引     |
+| CREATE/ALTER/DROP VIEW                  | 逻辑解码限制，ALTER VIEW仅支持RENAME   |
+| CREATE/ALTER/DROP TYPE                  | 逻辑解码限制，ALTER TYPE 仅支持RENAME  |
+| CREATE/DROP FUNCTION                    |                              |
+| CREATE/DROP TRIGGER                     |                              |
+| CREATE/ALTER/DROP SCHEMA                | 逻辑解码限制，ALTER SCHEMA仅支持RENAME |
+| CREATE/ALTER/DROP SEQUENCE              |                              |
+| COMMENT                                 |                              |
+TYPE类型仅支持复合类型和枚举类型
+
 
 #### Sink端
 
