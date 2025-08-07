@@ -681,6 +681,7 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
                 .withSlotOption("sending-batch", 0) // 1-batch,0-single
                 .withSlotOption("max-txn-in-memory", originalConfig.maxTxnInMemory())
                 .withSlotOption("max-reorderbuffer-in-memory", originalConfig.maxReorderbufferInMemory())
+                .withSlotOption("include-timestamp", 1)
                 .start();
         stream.forceUpdateStatus();
         return stream;
