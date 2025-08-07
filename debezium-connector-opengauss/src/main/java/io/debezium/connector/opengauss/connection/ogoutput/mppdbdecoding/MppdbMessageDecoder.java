@@ -36,7 +36,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -183,8 +185,9 @@ public class MppdbMessageDecoder extends AbstractMessageDecoder {
         int offset = buffer.arrayOffset();
         if ((char) buffer.get() == TypleType.TIME_STAMP.getSymbol()) {
             int timeStampLength = buffer.getInt();
-            Long timeStamp = Long.parseLong(new String(source, offset + buffer.position(), timeStampLength,
-                StandardCharsets.UTF_8));
+            String timeStr = new String(source, offset + buffer.position(), timeStampLength,
+                    StandardCharsets.UTF_8);
+            Long timeStamp = parseCommitTimestamp(timeStr);
             this.commitTimestamp = PG_EPOCH.plus(timeStamp, ChronoUnit.MICROS);
         }
         LOGGER.trace("Event: {}", MppdbMessageType.BEGIN);
@@ -192,6 +195,15 @@ public class MppdbMessageDecoder extends AbstractMessageDecoder {
         LOGGER.trace("Commit timestamp of transaction: {}", commitTimestamp);
         LOGGER.trace("XID of transaction: {}", transactionId);
         processor.process(new TransactionMessage(ReplicationMessage.Operation.BEGIN, transactionId, commitTimestamp));
+    }
+
+    private Long parseCommitTimestamp(String timeStr) {
+        String fixed = timeStr.replaceFirst("-(\\d{2})$", "-$1:00");
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSSXXX");
+        OffsetDateTime odt = OffsetDateTime.parse(fixed, fmt);
+        long micros = odt.toInstant().toEpochMilli() * 1000
+                + odt.getNano() / 1000 % 1000;
+        return micros;
     }
 
     /**
@@ -214,8 +226,9 @@ public class MppdbMessageDecoder extends AbstractMessageDecoder {
             this.transactionId = buffer.getLong();
         } else if (option == TypleType.TIME_STAMP.getSymbol()) {
             int timeStampLength = buffer.getInt();
-            Long timeStamp = Long.parseLong(new String(source, offset + buffer.position(), timeStampLength,
-                StandardCharsets.UTF_8));
+            String timeStr = new String(source, offset + buffer.position(), timeStampLength,
+                    StandardCharsets.UTF_8);
+            Long timeStamp = parseCommitTimestamp(timeStr);
             this.commitTimestamp = PG_EPOCH.plus(timeStamp, ChronoUnit.MICROS);
         } else {
             return;
@@ -542,6 +555,7 @@ public class MppdbMessageDecoder extends AbstractMessageDecoder {
         TableId tableId) throws SQLException {
         List<Column> readColumns = new ArrayList<>();
         try {
+            connection.readTableColumnDimension(tableId.schema(), tableId.table());
             try (ResultSet columnMetadata = databaseMetadata.getColumns(
                     null, tableId.schema(), tableId.table(), null
             )) {
