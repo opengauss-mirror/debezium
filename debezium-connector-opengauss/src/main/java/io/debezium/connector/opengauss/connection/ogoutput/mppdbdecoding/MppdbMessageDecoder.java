@@ -48,6 +48,7 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 
 import static java.time.Instant.EPOCH;
 import static java.util.stream.Collectors.toMap;
@@ -63,6 +64,8 @@ public class MppdbMessageDecoder extends AbstractMessageDecoder {
     private static final Logger LOGGER = LoggerFactory.getLogger(MppdbMessageDecoder.class);
 
     private static final Instant PG_EPOCH = LocalDate.of(2000, 1, 1).atStartOfDay().toInstant(ZoneOffset.UTC);
+
+    private static final Pattern TZ_PATTERN = Pattern.compile("([+-]\\d{2})(:?(\\d{2}))?$");
 
     private final MessageDecoderContext decoderContext;
 
@@ -198,12 +201,10 @@ public class MppdbMessageDecoder extends AbstractMessageDecoder {
     }
 
     private Long parseCommitTimestamp(String timeStr) {
-        String fixed = timeStr.replaceFirst("-(\\d{2})$", "-$1:00");
-        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSSXXX");
-        OffsetDateTime odt = OffsetDateTime.parse(fixed, fmt);
-        long micros = odt.toInstant().toEpochMilli() * 1000
-                + odt.getNano() / 1000 % 1000;
-        return micros;
+        String normalizedTimeStr = TZ_PATTERN.matcher(timeStr).replaceFirst("$1:00");
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSSXXX");
+        OffsetDateTime odt = OffsetDateTime.parse(normalizedTimeStr, formatter);
+        return odt.toInstant().toEpochMilli();
     }
 
     /**
