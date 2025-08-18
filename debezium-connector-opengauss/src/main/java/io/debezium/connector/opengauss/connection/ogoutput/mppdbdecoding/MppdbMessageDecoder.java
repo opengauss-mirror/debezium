@@ -36,6 +36,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -190,7 +191,7 @@ public class MppdbMessageDecoder extends AbstractMessageDecoder {
             int timeStampLength = buffer.getInt();
             String timeStr = new String(source, offset + buffer.position(), timeStampLength,
                     StandardCharsets.UTF_8);
-            Long timeStamp = parseCommitTimestamp(timeStr);
+            Long timeStamp = parseTimestampByStr(timeStr);
             this.commitTimestamp = PG_EPOCH.plus(timeStamp, ChronoUnit.MICROS);
         }
         LOGGER.trace("Event: {}", MppdbMessageType.BEGIN);
@@ -200,11 +201,34 @@ public class MppdbMessageDecoder extends AbstractMessageDecoder {
         processor.process(new TransactionMessage(ReplicationMessage.Operation.BEGIN, transactionId, commitTimestamp));
     }
 
-    private Long parseCommitTimestamp(String timeStr) {
+    private Long parseTimestampByStr(String timeStr) {
         String normalizedTimeStr = TZ_PATTERN.matcher(timeStr).replaceFirst("$1:00");
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSSXXX");
-        OffsetDateTime odt = OffsetDateTime.parse(normalizedTimeStr, formatter);
-        return odt.toInstant().toEpochMilli();
+        StringBuilder formatBuilder = new StringBuilder("yyyy-MM-dd HH:mm:ss");
+        if (timeStr.contains(".")) {
+            formatBuilder.append(".");
+            String suffix = timeStr.substring(timeStr.lastIndexOf(".") + 1);
+            for (int i = 0; i < suffix.length(); i++) {
+                if (suffix.charAt(i) >= '0' && suffix.charAt(i) <= '9') {
+                    formatBuilder.append("S");
+                } else {
+                    formatBuilder.append("XXX");
+                    break;
+                }
+            }
+        } else {
+            if (timeStr.trim().length() > formatBuilder.length()) {
+                formatBuilder.append("XXX");
+            }
+        }
+        String formatStr = formatBuilder.toString();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(formatStr);
+        if (formatStr.endsWith("XXX")) {
+            OffsetDateTime odt = OffsetDateTime.parse(normalizedTimeStr, formatter);
+            return odt.toInstant().toEpochMilli();
+        } else {
+            LocalDateTime dt = LocalDateTime.parse(normalizedTimeStr, formatter);
+            return dt.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        }
     }
 
     /**
@@ -229,7 +253,7 @@ public class MppdbMessageDecoder extends AbstractMessageDecoder {
             int timeStampLength = buffer.getInt();
             String timeStr = new String(source, offset + buffer.position(), timeStampLength,
                     StandardCharsets.UTF_8);
-            Long timeStamp = parseCommitTimestamp(timeStr);
+            Long timeStamp = parseTimestampByStr(timeStr);
             this.commitTimestamp = PG_EPOCH.plus(timeStamp, ChronoUnit.MICROS);
         } else {
             return;
