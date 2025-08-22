@@ -192,7 +192,7 @@ public class MppdbMessageDecoder extends AbstractMessageDecoder {
             String timeStr = new String(source, offset + buffer.position(), timeStampLength,
                     StandardCharsets.UTF_8);
             Long timeStamp = parseTimestampByStr(timeStr);
-            this.commitTimestamp = PG_EPOCH.plus(timeStamp, ChronoUnit.MICROS);
+            this.commitTimestamp = EPOCH.plus(timeStamp, ChronoUnit.MILLIS);
         }
         LOGGER.trace("Event: {}", MppdbMessageType.BEGIN);
         LOGGER.trace("Final LSN of transaction: {}", lsn);
@@ -254,7 +254,7 @@ public class MppdbMessageDecoder extends AbstractMessageDecoder {
             String timeStr = new String(source, offset + buffer.position(), timeStampLength,
                     StandardCharsets.UTF_8);
             Long timeStamp = parseTimestampByStr(timeStr);
-            this.commitTimestamp = PG_EPOCH.plus(timeStamp, ChronoUnit.MICROS);
+            this.commitTimestamp = EPOCH.plus(timeStamp, ChronoUnit.MILLIS);
         } else {
             return;
         }
