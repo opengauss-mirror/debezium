@@ -46,9 +46,9 @@
       <version>6.0.0-og</version>
     </dependency>
     <dependency>
-      <groupId>mysql</groupId>
-      <artifactId>mysql-connector-java</artifactId>
-      <version>8.0.30</version>
+      <groupId>com.mysql</groupId>
+      <artifactId>mysql-connector-j</artifactId>
+      <version>9.3.0</version>
     </dependency>
     <dependency>
       <groupId>com.microsoft.sqlserver</groupId>
@@ -58,7 +58,7 @@
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
-      <version>42.3.2</version>  <!-- 请根据实际情况选择合适版本 -->
+      <version>42.7.7</version>  <!-- 请根据实际情况选择合适版本 -->
     </dependency>
     <dependency>
       <groupId>org.projectlombok</groupId>
