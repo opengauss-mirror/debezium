@@ -251,6 +251,7 @@ public class OpengaussConnection extends JdbcConnection {
      */
     public void readTableColumnDimension(String schemaNamePattern, String tableName) throws SQLException {
         String sql = "SELECT "
+                + "current_catalog AS db_name,"
                 + "n.nspname, c.relname, a.attname, a.attndims "
                 + "FROM "
                 + "pg_catalog.pg_attribute a "
@@ -265,15 +266,18 @@ public class OpengaussConnection extends JdbcConnection {
             sql = sql + "c.relname like '" + tableName + "' AND ";
         }
         sql = sql + "a.attnum > 0 "
+                + "AND c.relkind = 'r' "
                 + "AND NOT a.attisdropped "
                 + "AND n.nspname NOT IN ('pg_catalog', 'information_schema');";
+        LOGGER.debug("read table column dimension, sql: {}", sql);
         prepareQuery(sql, stmt -> {}, rs -> {
             while (rs.next()) {
+                String catalogName = rs.getString("db_name");
                 String schema = rs.getString("nspname");
                 String table = rs.getString("relname");
                 String columnName = rs.getString("attname");
                 int dimension = rs.getInt("attndims");
-                TableId tableId = new TableId(null, schema, table);
+                TableId tableId = new TableId(catalogName, schema, table);
                 tableColumnDimension.computeIfAbsent(tableId, id -> new HashMap<>()).put(columnName, dimension);
             }
         });
@@ -686,7 +690,7 @@ public class OpengaussConnection extends JdbcConnection {
             throws SQLException {
         Map<String, Integer> columnDimensions = tableColumnDimension.get(tableId);
         final String columnName = columnMetadata.getString(4);
-        Integer dimension = columnDimensions.get(columnName);
+        Integer dimension = columnDimensions == null ? 0 : columnDimensions.getOrDefault(columnName, 0);
         if (columnFilter == null || columnFilter.matches(tableId.catalog(), tableId.schema(), tableId.table(), columnName)) {
             final ColumnEditor column = Column.editor().name(columnName);
             column.type(columnMetadata.getString(6));

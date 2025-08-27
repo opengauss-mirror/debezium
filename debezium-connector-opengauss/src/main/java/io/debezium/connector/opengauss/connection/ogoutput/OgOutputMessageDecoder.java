@@ -304,7 +304,8 @@ public class OgOutputMessageDecoder extends AbstractMessageDecoder {
             refreshConnection();
         }
         final DatabaseMetaData databaseMetadata = connection.connection().getMetaData();
-        final TableId tableId = new TableId(null, schemaName, tableName);
+        String catalog = databaseMetadata.getConnection().getCatalog();
+        final TableId tableId = new TableId(catalog, schemaName, tableName);
 
         final List<io.debezium.relational.Column> readColumns = getTableColumnsFromDatabase(connection, databaseMetadata, tableId);
         columnDefaults = readColumns.stream()
