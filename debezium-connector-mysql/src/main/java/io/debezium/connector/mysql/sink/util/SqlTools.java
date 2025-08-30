@@ -18,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.mysql.sink.object.ColumnMetaData;
+import io.debezium.connector.mysql.sink.object.ConnectionInfo;
 import io.debezium.connector.mysql.sink.object.TableMetaData;
 import io.debezium.data.Envelope;
 import io.debezium.enums.ErrorCode;
@@ -42,11 +43,24 @@ public class SqlTools {
 
     private Connection connection;
     private boolean isConnection;
+    private ConnectionInfo connectionInfo;
 
-    public SqlTools(Connection connection) {
-        this.connection = connection;
+    public SqlTools(ConnectionInfo sinkConnInfo) {
+        this.connectionInfo = sinkConnInfo;
+        this.connection = connectionInfo.createOpenGaussConnection();
         this.isConnection = true;
         getObjectWrapSymbol();
+    }
+
+    private void refreshConnection() {
+        try {
+            if (connection.isValid(1)) {
+                return;
+            }
+        } catch (SQLException e) {
+            LOGGER.warn("failed to refresh connection, error message:{}", e.getMessage());
+        }
+        connection = connectionInfo.createOpenGaussConnection();
     }
 
     public TableMetaData getTableMetaData(String schemaName, String tableName) {
@@ -77,6 +91,7 @@ public class SqlTools {
             tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
         }
         catch (SQLException exp) {
+            refreshConnection();
             try {
                 if (!connection.isValid(1)) {
                     isConnection = false;
@@ -129,6 +144,7 @@ public class SqlTools {
                 + " left join  pg_namespace ons on oc.relnamespace=ons.oid"
                 + " where oc.relname='%s' and ons.nspname='%s';",
                 tableName, schemaName);
+        refreshConnection();
         try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
             List<String> tableList = new ArrayList<>();
             while (rs.next()) {
@@ -147,6 +163,7 @@ public class SqlTools {
                 + "conrelid = (select oid from pg_class where relname = '%s' and "
                 + "relnamespace = (select oid from pg_namespace where nspname= '%s')) and"
                 + " contype = 'p';", tableName, schemaName);
+        refreshConnection();
         try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
             while (rs.next()) {
                 String indexes = rs.getString("conkey");
@@ -168,6 +185,7 @@ public class SqlTools {
     public void getObjectWrapSymbol() {
         String sql_compatibility = "show sql_compatibility";
         String dolphin_extension = "select * from pg_extension where extname = 'dolphin';";
+        refreshConnection();
         try (Statement statement1 = connection.createStatement();
                 ResultSet rs1 = statement1.executeQuery(sql_compatibility);
                 Statement statement2 = connection.createStatement();
@@ -327,6 +345,7 @@ public class SqlTools {
      */
     public String getXlogLocation() {
         String xlogPosition = "";
+        refreshConnection();
         try (Statement statement = connection.createStatement();
                 ResultSet rs = statement.executeQuery("select pg_current_xlog_location();")) {
             if (rs.next()) {
@@ -397,6 +416,7 @@ public class SqlTools {
      */
     public boolean isExistSql(String sql) {
         boolean isExistSql = false;
+        refreshConnection();
         try (
                 Statement statement = connection.createStatement();
                 ResultSet rs = statement.executeQuery(sql)) {

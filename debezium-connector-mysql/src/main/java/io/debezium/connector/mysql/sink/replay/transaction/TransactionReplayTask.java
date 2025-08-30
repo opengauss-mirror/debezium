@@ -149,7 +149,7 @@ public class TransactionReplayTask extends ReplayTask {
     }
 
     private void initSqlTools() {
-        sqlTools = new SqlTools(openGaussConnection.createOpenGaussConnection());
+        sqlTools = new SqlTools(openGaussConnection);
     }
 
     private void initTransactionDispatcher(int threadNum) {

@@ -88,7 +88,7 @@ public class TableReplayTask extends ReplayTask {
         initSchemaMappingMap(config.schemaMappings);
         initRecordBreakpoint(config);
         openGaussConnection = new ConnectionInfo(config, isConnectionAlive);
-        sqlTools = new SqlTools(openGaussConnection.createOpenGaussConnection());
+        sqlTools = new SqlTools(openGaussConnection);
         this.threadCount = config.parallelReplayThreadNum;
         for (int i = 0; i < threadCount; i++) {
             WorkThread workThread = new WorkThread(schemaMappingMap, openGaussConnection,
