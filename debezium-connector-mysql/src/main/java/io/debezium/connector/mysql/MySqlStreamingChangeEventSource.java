@@ -1294,6 +1294,7 @@ public class MySqlStreamingChangeEventSource implements StreamingChangeEventSour
         threadPool.execute(() -> {
             final MysqlProcessCommitter processCommitter = new MysqlProcessCommitter(connectorConfig,
                     filteredGtidSetStr, connection, client);
+            processCommitter.recognizeDbType();
             processCommitter.commitSourceProcessInfo();
         });
     }
