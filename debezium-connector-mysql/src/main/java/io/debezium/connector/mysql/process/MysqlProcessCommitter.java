@@ -46,6 +46,7 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
     private String[] gtidSet;
     private boolean isParallelBasedTransaction;
     private BinaryLogClient client;
+    private int dbType;
 
     /**
      * Constructor
@@ -57,6 +58,21 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
      */
     public MysqlProcessCommitter(String processFilePath, String prefix, int commitTimeInterval, int fileSizeLimit) {
         super(processFilePath, prefix, commitTimeInterval, fileSizeLimit);
+    }
+
+    /**
+     * Recognize database type: MySQL or MariaDB
+     */
+    public void recognizeDbType() {
+        try {
+            mysqlConnection.query(SHOW_MASTER_STATUS, rs -> {
+                if (rs.next()) {
+                    rs.getString(GTID);
+                }
+            });
+        } catch (SQLException e) {
+            dbType = 1;
+        }
     }
 
     /**
@@ -141,7 +157,7 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
     protected String statSourceProcessInfo() {
         long before = waitTimeInterval(true);
         sourceProcessInfo.setSpeed(before, commitTimeInterval);
-        if (isParallelBasedTransaction) {
+        if (isParallelBasedTransaction && dbType == 0) {
             BaseSourceProcessInfo processInfo = sourceProcessInfo.clone();
             refreshCreateCount();
             processInfo.setCreateCount(createCount);
@@ -149,7 +165,12 @@ public class MysqlProcessCommitter extends BaseProcessCommitter {
             processInfo.setTimestamp();
             return processInfo.toString();
         }
-        sourceProcessInfo.setCreateCount((long)client.getDmlParseCount() + client.getDdlParseCount());
+        if (dbType != 0) {
+            sourceProcessInfo.setCreateCount(((long)client.getDmlParseCount() + client.getDdlParseCount()) / 2);
+        } else {
+            sourceProcessInfo.setCreateCount((long)client.getDmlParseCount() + client.getDdlParseCount());
+        }
+
         sourceProcessInfo.setRest();
         sourceProcessInfo.setTimestamp();
         return sourceProcessInfo.toString();
