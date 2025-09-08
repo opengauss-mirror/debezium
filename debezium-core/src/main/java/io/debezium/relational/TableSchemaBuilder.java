@@ -6,8 +6,10 @@
 package io.debezium.relational;
 
 import java.sql.Types;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -132,13 +134,16 @@ public class TableSchemaBuilder {
         SchemaBuilder valSchemaBuilder = SchemaBuilder.struct().name(schemaNameAdjuster.adjust(schemaNamePrefix + ".Value"));
         SchemaBuilder keySchemaBuilder = SchemaBuilder.struct().name(schemaNameAdjuster.adjust(schemaNamePrefix + ".Key"));
         AtomicBoolean hasPrimaryKey = new AtomicBoolean(false);
-
         Key tableKey = new Key.Builder(table).customKeyMapper(keysMapper).build();
-        tableKey.keyColumns().forEach(column -> {
-            addField(keySchemaBuilder, table, column, null);
-            hasPrimaryKey.set(true);
-        });
-
+        Set<String> seen = new HashSet<>();
+        tableKey.keyColumns().stream()
+            .map(Column::name)
+            .filter(seen::add)
+            .forEach(name -> {
+                Column column = table.columnWithName(name);
+                addField(keySchemaBuilder, table, column, null);
+                hasPrimaryKey.set(true);
+            });
         table.columns()
                 .stream()
                 .filter(column -> filter == null || filter.matches(tableId.catalog(), tableId.schema(), tableId.table(), column.name()))
