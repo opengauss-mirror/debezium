@@ -5,19 +5,12 @@
  */
 package io.debezium.connector.kafka;
 
-import java.time.Duration;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import com.google.common.base.Strings;
+
+import io.debezium.config.Configuration;
+import io.debezium.config.SinkConnectorConfig;
+import io.debezium.relational.RelationalDatabaseConnectorConfig;
+import io.debezium.util.Collect;
 
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
@@ -43,12 +36,19 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.base.Strings;
-
-import io.debezium.config.Configuration;
-import io.debezium.config.SinkConnectorConfig;
-import io.debezium.relational.RelationalDatabaseConnectorConfig;
-import io.debezium.util.Collect;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Description: Kafka client
@@ -321,21 +321,28 @@ public class KafkaClient {
      * Sends config to kafka
      */
     public void sendConfigToKafka() {
-        Properties producerProperties = getProducerProperties();
-        AdminClient client = createTopicClient(producerProperties);
-        Properties consumerProperties = getConsumerProperties(bootstrapServer);
-        refreshTopic(client, consumerProperties, topicName);
-        produceAndSend(producerProperties, topicName, String.valueOf(sourceConnectorConfig.getConnectorConfigList()));
-        String message = readConfig();
-        if (Strings.isNullOrEmpty(message)) {
-            sendConfigToKafka();
-        } else {
-            if (LOGGER.isInfoEnabled()) {
-                LOGGER.info("Send source config successfully, the result is:" + System.lineSeparator()
-                        + message);
+        String message = "";
+        int retryTime = 0;
+        while (Strings.isNullOrEmpty(message)) {
+            if (retryTime >= 6) {
+                break;
             }
+            Properties producerProperties = getProducerProperties();
+            AdminClient client = createTopicClient(producerProperties);
+            Properties consumerProperties = getConsumerProperties(bootstrapServer);
+            refreshTopic(client, consumerProperties, topicName);
+            produceAndSend(producerProperties, topicName,
+                String.valueOf(sourceConnectorConfig.getConnectorConfigList()));
+            message = readConfig();
+            if (!Strings.isNullOrEmpty(message)) {
+                if (LOGGER.isInfoEnabled()) {
+                    LOGGER.info("Send source config successfully, the result is:" + System.lineSeparator() + message);
+                }
+                break;
+            }
+            client.close();
+            retryTime++;
         }
-        client.close();
     }
 
     /**

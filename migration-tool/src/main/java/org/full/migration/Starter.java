@@ -17,6 +17,8 @@ package org.full.migration;
 
 import org.full.migration.constants.CommonConstants;
 import org.full.migration.coordinator.MigrationEngine;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -27,6 +29,7 @@ import java.util.Map;
  * @since 2025-04-18
  */
 public class Starter {
+    private static final Logger LOGGER = LoggerFactory.getLogger(Starter.class);
     private static Map<String, String> commandMap = new HashMap<>();
 
     /**
@@ -35,6 +38,10 @@ public class Starter {
      * @param args args
      */
     public static void main(String[] args) {
+        if (args.length % 2 != 0) {
+            LOGGER.error("input error, please check parameters.");
+            return;
+        }
         for (int i = 0; i < args.length; i += 2) {
             commandMap.put(args[i], args[i + 1]);
         }
