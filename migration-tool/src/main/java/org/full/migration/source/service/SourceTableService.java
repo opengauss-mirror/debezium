@@ -15,13 +15,13 @@
 
 package org.full.migration.source.service;
 
+import org.apache.commons.collections4.CollectionUtils;
 import org.full.migration.model.config.SourceConfig;
 import org.full.migration.model.table.Column;
 import org.full.migration.model.table.PartitionDefinition;
 import org.full.migration.model.table.Table;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.util.CollectionUtils;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
