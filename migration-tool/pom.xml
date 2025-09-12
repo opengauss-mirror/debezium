@@ -12,16 +12,11 @@
   <properties>
     <maven.compiler.source>8</maven.compiler.source>
     <maven.compiler.target>8</maven.compiler.target>
-    <slf4j.version>1.7.21</slf4j.version>
-    <logback.version>1.1.7</logback.version>
+    <slf4j.version>2.0.12</slf4j.version>
+    <logback.version>1.5.16</logback.version>
   </properties>
 
   <dependencies>
-    <dependency>
-      <groupId>org.apache.maven.plugins</groupId>
-      <artifactId>maven-assembly-plugin</artifactId>
-      <version>3.1.1</version>
-    </dependency>
     <!-- slf4j依赖包 -->
     <dependency>
       <groupId>org.slf4j</groupId>
@@ -58,7 +53,7 @@
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
-      <version>42.7.7</version>  <!-- 请根据实际情况选择合适版本 -->
+      <version>42.7.7</version>
     </dependency>
     <dependency>
       <groupId>org.projectlombok</groupId>
@@ -72,19 +67,14 @@
       <version>2.0.51</version>
     </dependency>
     <dependency>
-      <groupId>org.json</groupId>
-      <artifactId>json</artifactId>
-      <version>20210307</version>
-    </dependency>
-    <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-core</artifactId>
-      <version>5.3.9</version>
+      <version>6.2.10</version>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-lang3</artifactId>
-      <version>3.12.0</version>
+      <version>3.18.0</version>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>
@@ -105,7 +95,7 @@
     <dependency>
       <groupId>com.alibaba</groupId>
       <artifactId>druid</artifactId>
-      <version>1.2.21</version>
+      <version>1.2.22</version>
     </dependency>
 
     <dependency>
