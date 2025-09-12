@@ -5,13 +5,6 @@
  */
 package io.debezium.connector.mongodb;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-
-import org.apache.kafka.connect.data.Struct;
-import org.bson.Document;
-
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.OperationType;
 
@@ -22,6 +15,13 @@ import io.debezium.pipeline.AbstractChangeRecordEmitter;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Partition;
 import io.debezium.util.Clock;
+
+import org.apache.kafka.connect.data.Struct;
+import org.bson.Document;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Emits change data based on a change stream change.
@@ -90,6 +90,7 @@ public class MongoDbChangeStreamChangeRecordEmitter extends AbstractChangeRecord
     }
 
     public static boolean isValidOperation(String operation) {
-        return OPERATION_LITERALS.containsKey(operation);
+        OperationType operationType = OperationType.fromString(operation);
+        return OPERATION_LITERALS.containsKey(operationType);
     }
 }

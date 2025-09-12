@@ -5,22 +5,22 @@
  */
 package io.debezium.connector.oracle;
 
-import java.time.Instant;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
-
-import org.apache.kafka.connect.data.Schema;
-import org.apache.kafka.connect.data.Struct;
-
 import io.debezium.connector.SnapshotRecord;
 import io.debezium.pipeline.source.snapshot.incremental.IncrementalSnapshotContext;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.txmetadata.TransactionContext;
 import io.debezium.relational.TableId;
 import io.debezium.schema.DataCollectionId;
+
+import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.data.Struct;
+
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class OracleOffsetContext implements OffsetContext {
 
@@ -358,9 +358,11 @@ public class OracleOffsetContext implements OffsetContext {
                     .filter(s -> !s.isEmpty())
                     .forEach(e -> {
                         String[] parts = e.split(":", 2);
-                        String txid = parts[0];
-                        Scn startScn = Scn.valueOf(parts[1]);
-                        snapshotPendingTransactions.put(txid, startScn);
+                        if (parts.length == 2) {
+                            String txid = parts[0];
+                            Scn startScn = Scn.valueOf(parts[1]);
+                            snapshotPendingTransactions.put(txid, startScn);
+                        }
                     });
         }
         return snapshotPendingTransactions;

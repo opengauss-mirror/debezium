@@ -3,6 +3,7 @@
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
  */
+
 package io.debezium.connector.opengauss.sink.utils;
 
 import java.sql.Connection;
@@ -42,21 +43,22 @@ public class OracleSqlTools extends SqlTools {
     public TableMetaData getTableMetaData(String schemaName, String tableName) {
         List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
         List<String> primaryKeys = getPrimaryKeyValue(schemaName.toUpperCase(Locale.ROOT),
-                tableName.toUpperCase(Locale.ROOT));
-        String sql = String.format(Locale.ENGLISH, "select column_name, data_type from "
-                + "ALL_TAB_COLUMNS where owner = '%s' and table_name = '%s'"
-                + " order by column_id",
-                schemaName.toUpperCase(Locale.ROOT), tableName.toUpperCase(Locale.ROOT));
+            tableName.toUpperCase(Locale.ROOT));
+        String sql = "select column_name, data_type from " + "ALL_TAB_COLUMNS where owner = ? and table_name = ?"
+            + " order by column_id";
         TableMetaData tableMetaData = null;
-        try (Statement statement = connection.createStatement();
-             ResultSet rs = statement.executeQuery(sql)) {
+        try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+            preparedStatement.setString(1, schemaName.toUpperCase(Locale.ROOT));
+            preparedStatement.setString(2, tableName.toUpperCase(Locale.ROOT));
+            try (ResultSet rs = preparedStatement.executeQuery()) {
                 while (rs.next()) {
                     String columnName = rs.getString("column_name");
                     boolean isPrimaryKey = !primaryKeys.isEmpty() && primaryKeys.contains(columnName);
                     columnMetaDataList.add(new ColumnMetaData(rs.getString("column_name").toLowerCase(Locale.ROOT),
-                            rs.getString("data_type"), isPrimaryKey));
+                        rs.getString("data_type"), isPrimaryKey));
                 }
                 tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
+            }
         } catch (SQLException exp) {
             LOGGER.error("SQL exception occurred, the sql statement is " + sql, exp);
         }
@@ -71,14 +73,17 @@ public class OracleSqlTools extends SqlTools {
      * @return List<String> the primary key
      */
     public List<String> getPrimaryKeyValue(String schemaName, String tableName) {
-        String sql = String.format(Locale.ENGLISH, "SELECT COLUMN_NAME "
-                + "FROM all_constraints c "
-                + "JOIN all_cons_columns cc ON c.constraint_name = cc.constraint_name "
-                + "WHERE c.table_name = '%s' AND c.constraint_type = 'P' AND c.owner = '%s'", tableName, schemaName);
+        String sql = "SELECT COLUMN_NAME " + "FROM all_constraints c "
+            + "JOIN all_cons_columns cc ON c.constraint_name = cc.constraint_name "
+            + "WHERE c.table_name = ? AND c.constraint_type = 'P' AND c.owner = ?";
         List<String> primaryKeys = new ArrayList<>();
-        try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
-            while (rs.next()) {
-                primaryKeys.add(rs.getString("COLUMN_NAME"));
+        try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+            preparedStatement.setString(1, tableName);
+            preparedStatement.setString(2, schemaName);
+            try (ResultSet rs = preparedStatement.executeQuery()) {
+                while (rs.next()) {
+                    primaryKeys.add(rs.getString("COLUMN_NAME"));
+                }
             }
         } catch (SQLException e) {
             LOGGER.error("SQL exception occurred in sql tools", e);

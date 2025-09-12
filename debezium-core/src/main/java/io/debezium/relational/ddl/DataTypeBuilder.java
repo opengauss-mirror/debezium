@@ -58,11 +58,6 @@ public class DataTypeBuilder {
         return this;
     }
 
-    public DataTypeBuilder addArrayDimension(int dimension) {
-        arrayDims[arrayDimsLength++] = dimension;
-        return this;
-    }
-
     public DataTypeBuilder reset() {
         length = -1;
         scale = -1;
