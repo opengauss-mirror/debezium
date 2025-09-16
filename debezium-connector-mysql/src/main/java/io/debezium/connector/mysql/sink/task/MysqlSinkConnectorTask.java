@@ -50,6 +50,9 @@ public class MysqlSinkConnectorTask extends SinkTask {
     @Override
     public void start(Map<String, String> props) {
         config = new MySqlSinkConnectorConfig(props);
+        if ("******".equals(config.openGaussPassword)) {
+            config.openGaussPassword = config.getPasswordByEnv();
+        }
         controller.initParameter(config);
         if (config.isParallelBasedTransaction) {
             jdbcDbWriter = new TransactionReplayTask(config);

@@ -43,6 +43,9 @@ public class OpengaussSinkConnectorTask extends SinkTask {
     @Override
     public void start(Map<String, String> props) {
         config = new OpengaussSinkConnectorConfig(props);
+        if ("******".equals(config.databasePassword)) {
+            config.databasePassword = config.getPasswordByEnv();
+        }
         controller.initParameter(config);
         jdbcDbWriter = new JdbcDbWriter(config);
         jdbcDbWriter.createWorkThread();

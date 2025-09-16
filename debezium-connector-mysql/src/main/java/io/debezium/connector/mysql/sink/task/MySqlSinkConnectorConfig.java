@@ -74,7 +74,7 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
                     ConfigDef.Importance.HIGH, "openGauss driver class name")
             .define(OPENGAUSS_USERNAME, ConfigDef.Type.STRING, "opengauss_user",
                     ConfigDef.Importance.HIGH, "openGauss username")
-            .define(OPENGAUSS_PASSWORD, ConfigDef.Type.STRING, getPasswordByEnv(),
+            .define(OPENGAUSS_PASSWORD, ConfigDef.Type.STRING, "******",
                     ConfigDef.Importance.HIGH, "openGauss password")
             .define(OPENGAUSS_URL, ConfigDef.Type.STRING,
                     "jdbc:opengauss://127.0.0.1:5432/migration?loggerLevel=OFF",
@@ -101,7 +101,7 @@ public class MySqlSinkConnectorConfig extends SinkConnectorConfig {
     /**
      * Password
      */
-    public final String openGaussPassword;
+    public String openGaussPassword;
 
     /**
      * Connection url
