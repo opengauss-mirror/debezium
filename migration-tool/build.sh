@@ -1,8 +1,8 @@
 #!/bin/bash
 mvn clean package -Dmaven.test.skip=true
-mkdir full-migration-tool
-cp target/full-migration-jar-with-dependencies.jar full-migration-tool/full-migration-tool-7.0.0rc2.jar
-cp -r config full-migration-tool/
-tar -czf full-migration-tool-7.0.0rc2.tar.gz full-migration-tool
-rm -rf full-migration-tool
-mv full-migration-tool-7.0.0rc2.tar.gz target/
+mkdir oG_datasync_full_migration
+cp target/full-migration-jar-with-dependencies.jar oG_datasync_full_migration/oG_datasync_full_migration-7.0.0rc2.jar
+cp -r config oG_datasync_full_migration/
+tar -czf oG_datasync_full_migration-7.0.0rc2.tar.gz oG_datasync_full_migration
+rm -rf oG_datasync_full_migration
+mv oG_datasync_full_migration-7.0.0rc2.tar.gz target/
