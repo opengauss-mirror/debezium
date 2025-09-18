@@ -16,6 +16,7 @@
 package org.full.migration.coordinator;
 
 import org.full.migration.YAMLLoader;
+import org.full.migration.constants.MigrationConfigConstants;
 import org.full.migration.model.TaskTypeEnum;
 import org.full.migration.model.config.GlobalConfig;
 import org.full.migration.source.SourceDatabase;
@@ -66,6 +67,7 @@ public class MigrationEngine {
         if (!globalConfig.getSourceConfig().isValid(taskType)) {
             return;
         }
+        getDatabasePasswordFromEnv(globalConfig);
         SourceDatabaseFactory.buildStrategyMap(globalConfig);
         SourceDatabase source = SourceDatabaseFactory.getSourceDatabase(sourceDbType);
         TargetDatabase target = new TargetDatabase(globalConfig);
@@ -80,5 +82,19 @@ public class MigrationEngine {
             ProgressTracker.initInstance(statusDir, taskType);
         }
         strategy.migration(sourceDbType);
+    }
+
+    private void getDatabasePasswordFromEnv(GlobalConfig globalConfig) {
+        String isEnableStdinPassword = System.getenv(MigrationConfigConstants.ENABLE_ENV_PASSWORD);
+        if (isEnableStdinPassword != null && isEnableStdinPassword.equals("true")) {
+            String openGaussPassword = System.getenv(MigrationConfigConstants.OPENGAUSS_PASSWORD);
+            if (openGaussPassword != null) {
+                globalConfig.getOgConn().setPassword(openGaussPassword);
+            }
+            String sourceDbPassword = System.getenv(MigrationConfigConstants.SOURCE_DB_PASSWORD);
+            if (sourceDbPassword != null) {
+                globalConfig.getSourceConfig().getDbConn().setPassword(sourceDbPassword);
+            }
+        }
     }
 }
