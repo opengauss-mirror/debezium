@@ -53,6 +53,9 @@ public class PostgresSinkConnectorTask extends SinkTask {
     @Override
     public void start(Map<String, String> props) {
         config = new PostgresSinkConnectorConfig(props);
+        if ("******".equals(config.databasePassword)) {
+            config.databasePassword = config.getPasswordByEnv();
+        }
         controller.initParameter(config);
         postgresReplayController = new PostgresReplayController(config);
         postgresReplayController.createWorkThread();
