@@ -1057,16 +1057,16 @@ For example, the follwoing connector configuration properties can be used to {li
 ----
 kafka.producer.security.protocol=SSL
 kafka.producer.ssl.keystore.location=/var/private/ssl/kafka.server.keystore.jks
-kafka.producer.ssl.keystore.password=test1234
+kafka.producer.ssl.keystore.password= 
 kafka.producer.ssl.truststore.location=/var/private/ssl/kafka.server.truststore.jks
-kafka.producer.ssl.truststore.password=test1234
-kafka.producer.ssl.key.password=test1234
+kafka.producer.ssl.truststore.password= 
+kafka.producer.ssl.key.password= 
 kafka.consumer.security.protocol=SSL
 kafka.consumer.ssl.keystore.location=/var/private/ssl/kafka.server.keystore.jks
-kafka.consumer.ssl.keystore.password=test1234
+kafka.consumer.ssl.keystore.password= 
 kafka.consumer.ssl.truststore.location=/var/private/ssl/kafka.server.truststore.jks
-kafka.consumer.ssl.truststore.password=test1234
-kafka.consumer.ssl.key.password=test1234
+kafka.consumer.ssl.truststore.password= 
+kafka.consumer.ssl.key.password=
 ----
 
 Be sure to consult the {link-kafka-docs}.html[Kafka documentation] for all of the configuration properties for Kafka producers.

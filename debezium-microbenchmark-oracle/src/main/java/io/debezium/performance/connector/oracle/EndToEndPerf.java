@@ -202,11 +202,11 @@ public class EndToEndPerf {
 
         private static final String HOST = "localhost";
         private static final String USER = "c##dbzuser";
-        private static final String PASSWORD = "dbz";
+        private static final String PASSWORD = "";
         private static final String DATABASE_CDB = "ORCLCDB";
         private static final String SERVER_NAME = "server1";
         private static final String SCHEMA_USER = "debezium";
-        private static final String SCHEMA_USER_PASSWORD = "dbz";
+        private static final String SCHEMA_USER_PASSWORD = "";
         private static final String DATABASE = "ORCLPDB1";
 
         private JdbcConfiguration defaultJdbcConfig() {
