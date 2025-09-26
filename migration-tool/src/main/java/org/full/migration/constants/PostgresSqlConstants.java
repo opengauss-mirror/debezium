@@ -79,7 +79,7 @@ public final class PostgresSqlConstants {
             + "        WHEN EXISTS (\n"
             + "            SELECT 1\n"
             + "            FROM pg_index i\n"
-            + "            JOIN pg_class ic ON i.indexrelid = ic.oid\n"
+            + "            JOIN pg_catalog.pg_class ic ON i.indexrelid = ic.oid\n"
             + "            WHERE i.indrelid = c.oid\n"
             + "            AND i.indisprimary\n"
             + "        ) THEN 1\n"
@@ -121,11 +121,11 @@ public final class PostgresSqlConstants {
             "            ELSE pg_table_size(child.oid) / pg_stat_user_tables.n_live_tup\n" +
             "        END AS partition_avg_row_length\n" +
             "    FROM\n" +
-            "        pg_inherits\n" +
+            "        pg_catalog.pg_inherits\n" +
             "    JOIN \n" +
-            "        pg_class parent ON pg_inherits.inhparent = parent.oid\n" +
+            "        pg_catalog.pg_class parent ON pg_catalog.pg_inherits.inhparent = parent.oid\n" +
             "    JOIN \n" +
-            "        pg_class child ON pg_inherits.inhrelid = child.oid\n" +
+            "        pg_catalog.pg_class child ON pg_catalog.pg_inherits.inhrelid = child.oid\n" +
             "    JOIN\n" +
             "        pg_namespace ns ON parent.relnamespace = ns.oid\n" +
             "    LEFT JOIN\n" +
@@ -235,9 +235,9 @@ public final class PostgresSqlConstants {
             "FROM\n" +
             "  pg_index idx\n" +
             "JOIN\n" +
-            "  pg_class i ON i.oid = idx.indexrelid\n" +
+            "  pg_catalog.pg_class i ON i.oid = idx.indexrelid\n" +
             "JOIN\n" +
-            "  pg_class t ON t.oid = idx.indrelid\n" +
+            "  pg_catalog.pg_class t ON t.oid = idx.indrelid\n" +
             "JOIN\n" +
             "  pg_namespace n ON n.oid = t.relnamespace\n" +
             "JOIN\n" +
@@ -254,8 +254,8 @@ public final class PostgresSqlConstants {
     public static final String QUERY_INDEX_COL_SQL = "SELECT a.attname AS column_name\n"
         + "FROM pg_index i\n"
         + "JOIN pg_attribute a ON a.attnum = ANY(i.indkey)\n"
-        + "JOIN pg_class c ON c.oid = i.indrelid\n"
-        + "JOIN pg_class idx ON idx.oid = i.indexrelid\n"
+        + "JOIN pg_catalog.pg_class c ON c.oid = i.indrelid\n"
+        + "JOIN pg_catalog.pg_class idx ON idx.oid = i.indexrelid\n"
         + "WHERE c.oid = %d\n"
         + "  AND idx.relname = '%s'\n"
         + "  AND a.attnum > 0\n"
@@ -341,7 +341,7 @@ public final class PostgresSqlConstants {
             + "FROM\n"
             + "    pg_constraint c\n"
             + "    JOIN pg_attribute a ON a.attnum = ANY(c.conkey) AND a.attrelid = c.conrelid\n"
-            + "    JOIN pg_class t ON t.oid = c.conrelid\n"
+            + "    JOIN pg_catalog.pg_class t ON t.oid = c.conrelid\n"
             + "    JOIN pg_namespace n ON n.oid = t.relnamespace\n"
             + "WHERE\n"
             + "    c.contype = 'u'\n"
@@ -361,7 +361,7 @@ public final class PostgresSqlConstants {
             "    REGEXP_REPLACE(pg_get_constraintdef(c.oid), '^CHECK \\((.*)\\)$', '\\1') AS definition\n" +
             "FROM\n" +
             "    pg_constraint c\n" +
-            "    JOIN pg_class t ON t.oid = c.conrelid\n" +
+            "    JOIN pg_catalog.pg_class t ON t.oid = c.conrelid\n" +
             "    JOIN pg_namespace n ON n.oid = t.relnamespace\n" +
             "WHERE\n" +
             "    c.contype = 'c'\n" +
@@ -371,34 +371,34 @@ public final class PostgresSqlConstants {
     /**
      * get all parent tables
      */
-    public static final String GET_PARENT_TABLE = "SELECT p.relname AS parent_table_name FROM pg_inherits i JOIN "
-            + " pg_class c ON i.inhrelid = c.oid JOIN pg_class p ON i.inhparent = p.oid "
+    public static final String GET_PARENT_TABLE = "SELECT p.relname AS parent_table_name FROM pg_catalog.pg_inherits i JOIN "
+            + " pg_catalog.pg_class c ON i.inhrelid = c.oid JOIN pg_catalog.pg_class p ON i.inhparent = p.oid "
             + " JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = '%s' and c.relname = '%s'";
 
     /**
      * if table have partitions
      */
-    public static final String HAVE_PARTITION_SQL = "select relispartition from pg_class c join pg_namespace n ON"
+    public static final String HAVE_PARTITION_SQL = "select relispartition from pg_catalog.pg_class c join pg_namespace n ON"
             + " c.relnamespace = n.oid where n.nspname = '%s' and c.relname = '%s'";
 
     /**
      * sql for querying partition information
      */
-    public static final String GET_CHILD_TABLE = "SELECT c.relname AS child_table_name FROM pg_inherits i "
-            + " JOIN pg_class c ON i.inhrelid = c.oid JOIN pg_class p ON i.inhparent = p.oid "
+    public static final String GET_CHILD_TABLE = "SELECT c.relname AS child_table_name FROM pg_catalog.pg_inherits i "
+            + " JOIN pg_catalog.pg_class c ON i.inhrelid = c.oid JOIN pg_catalog.pg_class p ON i.inhparent = p.oid "
             + " JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = '%s' AND p.relname = '%s'";
 
     /**
      * get table partition key
      */
-    public static final String GET_PARTITION_KEY = "select pg_get_partkeydef(c.oid) from pg_class c "
+    public static final String GET_PARTITION_KEY = "select pg_get_partkeydef(c.oid) from pg_catalog.pg_class c "
             + " join pg_namespace n on c.relnamespace = n.oid where n.nspname = '%s' and relname = '%s'";
 
     /**
      * get table partition expression
      */
     public static final String GET_PARTITION_EXPR = "select pg_get_partkeydef(c.oid), "
-            + " pg_get_expr(relpartbound, c.oid) from pg_class c join pg_namespace n on c.relnamespace = n.oid "
+            + " pg_get_expr(relpartbound, c.oid) from pg_catalog.pg_class c join pg_namespace n on c.relnamespace = n.oid "
             + " where n.nspname = '%s' and relname = '%s'";
 
     /**
@@ -424,7 +424,7 @@ public final class PostgresSqlConstants {
         "SELECT t.tgname AS name, pg_get_triggerdef(t.oid) AS definition, "
             + "c.relname AS TableName "
             + "FROM pg_trigger t "
-            + "JOIN pg_class c ON t.tgrelid = c.oid "
+            + "JOIN pg_catalog.pg_class c ON t.tgrelid = c.oid "
             + "JOIN pg_namespace n ON c.relnamespace = n.oid "
             + "WHERE n.nspname = '%s' AND NOT t.tgisinternal "
             + "AND n.nspname NOT IN ('pg_catalog', 'information_schema');";
@@ -456,7 +456,7 @@ public final class PostgresSqlConstants {
         + "FROM\n"
         + "    pg_sequence s\n"
         + "JOIN\n"
-        + "    pg_class c ON c.oid = s.seqrelid\n"
+        + "    pg_catalog.pg_class c ON c.oid = s.seqrelid\n"
         + "JOIN\n"
         + "    pg_namespace n ON c.relnamespace = n.oid\n"
         + "WHERE\n"
