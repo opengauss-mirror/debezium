@@ -28,10 +28,9 @@ public class TimeUtil {
     private static final Logger LOGGER = LoggerFactory.getLogger(TimeUtil.class);
 
     /**
-     * Causes the currently executing thread to sleep (temporarily cease execution)
-     * for the specified number of milliseconds.
+     * sleep
      *
-     * @param millSeconds the length of time to sleep in milliseconds
+     * @param millSeconds millSeconds
      */
     public static void sleep(long millSeconds) {
         try {
