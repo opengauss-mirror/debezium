@@ -26,12 +26,12 @@ migration-tool是一个用Java编写的SQLServer到openGauss的离线迁移工�
 - 由于内核兼容性在持续增强，对象迁移采用先透传再翻译的原则进行，即先直接透传对象创建语句在openGauss端执行，若执行失败，再借助开源三方件druid进行翻译。
 
 # 2. 安装方法
-安装包下载地址：https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/oG_datasync_full_migration-7.0.0rc2.tar.gz
-其中7.0.0rc2表示当前版本号。
+安装包下载地址：https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/oG_datasync_full_migration-7.0.0rc3.tar.gz
+其中7.0.0rc3表示当前版本号。
 下载完成后，解压压缩包
 
 ```
-tar -zxvf oG_datasync_full_migration-7.0.0rc2.tar.gz
+tar -zxvf oG_datasync_full_migration-7.0.0rc3.tar.gz
 ```
 解压后的full-migration-tool文件夹中有一个config文件夹以及一个jar包，config文件夹下存储配置文件模板。
 
@@ -95,39 +95,39 @@ isRecordSnapshot: No
 
 - 迁移表
 
-    `java -jar oG_datasync_full_migration-7.0.0rc2.jar --start table --source sqlserver --config /**/**/config.yml`
+    `java -jar oG_datasync_full_migration-7.0.0rc3.jar --start table --source sqlserver --config /**/**/config.yml`
 
 - 迁移主键
 
-    `java -jar oG_datasync_full_migration-7.0.0rc2.jar --start primarykey --source sqlserver --config /**/**/config.yml`
+    `java -jar oG_datasync_full_migration-7.0.0rc3.jar --start primarykey --source sqlserver --config /**/**/config.yml`
 
 - 迁移外键
 
-    `java -jar oG_datasync_full_migration-7.0.0rc2.jar --start foreignkey --source sqlserver --config /**/**/config.yml`
+    `java -jar oG_datasync_full_migration-7.0.0rc3.jar --start foreignkey --source sqlserver --config /**/**/config.yml`
 
 - 迁移索引
 
-    `java -jar oG_datasync_full_migration-7.0.0rc2.jar --start index --source sqlserver --config /**/**/config.yml`
+    `java -jar oG_datasync_full_migration-7.0.0rc3.jar --start index --source sqlserver --config /**/**/config.yml`
 
 - 迁移视图
 
-    `java -jar oG_datasync_full_migration-7.0.0rc2.jar --start view --source sqlserver --config /**/**/config.yml`
+    `java -jar oG_datasync_full_migration-7.0.0rc3.jar --start view --source sqlserver --config /**/**/config.yml`
 
 - 迁移函数
 
-    `java -jar oG_datasync_full_migration-7.0.0rc2.jar --start function --source sqlserver --config /**/**/config.yml`
+    `java -jar oG_datasync_full_migration-7.0.0rc3.jar --start function --source sqlserver --config /**/**/config.yml`
 
 - 迁移触发器
 
-    `java -jar oG_datasync_full_migration-7.0.0rc2.jar --start trigger --source sqlserver --config /**/**/config.yml`
+    `java -jar oG_datasync_full_migration-7.0.0rc3.jar --start trigger --source sqlserver --config /**/**/config.yml`
 
 - 迁移存储过程
 
-    `java -jar oG_datasync_full_migration-7.0.0rc2.jar --start procedure --source sqlserver --config /**/**/config.yml`
+    `java -jar oG_datasync_full_migration-7.0.0rc3.jar --start procedure --source sqlserver --config /**/**/config.yml`
 
 - 迁移序列
 
-    `java -jar oG_datasync_full_migration-7.0.0rc2.jar --start sequence --source sqlserver --config /**/**/config.yml`
+    `java -jar oG_datasync_full_migration-7.0.0rc3.jar --start sequence --source sqlserver --config /**/**/config.yml`
 
 
 # 5. 默认的类型转换规则
