@@ -338,6 +338,9 @@ public class TargetDatabase {
             conn.setAutoCommit(false);
             conn.setSchema(table.getTargetSchemaName());
             statement.execute(String.format(DROP_SCHEMA_SQL, table.getTableName()));
+            LOGGER.error("=================================");
+            LOGGER.error(tableMeta.getCreateTableSql());
+            LOGGER.error("=================================");
             statement.execute(tableMeta.getCreateTableSql());
             conn.commit();
             createdTables.add(table.getTargetSchemaName() + "." + table.getTableName());
