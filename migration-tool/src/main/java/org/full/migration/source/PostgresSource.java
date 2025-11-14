@@ -720,10 +720,9 @@ public class PostgresSource extends SourceDatabase {
 
         for (String partitionName : partitionNames) {
             List<String> bounds = partitionToBoundsMap.get(partitionName);
-            String lowerBound = bounds.get(0);
             String upperBound = bounds.get(1);
 
-            builder.append(String.format("PARTITION %s START%s END %s," + LINESEP, partitionName, lowerBound, upperBound));
+            builder.append(String.format("PARTITION %s VALUES LESS THAN %s," + LINESEP, partitionName, upperBound));
         }
         builder.deleteCharAt(builder.lastIndexOf(","));
         builder.append(")");
