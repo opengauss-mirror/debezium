@@ -734,12 +734,10 @@ public class PostgresSource extends SourceDatabase {
         if (partitions.isEmpty()) {
             return "";
         }
-        Integer partitionIdx = 1;
         String partitionStr = "( ";
         for (PartitionInfo listPartitionInfo : partitions) {
-            partitionStr += String.format("partition p%s values %s," + LINESEP,
-                    partitionIdx, listPartitionInfo.getListPartitionValue());
-            partitionIdx += 1;
+            partitionStr += String.format("partition %s values %s," + LINESEP,
+                    listPartitionInfo.getPartitionTable(), listPartitionInfo.getListPartitionValue());
         }
         partitionStr = partitionStr.substring(0, partitionStr.lastIndexOf(","));
         partitionStr += ")";
@@ -907,10 +905,24 @@ public class PostgresSource extends SourceDatabase {
             if (rst.next()) {
                 partitionKey = rst.getString(1);
             }
+            if (partitionKey != null && partitionKey.trim().toUpperCase().startsWith(PartitionInfo.LIST_PARTITION)) {
+                return removeListPartitionOps(partitionKey.trim().toUpperCase());
+            }
         } catch (SQLException e) {
             LOGGER.error("get table partition key occurred SQLException.", e);
         }
-        return partitionKey == null ? "" : partitionKey.trim().toUpperCase();
+        return partitionKey;
+    }
+
+    private String removeListPartitionOps(String partitionKey) {
+        String[] res = partitionKey.replaceAll("\\s+", " ").split(" ");
+        if (res.length <= 1) {
+            return partitionKey;
+        }
+        if (res[res.length - 1].endsWith("_OPS)")) {
+            res[res.length - 1] = ")";
+        }
+        return String.join("", res);
     }
 
     @Override
