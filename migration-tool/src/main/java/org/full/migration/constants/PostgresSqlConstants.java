@@ -177,7 +177,7 @@ public final class PostgresSqlConstants {
     /**
      * sql for setting table snapshot
      */
-    public static final String SET_TABLE_SNAPSHOT_SQL = "BEGIN; LOCK TABLE %s.%s IN SHARE MODE;";
+    public static final String SET_TABLE_SNAPSHOT_SQL = "BEGIN; LOCK TABLE \"%s\".\"%s\" IN SHARE MODE;";
 
     /**
      * sql get xlog location before pg10.0

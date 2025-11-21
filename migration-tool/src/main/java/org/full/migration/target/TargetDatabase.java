@@ -39,6 +39,7 @@ import org.full.migration.model.table.TableIndex;
 import org.full.migration.model.table.TableMeta;
 import org.full.migration.model.table.TablePrimaryKey;
 import org.full.migration.translator.TranslatorFactory;
+import org.full.migration.utils.DatabaseUtils;
 import org.full.migration.utils.FileUtils;
 import org.opengauss.copy.CopyManager;
 import org.opengauss.core.BaseConnection;
@@ -80,14 +81,14 @@ import java.util.regex.Pattern;
 public class TargetDatabase {
     private static final Logger LOGGER = LoggerFactory.getLogger(TargetDatabase.class);
     private static final Pattern CSV_SPLIT_PATTERN = Pattern.compile(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
-    private static final String CREATE_SCHEMA_SQL = "create schema if not exists %s";
-    private static final String DROP_SCHEMA_SQL = "drop schema if exists %s cascade";
-    private static final String DROP_TABLE_SQL = "drop table if exists %s";
+    private static final String CREATE_SCHEMA_SQL = "create schema if not exists \"%s\"";
+    private static final String DROP_SCHEMA_SQL = "drop schema if exists \"%s\" cascade";
+    private static final String DROP_TABLE_SQL = "drop table if exists \"%s\"";
     private static final String COPY_SQL
-        = "COPY %s.%s FROM STDIN WITH NULL 'null' CSV QUOTE '\"' DELIMITER ',' ESCAPE '\"' HEADER";
-    private static final String CREATE_PK_SQL = "ALTER TABLE %s.%s ADD CONSTRAINT %s PRIMARY KEY (%s)";
+        = "COPY \"%s\".\"%s\" FROM STDIN WITH NULL 'null' CSV QUOTE '\"' DELIMITER ',' ESCAPE '\"' HEADER";
+    private static final String CREATE_PK_SQL = "ALTER TABLE \"%s\".\"%s\" ADD CONSTRAINT %s PRIMARY KEY (\"%s\")";
     private static final String CREATE_FK_SQL
-        = "ALTER TABLE %s.%s ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s.%s (%s)";
+        = "ALTER TABLE \"%s\".\"%s\" ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES \"%s\".\"%s\" (\"%s\")";
     private static final String IS_TABLE_EXIST_SQL
         = "SELECT EXISTS (SELECT 1  FROM pg_tables  WHERE LOWER(tablename) = ? AND LOWER(schemaname) = ? )";
 
@@ -142,8 +143,8 @@ public class TargetDatabase {
      * @param schemas schemas
      */
     public void createSchemas(Set<String> schemas) {
-        try (Connection conn = connection.getConnection(dbConfig); Statement stmt = conn.createStatement()) {
-            for (String schema : schemas) {
+        for (String schema : schemas) {
+            try (Connection conn = connection.getConnection(dbConfig); Statement stmt = conn.createStatement()) {
                 String sql = String.format(CREATE_SCHEMA_SQL, schema);
                 if (isKeepExistingSchema) {
                     stmt.execute(sql);
@@ -153,10 +154,10 @@ public class TargetDatabase {
                     stmt.execute(sql);
                     conn.commit();
                 }
+                LOGGER.info("finish to create schemas.{}", schema);
+            } catch (SQLException e) {
+                LOGGER.error("fail to create schema:{}, error message:{}.", schema, e.getMessage());
             }
-            LOGGER.info("finish to create schemas.{}", schemas);
-        } catch (SQLException e) {
-            LOGGER.error("fail to create schema:{}, error message:{}.", schemas, e.getMessage());
         }
     }
 
@@ -337,7 +338,7 @@ public class TargetDatabase {
             Table table = tableMeta.getTable();
             conn.setAutoCommit(false);
             conn.setSchema(table.getTargetSchemaName());
-            statement.execute(String.format(DROP_SCHEMA_SQL, table.getTableName()));
+            statement.execute(String.format(DROP_TABLE_SQL, table.getTableName()));
             statement.execute(tableMeta.getCreateTableSql());
             conn.commit();
             createdTables.add(table.getTargetSchemaName() + "." + table.getTableName());

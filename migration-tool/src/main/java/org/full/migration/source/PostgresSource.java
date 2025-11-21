@@ -29,6 +29,7 @@ import org.full.migration.model.table.postgres.partition.PartitionInfo;
 import org.full.migration.model.table.postgres.partition.RangePartitionInfo;
 import org.full.migration.translator.PostgresColumnType;
 import org.full.migration.translator.PostgresqlFuncTranslator;
+import org.full.migration.utils.DatabaseUtils;
 import org.postgresql.core.ServerVersion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -509,7 +510,7 @@ public class PostgresSource extends SourceDatabase {
                 return "";
             }
             String nullType = column.isOptional() ? "" : " NOT NULL ";
-            columnDdl.add(String.format("%s %s %s", colName, colType, nullType));
+            columnDdl.add(String.format("\"%s\" %s %s", colName, colType, nullType));
         }
         return columnDdl.toString();
     }
@@ -943,7 +944,7 @@ public class PostgresSource extends SourceDatabase {
     @Override
     protected String getQueryWithLock(Table table, List<Column> columns, Connection conn) {
         List<String> columnNames = columns.stream().map(column -> {
-            String name = column.getName();
+            String name = DatabaseUtils.formatObjName(column.getName());
             if (PostgresColumnType.isGeometryTypes(column.getTypeName())) {
                 return "ST_AsText(" + name + ") AS " + name; // PostgreSQL 几何类型转换语法
             }
@@ -958,8 +959,8 @@ public class PostgresSource extends SourceDatabase {
         }
         return String.format(queryDataSql,
                 String.join(CommonConstants.DELIMITER, columnNames),
-                table.getSchemaName(),
-                table.getTableName());
+                DatabaseUtils.formatObjName(table.getSchemaName()),
+                DatabaseUtils.formatObjName(table.getTableName()));
     }
 
     @Override
