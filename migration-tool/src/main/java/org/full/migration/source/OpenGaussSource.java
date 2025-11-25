@@ -719,7 +719,7 @@ public class OpenGaussSource extends SourceDatabase {
      * @return HashPartitionDdl
      */
     private String getHashPartitionDdl(String firstPartName) {
-        return String.format(" PARTITION %s ", firstPartName);
+        return String.format(" PARTITION \"%s\" ", firstPartName);
     }
 
     /**
@@ -739,9 +739,9 @@ public class OpenGaussSource extends SourceDatabase {
             boundaryValues.append("'").append(boundaryStr[i].trim()).append("'");
         }
         if ("\'NULL\'".equalsIgnoreCase(boundaryValues.toString())) {
-            return String.format(" PARTITION %s values (DEFAULT) ", firstPart.getPartitionName());
+            return String.format(" PARTITION \"%s\" values (DEFAULT) ", firstPart.getPartitionName());
         } else {
-            return String.format(" PARTITION %s values (%s) ", firstPart.getPartitionName(), boundaryValues.toString());
+            return String.format(" PARTITION \"%s\" values (%s) ", firstPart.getPartitionName(), boundaryValues.toString());
         }
     }
 
@@ -754,9 +754,9 @@ public class OpenGaussSource extends SourceDatabase {
     private String getRangePartitionDdl(OpenGaussPartitionDefinition firstPart) {
         String boundary = firstPart.getBoundary().replaceAll("[{}\"]", "").trim();
         if ("NULL".equalsIgnoreCase(boundary)) {
-            return String.format(" PARTITION %s values less than (MAXVALUE) ", firstPart.getPartitionName());
+            return String.format(" PARTITION \"%s\" values less than (MAXVALUE) ", firstPart.getPartitionName());
         } else {
-            return String.format(" PARTITION %s values less than ('%s') ", firstPart.getPartitionName(), boundary);
+            return String.format(" PARTITION \"%s\" values less than ('%s') ", firstPart.getPartitionName(), boundary);
         }
     }
 
@@ -868,10 +868,10 @@ public class OpenGaussSource extends SourceDatabase {
         String boundary = secondPart.getBoundary().replaceAll("[{}\"]", "").trim();
         String subRangePartitionDdl = "";
         if ("NULL".equalsIgnoreCase(boundary)) {
-            subRangePartitionDdl = String.format("SUBPARTITION %s VALUES LESS THAN (MAXVALUE),",
+            subRangePartitionDdl = String.format("SUBPARTITION \"%s\" VALUES LESS THAN (MAXVALUE),",
                     secondPart.getPartitionName());
         } else {
-            subRangePartitionDdl = String.format("SUBPARTITION %s VALUES LESS THAN ('%s'),",
+            subRangePartitionDdl = String.format("SUBPARTITION \"%s\" VALUES LESS THAN ('%s'),",
                     secondPart.getPartitionName(), boundary);
         }
         return subRangePartitionDdl;
@@ -894,10 +894,10 @@ public class OpenGaussSource extends SourceDatabase {
         }
         String subRangePartitionDdl = "";
         if ("\'NULL\'".equalsIgnoreCase(boundaryValues.toString())) {
-            subRangePartitionDdl = String.format("SUBPARTITION %s VALUES (DEFAULT),",
+            subRangePartitionDdl = String.format("SUBPARTITION \"%s\" VALUES (DEFAULT),",
                     secondPart.getPartitionName());
         } else {
-            subRangePartitionDdl = String.format("SUBPARTITION %s VALUES (%s),",
+            subRangePartitionDdl = String.format("SUBPARTITION \"%s\" VALUES (%s),",
                     secondPart.getPartitionName(), boundaryValues.toString());
         }
         return subRangePartitionDdl;
@@ -910,7 +910,7 @@ public class OpenGaussSource extends SourceDatabase {
      * @return subHashPartitionDdl
      */
     private String getSubHashPartitionDdl(OpenGaussPartitionDefinition secondPart) {
-        return String.format("SUBPARTITION %s,", secondPart.getPartitionName());
+        return String.format("SUBPARTITION \"%s\",", secondPart.getPartitionName());
     }
 
     /**
