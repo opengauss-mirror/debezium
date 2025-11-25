@@ -20,6 +20,7 @@ import org.full.migration.model.config.SourceConfig;
 import org.full.migration.model.table.Column;
 import org.full.migration.model.table.PartitionDefinition;
 import org.full.migration.model.table.Table;
+import org.full.migration.utils.DatabaseUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -164,19 +165,18 @@ public class SourceTableService {
         if (table.isHasSegment() || migSegmentState(table.getSchemaName(), table.getTableName())) {
             segmentDdl = "with(segment = on)";
         }
-
         StringBuilder sqlBuilder = new StringBuilder("CREATE TABLE IF NOT EXISTS ")
-                .append(table.getTargetSchemaName())
-                .append(".")
-                .append(table.getTableName())
-                .append("(")
-                .append(columnDdl)
-                .append(")")
-                .append(segmentDdl)
-                .append("\n")
-                .append(partitionDdl == null ? "" : partitionDdl)
-                .append("\n")
-                .append(inheritsDdl == null ? "" : inheritsDdl);
+            .append(DatabaseUtils.formatObjName(table.getTargetSchemaName()))
+            .append(".")
+            .append(DatabaseUtils.formatObjName(table.getTableName()))
+            .append("(")
+            .append(columnDdl)
+            .append(")")
+            .append(segmentDdl)
+            .append("\n")
+            .append(partitionDdl == null ? "" : partitionDdl)
+            .append("\n")
+            .append(inheritsDdl == null ? "" : inheritsDdl);
 
         return Optional.of(sqlBuilder.toString().replaceAll("\\s+", " ").trim());
     }
