@@ -723,7 +723,7 @@ public class PostgresSource extends SourceDatabase {
             List<String> bounds = partitionToBoundsMap.get(partitionName);
             String upperBound = bounds.get(1);
 
-            builder.append(String.format("PARTITION %s VALUES LESS THAN %s," + LINESEP, partitionName, upperBound));
+            builder.append(String.format("PARTITION \"%s\" VALUES LESS THAN %s," + LINESEP, partitionName, upperBound));
         }
         builder.deleteCharAt(builder.lastIndexOf(","));
         builder.append(")");
@@ -737,7 +737,7 @@ public class PostgresSource extends SourceDatabase {
         }
         String partitionStr = "( ";
         for (PartitionInfo listPartitionInfo : partitions) {
-            partitionStr += String.format("partition %s values %s," + LINESEP,
+            partitionStr += String.format("partition \"%s\" values %s," + LINESEP,
                     listPartitionInfo.getPartitionTable(), listPartitionInfo.getListPartitionValue());
         }
         partitionStr = partitionStr.substring(0, partitionStr.lastIndexOf(","));
@@ -749,11 +749,9 @@ public class PostgresSource extends SourceDatabase {
         if (partitions.isEmpty()) {
             return "";
         }
-        Integer partitionIdx = 1;
         String partitionStr = "( ";
-        for (int i = 0; i < partitions.size(); ++i) {
-            partitionStr += String.format("partition p%s," + LINESEP, partitionIdx);
-            partitionIdx += 1;
+        for (PartitionInfo partition : partitions) {
+            partitionStr += String.format("partition \"%s\"," + LINESEP, partition.getPartitionTable());
         }
         partitionStr = partitionStr.substring(0, partitionStr.lastIndexOf(","));
         partitionStr += ")";
