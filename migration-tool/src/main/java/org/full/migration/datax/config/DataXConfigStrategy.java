@@ -5,6 +5,7 @@
 package org.full.migration.datax.config;
 
 import org.full.migration.datax.model.DataXConfig;
+import org.full.migration.exception.DataXMigrationException;
 
 /**
  * DataXConfigStrategy
@@ -19,7 +20,7 @@ public interface DataXConfigStrategy {
      * @param context Configuration context
      * @return DataXConfig configuration object
      */
-    DataXConfig generateConfig(DataXConfigContext context);
+    DataXConfig generateConfig(DataXConfigContext context) throws DataXMigrationException;
     
     /**
      * Get the name of the strategy

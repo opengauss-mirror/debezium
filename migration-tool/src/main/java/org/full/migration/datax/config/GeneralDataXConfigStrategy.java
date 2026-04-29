@@ -5,6 +5,8 @@
 package org.full.migration.datax.config;
 
 import org.full.migration.datax.model.*;
+import org.full.migration.exception.DataXMigrationException;
+import org.full.migration.exception.ErrorCode;
 import org.full.migration.model.config.DatabaseConfig;
 import org.full.migration.model.table.Table;
 
@@ -26,7 +28,7 @@ public class GeneralDataXConfigStrategy implements DataXConfigStrategy {
             "dynamically adjusts configuration based on table properties";
 
     @Override
-    public DataXConfig generateConfig(DataXConfigContext context) {
+    public DataXConfig generateConfig(DataXConfigContext context) throws DataXMigrationException {
         DatabaseConfig sourceConfig = context.getSourceConfig();
         DatabaseConfig targetConfig = context.getTargetConfig();
         String schemaName = context.getSchemaName();
@@ -105,7 +107,7 @@ public class GeneralDataXConfigStrategy implements DataXConfigStrategy {
      * @param commonConfig Common configuration
      */
     protected void configureReader(Reader reader, DatabaseConfig sourceConfig, String schemaName, 
-                                   Table table, DataXCommonConfig commonConfig) {
+                                   Table table, DataXCommonConfig commonConfig) throws DataXMigrationException {
         reader.setName(commonConfig.getReaderName());
         ReaderParameter readerParam = reader.getParameter();
         readerParam.setUsername(commonConfig.getReaderUsername());
@@ -132,7 +134,14 @@ public class GeneralDataXConfigStrategy implements DataXConfigStrategy {
      * @param table Table object
      * @return Split key column name
      */
-    protected String getSplitPk(Table table) {
+    protected String getSplitPk(Table table) throws DataXMigrationException {
+        if (!table.isHasPrimaryKey()) {
+            return "";
+        }
+        if(table.getPkColumns() == null || table.getPkColumns().isEmpty()) {
+            throw new DataXMigrationException(ErrorCode.DATAX_CONFIG_ERROR.getCode(),
+                    "table "+ table.getTableName()+ " get primary key list has some error, list empty");
+        }
         return table.getPkColumns().contains(",") ? "" : table.getPkColumns();
     }
 
