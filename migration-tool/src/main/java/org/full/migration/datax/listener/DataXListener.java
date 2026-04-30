@@ -37,6 +37,7 @@ public class DataXListener {
     private static final Pattern FAILURE_PATTERN = Pattern.compile("任务执行失败");
 
     private boolean isEnableOutputDataxLogs = false;
+    private boolean isDumpJson = false;
     private final List<LogLineProcessor> processors = new ArrayList<>();
     // 错误信息缓存，key为表名，value为错误信息列表
     private final Map<String, List<String>> errorCache = new HashMap<>();
@@ -84,6 +85,15 @@ public class DataXListener {
      */
     public void setEnableOutputDataxLogs(boolean isEnableOutputDataxLogs) {
         this.isEnableOutputDataxLogs = isEnableOutputDataxLogs;
+    }
+
+    /**
+     * setIsDumpJson
+     *
+     * @param isDumpJson isDumpJson
+     */
+    public void setIsDumpJson(boolean isDumpJson) {
+        this.isDumpJson = isDumpJson;
     }
 
     /**
@@ -282,12 +292,15 @@ public class DataXListener {
      * @param statusCode Status code
      */
     private void updateProgress(String tableName, int progress, int statusCode) {
+        LOGGER.debug("Updated progress for {}: {}% (status: {})", tableName, progress, statusCode);
+        if (!isDumpJson) {
+            return;
+        }
         ProgressTracker tracker = ProgressTracker.getInstance();
         ProgressInfo progressInfo = new ProgressInfo();
         progressInfo.setName(tableName);
         progressInfo.setPercent(progress);
         progressInfo.setStatus(statusCode);
         tracker.upgradeTableProgress(tableName, progressInfo);
-        LOGGER.debug("Updated progress for {}: {}% (status: {})", tableName, progress, statusCode);
     }
 }
