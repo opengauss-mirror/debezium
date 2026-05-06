@@ -211,7 +211,9 @@ public class OgracTargetDatabase extends AbstractTargetDatabase {
                     e.getMessage());
             throw e;
         } finally {
-            ProgressTracker.getInstance().upgradeTableProgress(fullName, progressInfo);
+            if (isJsonDump) {
+                ProgressTracker.getInstance().upgradeTableProgress(fullName, progressInfo);
+            }
             LOGGER.debug("Updated progress for table: {}.{}", schemaName, tableName);
         }
     }

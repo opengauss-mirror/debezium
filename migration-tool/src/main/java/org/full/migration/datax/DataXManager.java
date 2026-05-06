@@ -56,6 +56,7 @@ public class DataXManager {
     public DataXManager(GlobalConfig globalConfig) throws ConfigurationException {
         this.dataXListener = DataXListener.getInstance();
         this.dataXListener.setEnableOutputDataxLogs(globalConfig.getDatax().getEnableOutputDataxLogs());
+        this.dataXListener.setIsDumpJson(globalConfig.getIsDumpJson());
         this.commonConfig = DataXConfigUtils.loadCommonConfig(globalConfig);
         this.enableKeepDataXTemporaryConfig = globalConfig.getDatax().getEnableKeepDataXTemporaryConfig();
         this.temporaryConfigDir = DATAX_HOME + File.separator + "temp" + File.separator + UUID.randomUUID().toString();
@@ -100,9 +101,9 @@ public class DataXManager {
         LOGGER.info("Executing full migration for table: {}", migrationTaskName);
         DataXConfigUtils.prepareCommonConfig(commonConfig, context.getSourceConfig(), context.getTargetConfig());
         context.setCommonConfig(commonConfig);
-        DataXConfigResult configResult = generateDataXConfig(context, migrationTaskName);
-
+        DataXConfigResult configResult = null;
         try {
+            configResult = generateDataXConfig(context, migrationTaskName);
             MemoryUtils.checkMemoryAvailability(configResult.getJvmParameters(), schemaName + "." + tableName);
             dataXListener.onTaskStart(schemaName, tableName);
             boolean isSuccess = runDataXWithPyScript(configResult, schemaName, tableName, migrationTaskName);
@@ -114,7 +115,7 @@ public class DataXManager {
             dataXListener.onTaskComplete(schemaName, tableName, false, e.getMessage());
             throw e;
         } finally {
-            if (!enableKeepDataXTemporaryConfig) {
+            if (!enableKeepDataXTemporaryConfig && configResult != null) {
                 String configFile = configResult.getConfigFile();
                 if (FileUtils.isPathWithinDirectory(configFile, temporaryConfigDir)) {
                     File tempFile = new File(configFile);
@@ -124,7 +125,6 @@ public class DataXManager {
                 } else {
                     LOGGER.warn("Config file path validation failed, skipping deletion: {}", configFile);
                 }
-                FileUtils.deleteDir(temporaryConfigDir);
             }
         }
     }
