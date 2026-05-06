@@ -4,7 +4,6 @@
 
 package org.full.migration.utils;
 
-import org.full.migration.constants.OracleSqlConstants;
 import org.full.migration.datax.config.DataXCommonConfig;
 import org.full.migration.exception.ConfigurationException;
 import org.full.migration.exception.ErrorCode;
@@ -70,13 +69,13 @@ public class DataXConfigUtils {
     /**
      * generateReaderJdbcUrl Default to using oracle
      * Generate corresponding jdbcUrl based on readerName
+     * Adds common default parameters if not specified
      *
      * @param sourceConfig Source database configuration
      * @return jdbcUrl
      */
     private static String generateReaderJdbcUrl(DatabaseConfig sourceConfig) {
-        return String.format(OracleSqlConstants.ORACLE_JDBC_URL, sourceConfig.getHost(),
-            sourceConfig.getPort(), sourceConfig.getDatabase());
+        return JdbcUtils.generateOracleJdbcUrl(sourceConfig);
     }
 
     /**
@@ -87,7 +86,7 @@ public class DataXConfigUtils {
      * @return jdbcUrl
      */
     private static String generateWriterJdbcUrl(DatabaseConfig targetConfig) {
-        return "jdbc:oGRAC://" + targetConfig.getHost() + ":" + targetConfig.getPort()+"?socketTimeout=90000";
+        return JdbcUtils.generateOgracJdbcUrl(targetConfig);
     }
 
     /**

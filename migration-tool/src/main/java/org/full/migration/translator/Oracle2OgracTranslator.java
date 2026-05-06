@@ -48,7 +48,7 @@ public class Oracle2OgracTranslator implements Source2TargetTranslator {
             case "NCLOB" -> Optional.of("CLOB");
             case "NBLOB" -> Optional.of("BLOB");
             case "JSON","XMLTYPE" -> Optional.of("CLOB");
-            case "ANYDATA", "BFILE" -> {
+            case "ANYDATA", "BFILE","UROWID" -> {
                 throw new TranslatorException(ErrorCode.SQL_TRANSLATION_FAILED.getCode(),
                         tableName + "." + column.getName() + " " + typeName + " is not supported by OGRAC");
             }
@@ -57,18 +57,15 @@ public class Oracle2OgracTranslator implements Source2TargetTranslator {
     }
     
     /**
-     * translateTimestampType
-     * Translate TIMESTAMP type to OGRAC compatible format
+     * translateTimestampType Translate TIMESTAMP type to OGRAC compatible format
+     * Oracle TIMESTAMP(n>6) is not supported by OGRAC, When scale > 6, OGRAC doesn't support it,
+     * need to convert to TIMESTAMP(6) with precision loss
+     * TIMESTAMP,TIMESTAMP(n),TIMESTAMP(n) WITH LOCAL TIME ZONE,TIMESTAMP(n) WITH TIME ZONE
      * @param column column info
      * @return TIMESTAMP type name in OGRAC compatible format
      */
     private Optional<String> translateTimestampType(Column column) {
         String typeName = column.getTypeName();
-        // Oracle TIMESTAMP(n>6) is not supported by OGRAC, When scale > 6, OGRAC
-        // doesn't support it,
-        // need to convert to TIMESTAMP(6) with precision loss
-        // TIMESTAMP,TIMESTAMP(n),TIMESTAMP(n) WITH LOCAL TIME ZONE,TIMESTAMP(n) WITH
-        // TIME ZONE
         if (column.getScale() != null && column.getScale() > 6) {
             String baseTypeName = typeName.replaceAll("\\(\\d+\\)", "").trim();
             return Optional.of(baseTypeName.replace("TIMESTAMP", "TIMESTAMP(6)"));
@@ -133,16 +130,21 @@ public class Oracle2OgracTranslator implements Source2TargetTranslator {
     
     /**
      * Translate number type to OGRAC compatible format
+     * length ==0 ,convert to number
+     * scale ==0 ,convert to number(length)
      * @param typeName type name
      * @param column column info
      * @return type name in OGRAC compatible format
      */
     private Optional<String> translateNumberType(String typeName, Column column) {
         if (typeName.equals("NUMBER")) {
-            if (column.getLength() == 38 || column.getLength() <= 0) {
+            if(column.getLength()==0) {
                 return Optional.of(typeName);
-            } else {
-                return Optional.of(typeName + "(" + column.getLength() + ")");
+            }
+            if (column.getScale() == null || column.getScale() == 0) {
+                return Optional.of(typeName+"("+column.getLength()+")");
+            }else {
+                return Optional.of(typeName+"("+column.getLength()+","+column.getScale()+")");
             }
         } else if (typeName.equals("FLOAT")) {
             return Optional.of("DECIMAL(38," + column.getLength() + ")");

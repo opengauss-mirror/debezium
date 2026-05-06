@@ -4,17 +4,16 @@
 
 package org.full.migration.jdbc;
 
-import org.full.migration.constants.OracleSqlConstants;
 import org.full.migration.exception.DatabaseConnectionException;
 import org.full.migration.exception.ErrorCode;
 import org.full.migration.model.config.DatabaseConfig;
+import org.full.migration.utils.JdbcUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.util.Locale;
 
 /**
  * OpenGaussConnection
@@ -23,7 +22,6 @@ import java.util.Locale;
  */
 public class OracleConnection implements JdbcConnection {
     private static final Logger LOGGER = LoggerFactory.getLogger(OracleConnection.class);
-    private static final String JDBC_URL = OracleSqlConstants.ORACLE_JDBC_URL;
     private static final int RETRY_TIME = 3;
     private static final long SLEEP_TIME = 3000;
     
@@ -39,8 +37,7 @@ public class OracleConnection implements JdbcConnection {
     
     @Override
     public Connection getConnection(DatabaseConfig dbConfig) throws SQLException {
-        String sourceUrl = String.format(Locale.ROOT, JDBC_URL, dbConfig.getHost(), dbConfig.getPort(),
-            dbConfig.getDatabase());
+        String sourceUrl = JdbcUtils.generateOracleJdbcUrl(dbConfig);
         try {
             Connection conn = DriverManager.getConnection(sourceUrl, dbConfig.getUser(), dbConfig.getPassword());
             if (conn != null && !conn.isClosed()) {
@@ -58,8 +55,7 @@ public class OracleConnection implements JdbcConnection {
 
     @Override
     public Connection retryConnection(DatabaseConfig dbConfig) throws SQLException {
-        String sourceUrl = String.format(Locale.ROOT, JDBC_URL, dbConfig.getHost(), dbConfig.getPort(),
-            dbConfig.getDatabase());
+        String sourceUrl = JdbcUtils.generateOracleJdbcUrl(dbConfig);;
         Connection connection = null;
         int tryCount = 0;
         while (connection == null && tryCount < RETRY_TIME) {

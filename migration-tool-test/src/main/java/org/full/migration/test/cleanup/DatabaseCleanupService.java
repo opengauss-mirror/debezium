@@ -66,14 +66,22 @@ public class DatabaseCleanupService implements EnvironmentCleanupService {
         String url = configManager.getConfigValue(type, "url", "");
         String username = configManager.getConfigValue(type, "username", "");
         String password = configManager.getConfigValue(type, "password", "");
+        
+        java.util.Properties props = new java.util.Properties();
+        props.setProperty("user", username);
+        props.setProperty("password", password);
+        
         if (type.equals("source")) {
             if (sourceConn == null || sourceConn.isClosed()) {
-                sourceConn = DriverManager.getConnection(url, username, password);
+                if (url.contains("oracle")) {
+                    props.setProperty("oracle.jdbc.defaultNChar", "true"); 
+                }
+                sourceConn = DriverManager.getConnection(url, props);
             }
             return sourceConn;
         } else {
             if (targetConn == null || targetConn.isClosed()) {
-                targetConn = DriverManager.getConnection(url, username, password);
+                targetConn = DriverManager.getConnection(url, props);
             }
             return targetConn;
         }
