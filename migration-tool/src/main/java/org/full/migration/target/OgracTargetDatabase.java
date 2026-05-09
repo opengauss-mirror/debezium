@@ -132,7 +132,7 @@ public class OgracTargetDatabase extends AbstractTargetDatabase {
                 }
                 try {
                     if (objectType.equalsIgnoreCase("SEQUENCE")) {
-                        executeDropSequence(targetSchema, conn, statement, sourceFullName.getFullName());
+                        executeDropSequence(targetSchema, conn, statement, object.getName());
                     }
                     executeCreateObject(targetSchema, conn, statement, createObjectSql);
                     LOGGER.info("Successfully created {} {}", objectType, sourceFullName.getFullName());
@@ -140,10 +140,8 @@ public class OgracTargetDatabase extends AbstractTargetDatabase {
                     LOGGER.error("fail to write [{}][ {} ] with sql: {}, error: ", objectType,
                             sourceFullName.getFullName(), createObjectSql, e);
                     MigrationErrorLogger.getInstance().logSqlError(
-                            "CREATE " + objectType,
-                            sourceFullName.getFullName(),
-                            createObjectSql,
-                            e.getMessage());
+                            "CREATE " + objectType,sourceFullName.getFullName(),
+                            createObjectSql, e.getMessage());
                 }
             }
             LOGGER.info("{} has finished to write {}.", Thread.currentThread().getName(), objectType);
