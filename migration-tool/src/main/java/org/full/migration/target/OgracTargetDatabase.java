@@ -137,7 +137,7 @@ public class OgracTargetDatabase extends AbstractTargetDatabase {
                     executeCreateObject(targetSchema, conn, statement, createObjectSql);
                     LOGGER.info("Successfully created {} {}", objectType, sourceFullName.getFullName());
                 } catch (SQLException e) {
-                    LOGGER.error("fail to write [{}][ {} ] with sql: {}, error: ", objectType,
+                    LOGGER.error("fail to write [{}][ {} ] with sql: [{}], error: ", objectType,
                             sourceFullName.getFullName(), createObjectSql, e);
                     MigrationErrorLogger.getInstance().logSqlError(
                             "CREATE " + objectType,sourceFullName.getFullName(),

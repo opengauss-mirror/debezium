@@ -226,7 +226,7 @@ public class OraclePartitionHandler implements PartitionHandler {
             highValue = partition.getRangeUpperBound();
         }
         if (highValue != null && !highValue.isEmpty()) {
-            return translator.translateFunction(highValue, false).orElse(highValue);
+            return translator.translatePartitionFunction(highValue, false).orElse(highValue);
         }
         return "MAXVALUE";
     }
@@ -240,7 +240,7 @@ public class OraclePartitionHandler implements PartitionHandler {
             value = partition.getListPartitionValue();
         }
         if (value != null && !value.isEmpty()) {
-            return translator.translateFunction(value, false).orElse(value);
+            return translator.translatePartitionFunction(value, false).orElse(value);
         }
         return value;
     }

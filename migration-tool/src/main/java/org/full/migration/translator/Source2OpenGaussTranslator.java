@@ -46,7 +46,27 @@ public abstract class Source2OpenGaussTranslator implements Source2TargetTransla
     }
     
     @Override
-    public Optional<String> translateFunction(String functionCall, boolean isDebug) {
+    public Optional<String> translatePartitionFunction(String functionCall, boolean isDebug) {
         return Optional.of(functionCall);
+    }
+
+    @Override
+    public Optional<String> translateView(String name, String viewDDL) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<String> translateFunction(String functionDDL) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<String> translateProcedure(String procedureDDL) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<String> translateTrigger(String triggerDDL) {
+        return Optional.empty();
     }
 }

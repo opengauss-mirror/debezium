@@ -62,11 +62,44 @@ public interface Source2TargetTranslator {
     Optional<String> translateIndex(String indexType, boolean isDebug) throws TranslatorException ;
     
     /**
-     * Translate function call
+     * Translate partition function call
      *
      * @param functionCall Source database function call
      * @param isDebug Whether to enable debug mode
-     * @return Translated function call, returns Optional.empty() if translation fails
+     * @return Translated partition function call, returns Optional.empty() if translation fails
      */
-    Optional<String> translateFunction(String functionCall, boolean isDebug);
+    Optional<String> translatePartitionFunction(String functionCall, boolean isDebug);
+
+    /**
+     * Translate custom object view
+     *
+     * @param name
+     * @param viewDDL Source database custom object
+     * @return Translated view call, returns Optional.empty() if translation fails
+     */
+    Optional<String> translateView(String name, String viewDDL);
+
+    /**
+     * Translate custom object function
+     *
+     * @param functionDDL Source database custom object view ddl
+     * @return Translated function, returns Optional.empty() if translation fails
+     */
+    Optional<String> translateFunction(String functionDDL);
+
+    /**
+     * Translate custom object procedure
+     *
+     * @param procedureDDL Source database custom object
+     * @return Translated procedure, returns Optional.empty() if translation fails
+     */
+    Optional<String> translateProcedure(String procedureDDL);
+
+    /**
+     * Translate custom object trigger
+     *
+     * @param triggerDDL Source database custom object
+     * @return Translated trigger, returns Optional.empty() if translation fails
+     */
+    Optional<String> translateTrigger(String triggerDDL);
 }
