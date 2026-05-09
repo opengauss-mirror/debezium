@@ -18,6 +18,7 @@ import org.full.migration.model.table.TableMeta;
 import org.full.migration.source.constraint.ConstraintProcessor;
 import org.full.migration.source.partition.OraclePartitionHandler;
 import org.full.migration.source.partition.PartitionHandler;
+import org.full.migration.translator.Oracle2OgracTranslator;
 import org.full.migration.translator.Source2TargetTranslator;
 import org.full.migration.translator.TranslatorFactory;
 import org.full.migration.utils.DatabaseUtils;
@@ -47,7 +48,8 @@ public class OracleSourceDatabase extends SourceDatabase {
     // char used to support Oracle-specific syntax for character types, e.g.,
     // varchar2(10 CHAR), varchar(20 BYTE)
     private static final Map<String, String> CHAR_USED_MAP = Map.of("C", "CHAR", "B", "BYTE");
-    
+    private static final Oracle2OgracTranslator TRANSLATOR = new Oracle2OgracTranslator();
+
     private final PartitionHandler partitionHandler = new OraclePartitionHandler();
 
     /**
@@ -122,12 +124,12 @@ public class OracleSourceDatabase extends SourceDatabase {
     }
 
     /**
-         * Get all tables under the specified schema
-         *
-         * @param connection Database connection
-         * @param schemaName Schema name
-         * @return List of tables
-         * @throws SQLException SQL exception
+     * Get all tables under the specified schema
+     *
+     * @param connection Database connection
+     * @param schemaName Schema name
+     * @return List of tables
+     * @throws SQLException SQL exception
      */
     protected List<Table> getTables(Connection connection, String schemaName) throws SQLException {
         LOGGER.info("Getting tables for schema: {}", schemaName);
@@ -578,7 +580,9 @@ public class OracleSourceDatabase extends SourceDatabase {
      */
     private String convertViewDefinition(ResultSet rs) throws SQLException, TranslatorException {
         try {
-            return getColumnClobValue(rs, "definition");
+            String name = rs.getString("name");
+            String definition = getColumnClobValue(rs, "definition");
+            return TRANSLATOR.translateView(name,definition).get();
         } catch (SQLException e) {
             throw new TranslatorException(ErrorCode.SQL_TRANSLATION_FAILED.getCode(),
                     "Error converting definition for object type view", e);
@@ -679,7 +683,7 @@ public class OracleSourceDatabase extends SourceDatabase {
      */
     private String convertFunctionDefinition(ResultSet rs) throws TranslatorException {
         try {
-            return removeEditionableKeywords(getColumnClobValue(rs, "definition"), "FUNCTION");
+            return TRANSLATOR.translateFunction(getColumnClobValue(rs, "definition")).get();
         } catch (SQLException e) {
             throw new TranslatorException(ErrorCode.SQL_TRANSLATION_FAILED.getCode(),
                     "Failed to get column definition as character stream: " + e.getMessage(), e);
@@ -695,7 +699,7 @@ public class OracleSourceDatabase extends SourceDatabase {
      */
     private String convertTriggerDefinition(ResultSet rs) throws TranslatorException {
         try {
-            return removeEditionableKeywords(getColumnClobValue(rs, "definition"), "TRIGGER");
+            return TRANSLATOR.translateTrigger(getColumnClobValue(rs, "definition")).get();
         } catch (SQLException e) {
             throw new TranslatorException(ErrorCode.SQL_TRANSLATION_FAILED.getCode(),
                     "Failed to get column definition: " + e.getMessage(), e);
@@ -711,26 +715,11 @@ public class OracleSourceDatabase extends SourceDatabase {
      */
     private String convertProcedureDefinition(ResultSet rs) throws TranslatorException {
         try {
-            return removeEditionableKeywords(getColumnClobValue(rs, "definition"), "PROCEDURE");
+            return TRANSLATOR.translateProcedure(getColumnClobValue(rs, "definition")).get();
         } catch (SQLException e) {
             throw new TranslatorException(ErrorCode.SQL_TRANSLATION_FAILED.getCode(),
                     "Failed to get column definition: " + e.getMessage(), e);
         }
-    }
-
-    /**
-     * remove editionable/noneditionable keywords from object definition
-     * 
-     * @param definition Object Definition
-     * @param objectType Object Type
-     * @return Object Definition with EDITIONABLE/NONEDITIONABLE Keywords Removed
-     */
-    private String removeEditionableKeywords(String definition, String objectType) {
-        if (definition == null) {
-            return null;
-        }
-        return definition.replaceAll("CREATE\\s+OR\\s+REPLACE\\s+(?:EDITIONABLE|NONEDITIONABLE)\\s+" + objectType,
-                "CREATE OR REPLACE " + objectType);
     }
 
     /**

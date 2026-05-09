@@ -52,9 +52,7 @@ public class Starter {
         String taskType = commandMap.get(CommonConstants.TASK_TYPE);
         String sourceDatabase = commandMap.get(CommonConstants.SOURCE_DATABASE);
         String configPath = commandMap.get(CommonConstants.CONFIG_PATH);
-        System.out.println("Starting migration task: " + taskType + " from " + sourceDatabase);
         MigrationEngine dispatcher = new MigrationEngine(taskType, sourceDatabase, configPath);
         dispatcher.dispatch();
-        System.out.println("Migration task completed successfully");
     }
 }

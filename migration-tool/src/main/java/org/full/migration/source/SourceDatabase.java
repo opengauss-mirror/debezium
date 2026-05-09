@@ -756,6 +756,7 @@ public abstract class SourceDatabase {
                 if (definition != null) {
                     dbObject.setDefinition(definition);
                     LOGGER.info("read object, type: {}, object Name:{}", objectType, dbObject.getName());
+                    LOGGER.debug("read object, type: {}, object :{}", objectType, dbObject);
                     QueueManager.getInstance().putToQueue(QueueManager.OBJECT_QUEUE, dbObject);
                     if (isDumpJson) {
                         ProgressTracker.getInstance().putProgressMap(schema, objectName);

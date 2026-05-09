@@ -102,11 +102,6 @@ public class TargetDatabase extends AbstractTargetDatabase{
      * dbConfig
      */
     protected DatabaseConfig dbConfig;
-
-    /**
-     * connection
-     */
-    protected JdbcConnection connection;
    
     private BigInteger spacePerSlice;
     private boolean isDeleteCsv;
@@ -128,7 +123,7 @@ public class TargetDatabase extends AbstractTargetDatabase{
         this.isDeleteCsv = globalConfig.getIsDeleteCsv();
         this.isKeepExistingSchema = globalConfig.getIsKeepExistingSchema();
         this.schemaMappings = globalConfig.getSourceConfig().getSchemaMappings();
-        this.connection = new OpenGaussConnection(targetSqlCompatibility);
+        super.connection = new OpenGaussConnection(targetSqlCompatibility);
         initSnapshotRecordTable();
     }
 

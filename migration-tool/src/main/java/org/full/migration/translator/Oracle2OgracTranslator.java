@@ -5,6 +5,8 @@
 package org.full.migration.translator;
 
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.full.migration.exception.ErrorCode;
 import org.full.migration.exception.TranslatorException;
@@ -17,6 +19,30 @@ import org.full.migration.model.table.Column;
  * @since 2025-06-06
  */
 public class Oracle2OgracTranslator implements Source2TargetTranslator {
+    private static final Pattern EDITIONABLE_PATTERN = Pattern.compile(
+            "CREATE\\s+OR\\s+REPLACE\\s+(?:EDITIONABLE|NONEDITIONABLE)\\s+(\\w+)",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern FUNCTION_PATTERN = Pattern.compile(
+            "(CREATE OR REPLACE FUNCTION\\s+)\"[A-Za-z0-9#_]+\".\"([A-Za-z0-9_]+)\"",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern TRIGGER_PATTERN = Pattern.compile(
+            "(CREATE OR REPLACE TRIGGER\\s+)\"[A-Za-z0-9#_]+\".\"([A-Za-z0-9_]+)\"",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern ALTER_TRIGGER_PATTERN = Pattern.compile(
+            "^\\s*ALTER TRIGGER\\s+\".*?\".*?$",
+            Pattern.CASE_INSENSITIVE | Pattern.MULTILINE
+    );
+    private static final Pattern PROCEDURE_PATTERN = Pattern.compile(
+            "(CREATE OR REPLACE PROCEDURE\\s+)\"[A-Za-z0-9#_]+\".\"([A-Za-z0-9_]+)\"",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern VIEW_WITH_READ_ONLY_TRANSLATOR_PATTERN = Pattern.compile(
+            "(CREATE OR REPLACE VIEW\\s+.+?)\\s+(AS\\s+[\\s\\S]+?)\\s*(WITH READ ONLY)\\s*;?",
+            Pattern.CASE_INSENSITIVE
+    );
+
     @Override
     public String getSourceDatabaseType() {
         return "oracle";
@@ -75,7 +101,7 @@ public class Oracle2OgracTranslator implements Source2TargetTranslator {
     }
     
     /**
-     * Translate INTERVAL type to OGRAC compatible format
+     * translateIntervalType Translate INTERVAL type to OGRAC compatible format
      * Oracle INTERVAL YEAR(n>4) is not supported by OGRAC, When length > 4, OGRAC doesn't support it,
      * need to convert to INTERVAL YEAR(4) with precision loss
      * @param column column info
@@ -169,11 +195,46 @@ public class Oracle2OgracTranslator implements Source2TargetTranslator {
     }
 
     @Override
-    public Optional<String> translateFunction(String functionCall, boolean isDebug) {
+    public Optional<String> translatePartitionFunction(String functionCall, boolean isDebug) {
         String translatedFunction = translateToDateFunction(functionCall);
         return Optional.of(translatedFunction);
     }
-    
+
+    @Override
+    public Optional<String> translateView(String name, String viewDDL) {
+        if (viewDDL == null || viewDDL.isBlank()) {
+            return Optional.empty();
+        }
+        String viewDefinition = "CREATE OR REPLACE VIEW " + name + " AS " + viewDDL;
+        Matcher matcher = VIEW_WITH_READ_ONLY_TRANSLATOR_PATTERN.matcher(viewDefinition);
+        if (matcher.matches()) {
+            // Reorder the syntax order: View clause + WITH READ ONLY + AS + Query body
+            String translated = matcher.group(1) + " " + matcher.group(3) + " " + matcher.group(2);
+            return Optional.of(translated);
+        }
+        return Optional.of(viewDefinition);
+    }
+
+
+    @Override
+    public Optional<String> translateFunction(String functionDDL) {
+        String defSql = removeEditionableKeywords(functionDDL, "FUNCTION");
+        return Optional.of(removeObjectSqlOwner(FUNCTION_PATTERN, defSql));
+    }
+
+    @Override
+    public Optional<String> translateProcedure(String procedureDDL) {
+        String procedureDef = removeEditionableKeywords(procedureDDL, "PROCEDURE");
+        return Optional.of(removeObjectSqlOwner(PROCEDURE_PATTERN, procedureDef));
+    }
+
+    @Override
+    public Optional<String> translateTrigger(String triggerDDL) {
+        String triggerDef = removeEditionableKeywords(triggerDDL, "TRIGGER");
+        triggerDef = removeObjectSqlOwner(TRIGGER_PATTERN, triggerDef);
+        return Optional.of(removeAlterTriggerLine(triggerDef));
+    }
+
     /**
      * translateToDateFunction
      * Oracle TO_DATE(char [, fmt [, 'nlsparam']]) -> Ograc to_date(char, fmt)
@@ -194,5 +255,63 @@ public class Oracle2OgracTranslator implements Source2TargetTranslator {
             }
         }
         return functionCall;
+    }
+
+    private static String removeAlterTriggerLine(String ddl) {
+        return ALTER_TRIGGER_PATTERN.matcher(ddl).replaceAll("");
+    }
+
+
+
+    /**
+     * remove editionable/noneditionable keywords from object definition
+     * 
+     * @param definition Object Definition
+     * @param objectType Object Type
+     * @return Object Definition with EDITIONABLE/NONEDITIONABLE Keywords Removed
+     */
+    private static String removeEditionableKeywords(String definition, String objectType) {
+        if (definition == null || definition.isEmpty() || objectType == null || objectType.isEmpty()) {
+            return definition;
+        }
+        
+        Matcher matcher = EDITIONABLE_PATTERN.matcher(definition);
+        if (!matcher.find()) {
+            return definition;
+        }
+        
+        String matchedType = matcher.group(1);
+        if (!matchedType.equalsIgnoreCase(objectType)) {
+            return definition;
+        }
+        
+        return matcher.replaceFirst("CREATE OR REPLACE " + objectType);
+    }
+
+    /**
+     * remove owner from object SQL definition
+     * 
+     * @param pattern Pattern to match owner
+     * @param sql SQL string
+     * @return SQL string with owner removed
+     */
+    private static String removeObjectSqlOwner(Pattern pattern, String sql) {
+        return applyPattern(pattern, sql, "$1\"$2\"");
+    }
+
+    /**
+     * Apply pattern to SQL string with specified replacement
+     * 
+     * @param pattern Pattern to apply
+     * @param sql SQL string
+     * @param replacement Replacement string
+     * @return Modified SQL string
+     */
+    private static String applyPattern(Pattern pattern, String sql, String replacement) {
+        if (sql == null || sql.isEmpty()) {
+            return sql;
+        }
+        Matcher matcher = pattern.matcher(sql);
+        return matcher.replaceAll(replacement);
     }
 }
