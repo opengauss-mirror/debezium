@@ -42,6 +42,7 @@ public class TableIndex {
     private String indexprs;
     private String indexRange;
     private boolean isConstraint;
+    private String indexDDL;
 
     /**
      * Constructor

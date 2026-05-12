@@ -37,19 +37,36 @@ CREATE INDEX idx_multiple_index_department ON multiple_index_table(department);
 CREATE INDEX idx_multiple_index_hire_date ON multiple_index_table(hire_date);
 CREATE INDEX idx_multiple_index_salary ON multiple_index_table(salary);
 
+CREATE TABLE tb_migrate_case040 (
+customer_id NUMBER,
+order_status VARCHAR2(10),
+order_date DATE
+);
+CREATE INDEX idx_migrate_case040 ON tb_migrate_case040 (customer_id, order_date DESC);
 
--- 4. Expression index test table
-CREATE TABLE expression_index_table (
-    id NUMBER PRIMARY KEY,
-    name VARCHAR2(100),
-    email VARCHAR2(100),
-    hire_date DATE,
-    salary NUMBER
+
+
+CREATE TABLE t_normal_reverse (
+    id          NUMBER PRIMARY KEY, 
+    code        VARCHAR2(10),
+    status      VARCHAR2(10),
+    create_date DATE,
+    amount      NUMBER(12,2),
+    description VARCHAR2(200)
 );
 
--- Create expression indexes
-CREATE INDEX idx_expression_upper_name ON expression_index_table(UPPER(name));
-CREATE INDEX idx_expression_lower_email ON expression_index_table(LOWER(email));
-CREATE INDEX idx_expression_date_trunc ON expression_index_table(TRUNC(hire_date));
-CREATE INDEX idx_expression_salary_range ON expression_index_table(FLOOR(salary / 1000) * 1000);
+INSERT INTO t_normal_reverse (id, code, status, create_date, amount, description)
+SELECT LEVEL,
+       'CODE' || MOD(LEVEL, 100),
+       CASE MOD(LEVEL, 5) 
+           WHEN 0 THEN 'ACTIVE' 
+           WHEN 1 THEN 'INACTIVE' 
+           ELSE 'PENDING' 
+       END,
+       SYSDATE - MOD(LEVEL, 1000),
+       DBMS_RANDOM.VALUE(1, 10000),
+       'Row ' || LEVEL
+FROM   DUAL
+CONNECT BY LEVEL <= 1000;
 
+CREATE INDEX idx_reverse ON t_normal_reverse(code) REVERSE;

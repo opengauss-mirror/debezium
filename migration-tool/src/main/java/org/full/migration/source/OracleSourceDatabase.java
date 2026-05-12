@@ -811,25 +811,24 @@ public class OracleSourceDatabase extends SourceDatabase {
 
     @Override
     protected TableIndex getTableIndex(Connection conn, ResultSet rs) throws SQLException {
-        String indexExpression = null;
-        boolean hasExpression = rs.getBoolean("has_expression");
-        if (hasExpression) {
-            indexExpression = getColumnLongValue(rs, "index_expression");
-        }
         TableIndex tableIndex = new TableIndex(rs);
-        if (hasExpression && indexExpression != null) {
-            tableIndex.setIndexprs(indexExpression);
-            LOGGER.info("expression index: {}", tableIndex.toString());
-        }
-        List<String> indexCols = new ArrayList<>();
-        String queryIndexCol = String.format(OracleSqlConstants.QUERY_INDEX_COL_SQL, tableIndex.getTableName(),
-                tableIndex.getIndexName());
-        try (Statement stmt = conn.createStatement();
-                ResultSet colRs = stmt.executeQuery(queryIndexCol)) {
-            while (colRs.next()) {
-                indexCols.add(DatabaseUtils.formatObjName(colRs.getString("column_name")));
+        try (Connection innerConn = connection.getConnection(sourceConfig.getDbConn())) {
+            try (Statement stmt = innerConn.createStatement()) {
+                stmt.execute(OracleSqlConstants.SET_METADATA_TRANSFORM_PARAMS);
             }
-            tableIndex.setColumnName(String.join(CommonConstants.DELIMITER, indexCols));
+            
+            try (PreparedStatement pstmt = innerConn.prepareStatement(OracleSqlConstants.QUERY_INDEX_DDL_SQL)) {
+                pstmt.setString(1, tableIndex.getIndexName());
+                try (ResultSet ddlRs = pstmt.executeQuery()) {
+                    if (ddlRs.next()) {
+                        String indexDDL = getColumnLongValue(ddlRs, "index_ddl");
+                        if (indexDDL.endsWith(";")) {
+                            indexDDL = indexDDL.substring(0, indexDDL.length() - 1);
+                        }
+                        tableIndex.setIndexDDL(indexDDL);
+                    }
+                }
+            }
         }
         return tableIndex;
     }
