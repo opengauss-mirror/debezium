@@ -71,6 +71,24 @@ CREATE TABLE company_department_table (
     CONSTRAINT fk_dept_city FOREIGN KEY (location_city_id) REFERENCES city_table (city_id)
 );
 
+CREATE TABLE tb_migrate_case033_1 (
+product_id NUMBER,
+warehouse_id NUMBER,
+quantity NUMBER,
+CONSTRAINT pk_inventory PRIMARY KEY (product_id, warehouse_id)
+);
+
+CREATE TABLE tb_migrate_case033_2 (
+order_id NUMBER,
+line_no NUMBER,
+product_id NUMBER,
+warehouse_id NUMBER,
+qty_ordered NUMBER,
+CONSTRAINT fk_item_inventory
+FOREIGN KEY (product_id, warehouse_id)
+REFERENCES tb_migrate_case033_1(product_id, warehouse_id)
+);
+
 -- View foreign key constraints
 SELECT 
     a.table_name, 

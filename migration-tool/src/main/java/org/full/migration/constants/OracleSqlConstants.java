@@ -113,9 +113,9 @@ public class OracleSqlConstants {
      */
     public static final String QUERY_FK_SQL = """
         SELECT a.constraint_name AS fk_name, a.table_name parent_table,
-               LISTAGG(b.column_name, ', ') WITHIN GROUP (ORDER BY b.position) AS parent_columns,
+               LISTAGG(DISTINCT b.column_name, ', ') WITHIN GROUP (ORDER BY b.position) AS parent_columns,
                c.table_name AS referenced_table,
-               LISTAGG(d.column_name, ', ') WITHIN GROUP (ORDER BY d.position) AS referenced_columns
+               LISTAGG(DISTINCT d.column_name, ', ') WITHIN GROUP (ORDER BY d.position) AS referenced_columns
         FROM user_constraints a
         JOIN user_cons_columns b ON a.constraint_name = b.constraint_name
         JOIN user_constraints c ON a.r_constraint_name = c.constraint_name

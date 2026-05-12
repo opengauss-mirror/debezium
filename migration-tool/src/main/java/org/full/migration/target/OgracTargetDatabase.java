@@ -52,7 +52,7 @@ import java.util.Set;
  */
 public class OgracTargetDatabase extends AbstractTargetDatabase {
     private static final Logger LOGGER = LoggerFactory.getLogger(OgracTargetDatabase.class);
-    private static final String CREATE_FK_SQL = "ALTER TABLE \"%s\".\"%s\" ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES \"%s\".\"%s\" (\"%s\")";
+    private static final String CREATE_FK_SQL = "ALTER TABLE \"%s\".\"%s\" ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES \"%s\".\"%s\" (%s)";
     private static final String CREATE_PK_SQL = "ALTER TABLE %s.%s ADD CONSTRAINT %s PRIMARY KEY (%s)";
     private final SourceConfig sourceConfig;
     private final DataXManager dataXManager;
@@ -364,7 +364,7 @@ public class OgracTargetDatabase extends AbstractTargetDatabase {
         return Optional.of(
                 String.format(CREATE_FK_SQL, tableForeignKey.getSchemaName(), tableForeignKey.getParentTable(),
                         tableForeignKey.getFkName(), tableForeignKey.getParentColumn(), tableForeignKey.getSchemaName(),
-                        tableForeignKey.getReferencedTable(), tableForeignKey.getReferencedColumn()));
+                        tableForeignKey.getReferencedTable(),DatabaseUtils.formatMultiColName(tableForeignKey.getReferencedColumn())));
     }
 
     /**
