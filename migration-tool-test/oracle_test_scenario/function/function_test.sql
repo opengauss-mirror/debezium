@@ -78,3 +78,4 @@ END;
 
 -- 查看创建的函数
 SELECT object_name FROM user_procedures WHERE object_type = 'FUNCTION';
+SELECT * FROM adm_procedures WHERE OWNER = 'WANG';

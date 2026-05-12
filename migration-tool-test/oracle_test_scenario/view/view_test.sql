@@ -32,6 +32,15 @@ FROM view_test_table1 t1
 JOIN view_test_table2 t2 ON t1.id = t2.employee_id;
 
 
+CREATE TABLE tb_migrate_case042 (
+employee_id NUMBER NOT NULL,
+first_name VARCHAR2(50),
+department_id NUMBER,
+salary NUMBER
+);
+
+CREATE OR REPLACE VIEW view_migrate_case042_1 AS SELECT employee_id, first_name FROM tb_migrate_case042 WITH READ ONLY;
+CREATE OR REPLACE VIEW view_migrate_case042_2 AS SELECT employee_id, first_name, salary, department_id FROM tb_migrate_case042;
 
 -- View created views
 SELECT view_name FROM user_views;

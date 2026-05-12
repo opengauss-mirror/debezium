@@ -147,11 +147,23 @@ public class OracleSqlConstants {
     /**
      * SQL for querying index columns
      */
-    public static final String QUERY_INDEX_COL_SQL = """
-        SELECT column_name FROM user_ind_columns WHERE  table_name = '%s' AND index_name = '%s'
-        ORDER BY column_position
+    public static final String QUERY_INDEX_DDL_SQL = """
+        SELECT DBMS_METADATA.GET_DDL('INDEX', ?) index_ddl FROM DUAL
     """;
 
+    /**
+     * PL/SQL for setting DBMS_METADATA transform parameters
+     */
+    public static final String SET_METADATA_TRANSFORM_PARAMS = """
+        BEGIN
+          DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'EMIT_SCHEMA', FALSE);
+          DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'SEGMENT_ATTRIBUTES', FALSE);
+          DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'STORAGE', FALSE);
+          DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'TABLESPACE', FALSE);
+          DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'PRETTY', TRUE);
+          DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'SQLTERMINATOR', TRUE);
+        END;
+    """;
 
     /**
      * SQL for querying generate column define

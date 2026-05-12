@@ -153,9 +153,9 @@ public class GeneralDataXConfigStrategy implements DataXConfigStrategy {
      * @return Batch size
      */
     private int getBatchSizeByTableSize(long rowCount) {
-        if (rowCount <= 10000) return 500; // Less than 10,000
-        if (rowCount <= 1000000) return 1000; // 10,000 - 1,000,000
-        if (rowCount <= 10000000) return 2000; // 1,000,000 - 10,000,000
+        if (rowCount <= 10000) return 1000; // Less than 10,000
+        if (rowCount <= 1000000) return 2000; // 10,000 - 1,000,000
+        if (rowCount <= 10000000) return 4000; // 1,000,000 - 10,000,000
         return 4000; // More than 10,000,000
     }
 
