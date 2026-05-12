@@ -46,10 +46,21 @@ public class OgracIndexBuilder implements IndexBuilder {
             ddl = ddl.substring(0, ddl.length() - 1);
         }
         ddl = convertOracleDateFormat(ddl);
+        ddl = convertOracleBitmapFormat(ddl);
         ddl = ddl.replaceAll("\\s+", " ").trim();
         return ddl;
     }
-    
+
+    /**
+     * Convert Oracle BITMAP INDEX to oGRAC INDEX
+     * @param ddl Oracle BITMAP INDEX statement
+     * @return oGRAC INDEX statement
+     */
+    private String convertOracleBitmapFormat(String ddl) {
+        ddl = ddl.replaceAll("CREATE BITMAP INDEX", "CREATE INDEX");
+        return ddl;
+    }
+
     private String convertOracleDateFormat(String ddl) {
         ddl = ddl.replaceAll("'DD-MON-RR'", "'YYYY-MM-DD'");
         ddl = ddl.replaceAll("'DD-MON-YY'", "'YYYY-MM-DD'");
@@ -77,8 +88,7 @@ public class OgracIndexBuilder implements IndexBuilder {
             return false;
         }
         
-        return !indexType.equals("BITMAP") && 
-               !indexType.equals("FUNCTION-BASED BITMAP") && 
+        return !indexType.equals("FUNCTION-BASED BITMAP") &&
                !indexType.equals("DOMAIN");
     }
     
