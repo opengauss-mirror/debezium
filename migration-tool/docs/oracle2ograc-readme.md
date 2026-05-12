@@ -284,13 +284,14 @@ java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start sequence --source oracle
 | Reverse Key Index   | B-tree Index       | 自动转换，反向键索引转为普通B-tree索引       |
 | Function-based Index| Function Index     | 部分兼容，仅支持特定函数                     |
 | Composite Index     | Composite Index    | 完全兼容，复合索引最多支持16列               |
+| Bitmap Index        | B-tree Index       | 转为普通索引            |
 | **不支持的索引**    |                    |                                              |
 | Full-Text Index     | -                  | 不兼容，Oracle Text索引                      |
 | Domain Index        | -                  | 不兼容，如CTXSYS.CONTEXT                     |
 | Spatial Index       | Gist Index         | 不兼容                      |
 | XML Index           | -                  | 不兼容                                       |
 | Filtered Index      | Partial Index      | 不兼容             |
-| Bitmap Index        | B-tree Index       | 不兼容            |
+
 
 ### 5.2.1 函数索引支持的函数列表
 
