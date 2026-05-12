@@ -51,11 +51,17 @@ public class KeyAndIndexMigration extends MigrationStrategy {
 
     @Override
     public void migration(String sourceDbType) {
-        int threadCount = source.getSourceConfig().getWriterNum() + 1;
+        TableMigrationType tableMigrationType = TableMigrationType.fromType(type);
+        int threadCount = 1;
+        // Foreign key migration operations are strictly prohibited from concurrent execution.
+        if(!tableMigrationType.getType().equalsIgnoreCase(TaskTypeEnum.FOREIGN_KEY.getTaskType())){
+            threadCount = source.getSourceConfig().getWriterNum() + 1;
+        }
+
         ThreadPoolExecutor executor = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS,
             new LinkedBlockingQueue<>(), getThreadFactory("worker-"));
         Set<String> schemaSet = source.getSchemaSet();
-        TableMigrationType tableMigrationType = TableMigrationType.fromType(type);
+
         executor.submit(() -> tableMigrationType.getReadTask().accept(source, schemaSet));
         int writeCount = source.getSourceConfig().getWriterNum();
         for (int i = 0; i < writeCount; i++) {
