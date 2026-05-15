@@ -6,6 +6,7 @@ package org.full.migration.translator;
 
 import org.full.migration.exception.TranslatorException;
 import org.full.migration.model.table.Column;
+import org.full.migration.model.table.SequenceDefinition;
 
 import java.util.Optional;
 
@@ -102,4 +103,12 @@ public interface Source2TargetTranslator {
      * @return Translated trigger, returns Optional.empty() if translation fails
      */
     Optional<String> translateTrigger(String triggerDDL);
+
+    /**
+     * Translate sequence definition
+     *
+     * @param sequence Sequence definition
+     * @return Translated sequence definition, returns Optional.empty() if translation fails
+     */
+   Optional<String> translateSequence(SequenceDefinition sequence);
 }
