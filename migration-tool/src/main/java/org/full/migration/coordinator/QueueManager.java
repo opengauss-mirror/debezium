@@ -57,6 +57,11 @@ public class QueueManager {
     public static final String TABLE_PRIMARY_KEY_QUEUE = "tablePrimaryKeyQueue";
 
     /**
+     * tableAutoIncrementQueue
+     */
+    public static final String TABLE_AUTO_INCREMENT_QUEUE = "tableAutoIncrementQueue";
+
+    /**
      * tableForeignKeyQueue
      */
     public static final String TABLE_FOREIGN_KEY_QUEUE = "tableForeignKeyQueue";

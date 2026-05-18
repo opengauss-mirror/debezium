@@ -100,10 +100,9 @@ public class OracleSqlConstants {
      * SQL for querying sequences
      */
     public static final String QUERY_SEQUENCE_SQL = """
-        SELECT s.sequence_name AS name, s.min_value, s.max_value, s.increment_by, s.cycle_flag,
-               s.order_flag, s.cache_size, s.last_number
-        FROM user_sequences s
-        ORDER BY s.sequence_name
+        SELECT s.sequence_name AS name, s.min_value, s.max_value, s.increment_by, s.cycle_flag, s.order_flag, s.cache_size, s.last_number 
+        FROM user_sequences s 
+        WHERE s.sequence_name NOT LIKE 'ISEQ$$%%' ORDER BY s.sequence_name
     """;
 
 
@@ -166,7 +165,7 @@ public class OracleSqlConstants {
     """;
 
     /**
-     * SQL for querying generate column define
+     * SQL for querying generate column define : column_name, data_type,DATA_DEFAULT as expression, virtual_column
      */
     public static final String QUERY_GENERATE_DEFINE_SQL = """
         SELECT COLUMN_NAME,DATA_TYPE, DATA_DEFAULT AS EXPRESSION, VIRTUAL_COLUMN FROM USER_TAB_COLS
@@ -246,7 +245,7 @@ public class OracleSqlConstants {
      * SQL for querying subpartitions
      */
     public static final String QUERY_SUBPARTITIONS_SQL = """
-        SELECT SUBPARTITION_NAME, HIGH_VALUE
+        SELECT SUBPARTITION_NAME, HIGH_VALUE, TABLESPACE_NAME
             FROM USER_TAB_SUBPARTITIONS
             WHERE TABLE_NAME = ? AND PARTITION_NAME = ?
         ORDER BY SUBPARTITION_POSITION
@@ -271,6 +270,29 @@ public class OracleSqlConstants {
      */
     public static final String QUERY_TABLE_COMMENT_SQL = """
         SELECT COMMENTS FROM user_tab_comments WHERE TABLE_NAME = ?
+    """;
+
+    /**
+     * SQL for checking if a table column is auto-incremented and identity_column <br>
+     * condition : table_name = ? AND column_name = ?
+     */
+    public static final String QUERY_IS_AUTO_INCREMENT_SQL = """
+        SELECT CASE WHEN identity_column = 'YES' THEN 1 ELSE 0 END AS is_identity_column FROM user_tab_columns  
+        WHERE table_name = ? AND column_name = ?    
+    """;
+
+    /**
+     * SQL for querying auto-increment columns in a table this only works for identity columns
+     */
+    public static final String QUERY_AUTO_INCREMENT_COLUMNS_SQL = """
+         SELECT table_name, column_name FROM all_tab_columns WHERE owner = ? AND identity_column = 'YES' ORDER BY column_id
+    """;
+
+    /**
+     * SQL for querying max value of a table column
+     */
+    public static final String QUERY_TABLE_COLUMN_MAX_VALUE_SQL = """
+        SELECT max(%s) AS max_value FROM %s
     """;
 
 }

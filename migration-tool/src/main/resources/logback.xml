@@ -20,4 +20,7 @@
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
     </root>
+    <logger name="ch.qos.logback" level="OFF"/>
+    <logger name="ch.qos.logback.classic" level="OFF"/>
+    <logger name="ch.qos.logback.core" level="OFF"/>
 </configuration>

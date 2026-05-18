@@ -21,6 +21,7 @@ import org.full.migration.model.object.DbObject;
 import org.full.migration.model.progress.ProgressInfo;
 import org.full.migration.model.progress.ProgressStatus;
 import org.full.migration.model.table.Table;
+import org.full.migration.model.table.TableAutoIncrement;
 import org.full.migration.model.table.TableData;
 import org.full.migration.model.table.TableForeignKey;
 import org.full.migration.model.table.TableIndex;
@@ -53,7 +54,15 @@ import java.util.Set;
 public class OgracTargetDatabase extends AbstractTargetDatabase {
     private static final Logger LOGGER = LoggerFactory.getLogger(OgracTargetDatabase.class);
     private static final String CREATE_FK_SQL = "ALTER TABLE \"%s\".\"%s\" ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES \"%s\".\"%s\" (%s)";
-    private static final String CREATE_PK_SQL = "ALTER TABLE %s.%s ADD CONSTRAINT %s PRIMARY KEY (%s)";
+
+    /**
+     * SQL for creating primary key， ograc primary key constraint name will create automatically;
+     * constraint name does not support by source table system default name
+     */
+    private static final String CREATE_PK_SQL = "ALTER TABLE %s.%s ADD PRIMARY KEY (%s)";
+    private static final String CREATE_AUTO_INCREMENT_SQL = "ALTER TABLE %s.%s  MODIFY %s AUTO_INCREMENT";
+    private static final String RESET_AUTO_INCREMENT_SQL = "ALTER TABLE %s.%s  AUTO_INCREMENT=%d";
+
     private final SourceConfig sourceConfig;
     private final DataXManager dataXManager;
     private final OgracIndexBuilder indexBuilder;
@@ -342,11 +351,49 @@ public class OgracTargetDatabase extends AbstractTargetDatabase {
     public void writeTablePk() {
         writeKeyOrIndex(object -> getCreatePkSql((TablePrimaryKey) object), QueueManager.TABLE_PRIMARY_KEY_QUEUE,
                 "table primary key");
+        // Write auto increment columns
+        writeAutoIncrement();
+    }
+
+    private void writeAutoIncrement() {
+        String logPrefix = "table auto increment ";
+        try (Connection conn = connection.getConnection(dbConfig); Statement statement = conn.createStatement()) {
+            String executeSql = "";
+            while (!QueueManager.getInstance().isQueuePollEnd(QueueManager.TABLE_AUTO_INCREMENT_QUEUE)) {
+                Object object = QueueManager.getInstance().pollQueue(QueueManager.TABLE_AUTO_INCREMENT_QUEUE);
+                if (object == null) {
+                    LOGGER.debug("{} poll from queue is null, to write {}.", Thread.currentThread().getName(),
+                            logPrefix);
+                    continue;
+                }
+                if (object instanceof TableAutoIncrement tableAutoIncrement) {
+                    try {
+                        executeSql = String.format(CREATE_AUTO_INCREMENT_SQL, tableAutoIncrement.getSchemaName(),
+                                tableAutoIncrement.getTableName(), tableAutoIncrement.getColumnName());
+                        statement.executeUpdate(executeSql);
+                        LOGGER.info("write {}  [{}] success", logPrefix, executeSql);
+                        executeSql = String.format(RESET_AUTO_INCREMENT_SQL, tableAutoIncrement.getSchemaName(),
+                                tableAutoIncrement.getTableName(), tableAutoIncrement.getMaxAutoIncrement());
+                        statement.executeUpdate(executeSql);
+                        LOGGER.info("write {}  [{}] success", logPrefix, executeSql);
+                    } catch (SQLException e) {
+                        LOGGER.error("write {} has occurred an exception, detail: {} {}", logPrefix, executeSql,
+                                e.getMessage());
+                        MigrationErrorLogger.getInstance().logSqlError(logPrefix, object.toString(), executeSql,
+                                e.getMessage());
+                        continue;
+                    }
+                }
+                LOGGER.info("{} has finished to write {}", Thread.currentThread().getName(), logPrefix);
+            }
+        } catch (SQLException e) {
+            LOGGER.warn("Initial connection error while writing {}, detail: {}", logPrefix, e.getMessage());
+        }
     }
 
     private Optional<String> getCreatePkSql(TablePrimaryKey tablePrimaryKey) {
         return Optional.of(String.format(CREATE_PK_SQL, tablePrimaryKey.getSchemaName(), tablePrimaryKey.getTableName(),
-                tablePrimaryKey.getPkName(), DatabaseUtils.formatMultiColName(tablePrimaryKey.getColumnName())));
+                DatabaseUtils.formatMultiColName(tablePrimaryKey.getColumnName())));
     }
 
     /**

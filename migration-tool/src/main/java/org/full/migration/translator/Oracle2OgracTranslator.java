@@ -4,6 +4,7 @@
 
 package org.full.migration.translator;
 
+import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -11,6 +12,7 @@ import java.util.regex.Pattern;
 import org.full.migration.exception.ErrorCode;
 import org.full.migration.exception.TranslatorException;
 import org.full.migration.model.table.Column;
+import org.full.migration.model.table.SequenceDefinition;
 
 /**
  * Oracle2OgracTranslator
@@ -163,6 +165,9 @@ public class Oracle2OgracTranslator implements Source2TargetTranslator {
      * @return type name in OGRAC compatible format
      */
     private Optional<String> translateNumberType(String typeName, Column column) {
+        if (column.isAutoIncremented()) {
+            return Optional.of("BIGINT");
+        }
         if (typeName.equals("NUMBER")) {
             if(column.getLength()==0) {
                 return Optional.of(typeName);
@@ -313,5 +318,52 @@ public class Oracle2OgracTranslator implements Source2TargetTranslator {
         }
         Matcher matcher = pattern.matcher(sql);
         return matcher.replaceAll(replacement);
+    }
+
+    @Override
+    public Optional<String> translateSequence(SequenceDefinition sequence) {
+        return Optional.of(buildSequenceDdl(sequence));
+    }
+    
+    private String buildSequenceDdl(SequenceDefinition sequence) {
+        StringBuilder ddl = new StringBuilder();
+        
+        ddl.append("CREATE SEQUENCE ").append(sequence.getSequenceName());
+        ddl.append(" START WITH ").append(sequence.getStartWith());
+        ddl.append(" INCREMENT BY ").append(sequence.getIncrementBy());
+        
+        appendMinValue(ddl, sequence.getMinValue());
+        appendMaxValue(ddl, sequence.getMaxValue());
+        
+        ddl.append(sequence.isCycle() ? " CYCLE" : " NOCYCLE");
+        
+        Integer cacheSize = sequence.getCacheSize();
+        if (cacheSize == null) {
+            ddl.append(" NOCACHE");
+        } else {
+            ddl.append(" CACHE ").append(cacheSize);
+        }
+        
+        Boolean isOrder = sequence.getIsOrder();
+        if (isOrder != null) {
+            ddl.append(isOrder ? " ORDER" : " NOORDER");    
+        }
+        
+        return ddl.toString();
+    }
+
+      private void appendMinValue(StringBuilder builder, BigDecimal minValue) {
+        if (minValue != null) {
+            builder.append(" MINVALUE ").append(minValue);
+        }
+    }
+
+    private void appendMaxValue(StringBuilder builder, BigDecimal maxValue) {
+        BigDecimal maxAllowedValue = new BigDecimal("9223372036854775807");
+        if (maxValue != null && maxValue.compareTo(maxAllowedValue) <= 0) {
+            builder.append(" MAXVALUE ").append(maxValue);
+        } else {
+            builder.append(" NOMAXVALUE");
+        }
     }
 }

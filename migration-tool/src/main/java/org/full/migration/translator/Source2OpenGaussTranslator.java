@@ -16,6 +16,8 @@
 package org.full.migration.translator;
 
 import lombok.Data;
+
+import org.full.migration.model.table.SequenceDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,6 +69,11 @@ public abstract class Source2OpenGaussTranslator implements Source2TargetTransla
 
     @Override
     public Optional<String> translateTrigger(String triggerDDL) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<String> translateSequence(SequenceDefinition sequence) {
         return Optional.empty();
     }
 }

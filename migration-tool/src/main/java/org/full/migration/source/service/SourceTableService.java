@@ -196,7 +196,6 @@ public class SourceTableService {
             .length(columnMetadata.getInt(7))
             .optional(isNullable(columnMetadata.getInt(11)))
             .position(columnMetadata.getInt(17))
-            .autoIncremented("YES".equalsIgnoreCase(columnMetadata.getString(23)))
             .defaultValueExpression(columnMetadata.getString(13))
             .build();
         if (columnMetadata.getObject(9) != null) {

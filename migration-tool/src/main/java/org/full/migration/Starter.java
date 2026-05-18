@@ -36,6 +36,8 @@ public class Starter {
      * @param args args
      */
     public static void main(String[] args) {
+        System.setProperty("logback.statusListenerClass", "ch.qos.logback.core.status.NopStatusListener");
+        
         if (args.length % 2 != 0) {
             System.err.println("input error, please check parameters.");
             return;

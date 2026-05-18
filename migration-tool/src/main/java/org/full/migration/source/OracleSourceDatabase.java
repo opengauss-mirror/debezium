@@ -9,23 +9,27 @@ import org.full.migration.exception.MigrationException;
 import org.full.migration.exception.TranslatorException;
 import org.full.migration.jdbc.OracleConnection;
 import org.full.migration.model.PostgresCustomTypeMeta;
+import org.full.migration.model.TaskTypeEnum;
 import org.full.migration.model.config.GlobalConfig;
 import org.full.migration.model.table.Column;
 import org.full.migration.model.table.GenerateInfo;
+import org.full.migration.model.table.SequenceDefinition;
 import org.full.migration.model.table.Table;
+import org.full.migration.model.table.TableAutoIncrement;
 import org.full.migration.model.table.TableIndex;
 import org.full.migration.model.table.TableMeta;
+import org.full.migration.model.table.TablePrimaryKey;
 import org.full.migration.source.constraint.ConstraintProcessor;
 import org.full.migration.source.partition.OraclePartitionHandler;
 import org.full.migration.source.partition.PartitionHandler;
 import org.full.migration.translator.Oracle2OgracTranslator;
 import org.full.migration.translator.Source2TargetTranslator;
 import org.full.migration.translator.TranslatorFactory;
-import org.full.migration.utils.DatabaseUtils;
 import org.full.migration.utils.MigrationErrorLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.math.BigDecimal;
 import java.io.IOException;
 import java.io.Reader;
 import java.sql.*;
@@ -33,8 +37,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
-import org.full.migration.constants.CommonConstants;
 import org.full.migration.constants.OracleSqlConstants;
+import org.full.migration.coordinator.ProgressTracker;
 import org.full.migration.coordinator.QueueManager;
 
 /**
@@ -243,6 +247,7 @@ public class OracleSourceDatabase extends SourceDatabase {
                     } else {
                         column.setGenerated(false);
                     }
+                    column.setAutoIncremented(checkTableColumnAutoIncrement(conn, tableName, column.getName()));
                     columns.add(column);
                 });
             }
@@ -256,6 +261,22 @@ public class OracleSourceDatabase extends SourceDatabase {
             }
         }
         return columns;
+    }
+
+    private boolean checkTableColumnAutoIncrement(Connection conn, String tableName, String columnName) {
+        try (PreparedStatement pstmt = conn.prepareStatement(OracleSqlConstants.QUERY_IS_AUTO_INCREMENT_SQL)) {
+            pstmt.setString(1, tableName.toUpperCase(Locale.ROOT));
+            pstmt.setString(2, columnName.toUpperCase(Locale.ROOT));
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getBoolean("is_identity_column");
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.error("fail to check table column auto increment [{}.{}], errorMsg: {}", tableName, columnName,
+                    e.getMessage());
+        }
+        return false;
     }
 
     private String getPartitionDdlIfNeeded(Connection conn, String schema, String tableName, Table table) throws SQLException {
@@ -357,7 +378,7 @@ public class OracleSourceDatabase extends SourceDatabase {
         // 获取表达式并处理可能的null值
         String expression = getColumnLongValue(rs, "EXPRESSION");
         if (expression == null) {
-            LOGGER.warn("Failed to get expression for column: {}", column);
+            LOGGER.warn("get expression empty for column: {}", column);
         }
         
         generateInfo.setDefine(expression);
@@ -439,10 +460,9 @@ public class OracleSourceDatabase extends SourceDatabase {
         columns.removeIf(column -> !column.isGenerated());
         for (int i = 0; i < columns.size(); i++) {
             Column column = columns.get(i);
-            columnDdl.append(column.getName())
-                    .append(" ")
-                    .append(translator.translateColumnType(table.getTableName(), column).get());
+            columnDdl.append(column.getName()).append(" ");
 
+            columnDdl.append(translator.translateColumnType(table.getTableName(), column).get());
             if (!column.isOptional()) {
                 columnDdl.append(" NOT NULL");
             }
@@ -481,7 +501,7 @@ public class OracleSourceDatabase extends SourceDatabase {
      */
     private String removeComments(String input) {
         if (input == null) {
-            return null;
+            return "";
         }
         String result = input.replaceAll("/\\*[\\s\\S]*?\\*/", "");
         result = result.replaceAll("--.*$", "");
@@ -497,15 +517,51 @@ public class OracleSourceDatabase extends SourceDatabase {
     private void handleDefaultValue(Column column, StringBuilder columnDdl) {
         if (column.getDefaultValueExpression() != null) {
             String defaultValue = column.getDefaultValueExpression();
-            // Skip sequence values to avoid creating non-existent sequences in target
-            // database
-            if (defaultValue.contains("ISEQ$") && defaultValue.contains(".nextval")) {
-                return;
-            }
-            // Remove comments from default value expression
             defaultValue = removeComments(defaultValue);
-            columnDdl.append(" DEFAULT ").append(defaultValue);
+            defaultValue = removeSystemSequenceReference(defaultValue);
+            defaultValue = removeCustomSequenceReference(defaultValue);
+            if (!"".equals(defaultValue)) {
+                columnDdl.append(" DEFAULT ").append(defaultValue);
+            }
         }
+    }
+
+    /**
+     * Remove oracle system sequence references from default value expression
+     * eq. "ISEQ$$_78052".nextval" -> ""
+     * eq. "C##WANG"."ISEQ$$_78055".nextval -> ""
+     * 
+     * @param defaultValue The original default value expression
+     * @return The converted expression with system references removed
+     */
+    private String removeSystemSequenceReference(String defaultValue) {
+        if (defaultValue == null) {
+            return "";
+        }
+        if (defaultValue.matches("(?i).*\"?ISEQ\\$\\$_\\d+\"?\\.nextval.*")) {
+            defaultValue = "";
+        }
+        return defaultValue;
+    }
+
+    /**
+     * Strictly remove schema/owner prefix only from sequence NEXTVAL references
+     * Pattern: "OWNER"."SEQ_NAME"."NEXTVAL" -> "SEQ_NAME"."NEXTVAL"
+     * Only match patterns ending with NEXTVAL (case insensitive)
+     * Removes schema/owner prefix and unnecessary double quotes from sequence
+     * NEXTVAL references
+     * 
+     * @param expression The original default value expression
+     * @return The converted expression with sequence references normalized
+     */
+    private String removeCustomSequenceReference(String expression) {
+        if (expression == null) {
+            return "";
+        }
+        String result = expression.replaceAll("\"[^\"]+\"\\.(\"[^\"]+\"\\.(?i)\"NEXTVAL\")", "$1");
+        result = result.replace("\"NEXTVAL\"", "NEXTVAL");
+        result = result.replace("\"nextval\"", "nextval");
+        return result;
     }
 
     @Override
@@ -582,7 +638,7 @@ public class OracleSourceDatabase extends SourceDatabase {
         try {
             String name = rs.getString("name");
             String definition = getColumnClobValue(rs, "definition");
-            return TRANSLATOR.translateView(name,definition).get();
+            return TRANSLATOR.translateView(name, definition).get();
         } catch (SQLException e) {
             throw new TranslatorException(ErrorCode.SQL_TRANSLATION_FAILED.getCode(),
                     "Error converting definition for object type view", e);
@@ -614,6 +670,64 @@ public class OracleSourceDatabase extends SourceDatabase {
         return getColumnLongValue(rs, "definition");
     }
 
+    private SequenceDefinition parseSequenceFromResultSet(ResultSet rs) throws SQLException {
+        String sequenceName = rs.getString("name");
+        if (sequenceName == null) {
+            return null;
+        }
+
+        BigDecimal incrementBy = getBigDecimalOrDefault(rs, "increment_by", BigDecimal.ONE);
+        BigDecimal startWith = getBigDecimalOrDefault(rs, "last_number", BigDecimal.ONE);
+        BigDecimal minValue = rs.getBigDecimal("min_value");
+        BigDecimal maxValue = rs.getBigDecimal("max_value");
+        boolean isCycle = "Y".equals(rs.getString("cycle_flag"));
+        Boolean isOrder = parseOrderFlag(rs.getString("order_flag"));
+        Integer cacheSize = calculateCacheSize(rs, isCycle, minValue, maxValue);
+
+        return SequenceDefinition.builder()
+                .sequenceName(sequenceName)
+                .startWith(startWith)
+                .incrementBy(incrementBy)
+                .minValue(minValue)
+                .maxValue(maxValue)
+                .isCycle(isCycle)
+                .cacheSize(cacheSize)
+                .isOrder(isOrder)
+                .build();
+    }
+
+    private Boolean parseOrderFlag(String orderFlag) {
+        if (orderFlag == null) {
+            return null;
+        }
+        return "Y".equals(orderFlag);
+    }
+
+    private Integer calculateCacheSize(ResultSet rs, boolean isCycle, BigDecimal minValue, BigDecimal maxValue)
+            throws SQLException {
+        int cacheSize = rs.getInt("cache_size");
+
+        if (cacheSize == 0) {
+            return null;
+        }
+
+        if (!isCycle || minValue == null || maxValue == null) {
+            return cacheSize;
+        }
+
+        BigDecimal cycleSize = maxValue.subtract(minValue).abs().add(BigDecimal.ONE);
+        int adjustedCacheSize = cacheSize;
+
+        if (cacheSize >= cycleSize.intValue()) {
+            adjustedCacheSize = cycleSize.intValue() - 1;
+            if (adjustedCacheSize < 1) {
+                adjustedCacheSize = 1;
+            }
+        }
+
+        return adjustedCacheSize;
+    }
+
     /**
      * translate sequence definition from result set
      * 
@@ -621,57 +735,19 @@ public class OracleSourceDatabase extends SourceDatabase {
      * @return Sequence Definition
      */
     private String convertSequenceDefinition(ResultSet rs) throws SQLException, TranslatorException {
-        String sequenceName = rs.getString("name");
-        if (sequenceName == null) {
+        SequenceDefinition sequence = parseSequenceFromResultSet(rs);
+
+        if (sequence == null) {
             LOGGER.warn("Sequence name is null, skipping");
             return null;
         }
-
-        java.math.BigDecimal increment = getBigDecimalOrDefault(rs, "increment_by", java.math.BigDecimal.ONE);
-        java.math.BigDecimal lastNumber = getBigDecimalOrDefault(rs, "last_number", java.math.BigDecimal.ONE);
-        java.math.BigDecimal minValue = rs.getBigDecimal("min_value");
-        java.math.BigDecimal maxValue = rs.getBigDecimal("max_value");
-
-        int cacheSize = rs.getInt("cache_size");
-        cacheSize = cacheSize == 0 ? 20 : cacheSize;
-
-        boolean isCycling = "Y".equals(rs.getString("cycle_flag"));
-        boolean isOrdered = "Y".equals(rs.getString("order_flag"));
-
-        StringBuilder sequenceDdl = new StringBuilder();
-        sequenceDdl.append("CREATE SEQUENCE ").append(sequenceName);
-        sequenceDdl.append(" INCREMENT BY ").append(increment);
-        sequenceDdl.append(" START WITH ").append(lastNumber);
-
-        appendMinValue(sequenceDdl, minValue);
-        appendMaxValue(sequenceDdl, maxValue);
-
-        sequenceDdl.append(" ").append(isCycling ? "CYCLE" : "NOCYCLE");
-        sequenceDdl.append(" CACHE ").append(cacheSize);
-        sequenceDdl.append(" ").append(isOrdered ? "ORDER" : "NOORDER");
-
-        return sequenceDdl.toString();
+        return TRANSLATOR.translateSequence(sequence).get();
     }
 
-    private java.math.BigDecimal getBigDecimalOrDefault(ResultSet rs, String columnName,
-            java.math.BigDecimal defaultValue) throws SQLException {
-        java.math.BigDecimal value = rs.getBigDecimal(columnName);
+    private BigDecimal getBigDecimalOrDefault(ResultSet rs, String columnName,
+            BigDecimal defaultValue) throws SQLException {
+        BigDecimal value = rs.getBigDecimal(columnName);
         return value != null ? value : defaultValue;
-    }
-
-    private void appendMinValue(StringBuilder builder, java.math.BigDecimal minValue) {
-        if (minValue != null) {
-            builder.append(" MINVALUE ").append(minValue);
-        }
-    }
-
-    private void appendMaxValue(StringBuilder builder, java.math.BigDecimal maxValue) {
-        java.math.BigDecimal maxAllowedValue = new java.math.BigDecimal("9223372036854775807"); // 2^63-1
-        if (maxValue != null && maxValue.compareTo(maxAllowedValue) <= 0) {
-            builder.append(" MAXVALUE ").append(maxValue);
-        } else {
-            builder.append(" NOMAXVALUE");
-        }
     }
 
     /**
@@ -730,25 +806,20 @@ public class OracleSourceDatabase extends SourceDatabase {
      * @return LONG Value
      */
     private synchronized String getColumnLongValue(ResultSet rs, String columnName) {
-        // First try getString() for small values
         try {
             String value = rs.getString(columnName);
             if (value != null) {
                 return value;
             }
         } catch (SQLException e) {
-            LOGGER.debug("Failed to get column {} as string: {}", columnName, e.getMessage());
+            LOGGER.debug("Failed to get long column {} as string: {}", columnName, e.getMessage());
         }
 
-        // Then try getCharacterStream()
         try (Reader reader = rs.getCharacterStream(columnName)) {
             return readStreamAsString(reader);
         } catch (Exception e) {
-            LOGGER.debug("Failed to get column {} as character stream: {}", columnName, e.getMessage());
+            LOGGER.debug("Failed to get long column {} as character stream: {}", columnName, e.getMessage());
         }
-
-        // If all methods fail, return null
-        LOGGER.warn("All methods failed to get column {}", columnName);
         return null;
     }
 
@@ -761,28 +832,26 @@ public class OracleSourceDatabase extends SourceDatabase {
      * @throws SQLException read clob value failed
      */
     private synchronized String getColumnClobValue(ResultSet rs, String columnName) throws SQLException {
-        // First try getString() for small CLOBs
         try {
             String value = rs.getString(columnName);
             if (value != null) {
                 return value;
             }
         } catch (SQLException e) {
-            LOGGER.debug("Failed to get column {} as string: {}", columnName, e.getMessage());
+            LOGGER.debug("Failed to get clob column {} as string: {}", columnName, e.getMessage());
         }
 
-        // Then try getClob()
         java.sql.Clob clob = rs.getClob(columnName);
         if (clob != null) {
             try (Reader reader = clob.getCharacterStream()) {
                 return readStreamAsString(reader);
             } catch (IOException e) {
-                throw new SQLException("Failed to read CLOB value: " + e.getMessage(), e);
+                LOGGER.debug("Failed to get clob column {} as character stream: {}", columnName, e.getMessage());
             } finally {
                 try {
                     clob.free();
                 } catch (SQLException e) {
-                    LOGGER.warn("Error freeing CLOB {}: {}", columnName, e.getMessage());
+                    LOGGER.warn("free CLOB failed: {}", columnName, e.getMessage());
                 }
             }
         }
@@ -816,7 +885,7 @@ public class OracleSourceDatabase extends SourceDatabase {
             try (Statement stmt = innerConn.createStatement()) {
                 stmt.execute(OracleSqlConstants.SET_METADATA_TRANSFORM_PARAMS);
             }
-            
+
             try (PreparedStatement pstmt = innerConn.prepareStatement(OracleSqlConstants.QUERY_INDEX_DDL_SQL)) {
                 pstmt.setString(1, tableIndex.getIndexName());
                 try (ResultSet ddlRs = pstmt.executeQuery()) {
@@ -839,8 +908,84 @@ public class OracleSourceDatabase extends SourceDatabase {
     }
 
     @Override
-    protected String getQueryPkSql() {
-        return OracleSqlConstants.QUERY_PK_SQL;
+    public void readTablePk(Set<String> schemaSet) {
+        try (Connection conn = connection.getConnection(sourceConfig.getDbConn())) {
+            for (String schema : schemaSet) {
+                try (PreparedStatement pstmt = conn.prepareStatement(getQueryPkSql())) {
+                    pstmt.setString(1, schema);
+                    try (ResultSet rs = pstmt.executeQuery()) {
+                        while (rs.next()) {
+                            TablePrimaryKey tablePrimaryKey = new TablePrimaryKey();
+                            tablePrimaryKey.setSchemaName(sourceConfig.getSchemaMappings().get(schema));
+                            tablePrimaryKey.setTableName(rs.getString("table_name"));
+                            tablePrimaryKey.setColumnName(rs.getString("pk_columns"));
+                            tablePrimaryKey.setPkName(rs.getString("pk_name"));
+                            if (isNotNeedMigraTable(schema, tablePrimaryKey.getTableName(), conn)) {
+                                continue;
+                            }
+                            QueueManager.getInstance()
+                                    .putToQueue(QueueManager.TABLE_PRIMARY_KEY_QUEUE, tablePrimaryKey);
+                            if (isDumpJson) {
+                                ProgressTracker.getInstance().putProgressMap(schema, tablePrimaryKey.getPkName());
+                            }
+                        }
+                    }
+                }
+                if (isDumpJson) {
+                    ProgressTracker.getInstance().recordKeyAndIndexProgress(TaskTypeEnum.PRIMARY_KEY);
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.error("fail to read table primary keys, errorMsg:{}", e.getMessage());
+        }
+        QueueManager.getInstance().setReadFinished(QueueManager.TABLE_PRIMARY_KEY_QUEUE, true);
+        LOGGER.info("end to read table primary keys.");
+        readTableAutoIncrement(schemaSet);
+    }
+
+    @Override
+    public void readTableAutoIncrement(Set<String> schemaSet) {
+        try (Connection conn = connection.getConnection(sourceConfig.getDbConn())) {
+            for (String schema : schemaSet) {
+                try (PreparedStatement pstmt = conn.prepareStatement(getQueryAutoIncrementSql())) {
+                    pstmt.setString(1, schema.toUpperCase(Locale.ROOT));
+                    try (ResultSet rs = pstmt.executeQuery()) {
+                        while (rs.next()) {
+                            TableAutoIncrement tableAutoIncrement = new TableAutoIncrement();
+                            tableAutoIncrement.setSchemaName(sourceConfig.getSchemaMappings().get(schema));
+                            tableAutoIncrement.setTableName(rs.getString("table_name"));
+                            tableAutoIncrement.setColumnName(rs.getString("column_name"));
+                            if (isNotNeedMigraTable(schema, tableAutoIncrement.getTableName(), conn)) {
+                                continue;
+                            }
+                            tableAutoIncrement.setMaxAutoIncrement(queryMaxValue(conn, tableAutoIncrement));
+                            QueueManager.getInstance()
+                                    .putToQueue(QueueManager.TABLE_AUTO_INCREMENT_QUEUE, tableAutoIncrement);
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.error("fail to read table auto increment, errorMsg : {}", e.getMessage());
+        }
+        QueueManager.getInstance().setReadFinished(QueueManager.TABLE_AUTO_INCREMENT_QUEUE, true);
+        LOGGER.info("end to read table auto increment.");
+    }
+
+    private long queryMaxValue(Connection conn, TableAutoIncrement tableAutoIncrement) {
+        String querySql = String.format(OracleSqlConstants.QUERY_TABLE_COLUMN_MAX_VALUE_SQL,
+                tableAutoIncrement.getColumnName().toUpperCase(Locale.ROOT),
+                tableAutoIncrement.getTableName().toUpperCase(Locale.ROOT));
+        try (PreparedStatement pstmt = conn.prepareStatement(querySql)) {
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getLong("max_value");
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.error("fail to query max value, errorMsg: {}", e.getMessage());
+        }
+        return 0;
     }
 
     @Override
@@ -941,5 +1086,14 @@ public class OracleSourceDatabase extends SourceDatabase {
      */
     private static String getCharUsedName(String type) {
         return type != null ? CHAR_USED_MAP.get(type.toUpperCase(Locale.ROOT)) : null;
+    }
+
+    @Override
+    protected String getQueryPkSql() {
+        return OracleSqlConstants.QUERY_PK_SQL;
+    }
+
+    protected String getQueryAutoIncrementSql() {
+        return OracleSqlConstants.QUERY_AUTO_INCREMENT_COLUMNS_SQL;
     }
 }

@@ -854,6 +854,14 @@ public abstract class SourceDatabase {
     }
 
     /**
+     * readTableAutoIncrement
+     *
+     * @param schemaSet schemaSet
+     */
+    public void readTableAutoIncrement(Set<String> schemaSet){
+    }
+
+    /**
      * readTableFk
      *
      * @param schemaSet schemaSet

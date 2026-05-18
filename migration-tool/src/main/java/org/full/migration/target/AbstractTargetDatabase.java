@@ -106,7 +106,7 @@ public abstract class AbstractTargetDatabase implements ITargetDatabase {
                     statement.executeUpdate(sql);
                     LOGGER.info("write {}  [{}] success", logPrefix, sql);
                 } catch (SQLException e) {
-                    LOGGER.error("write {} has occurred an exception,  detail: {}", logPrefix, e.getMessage());
+                    LOGGER.error("write {} has occurred an exception,  detail: {} {}", logPrefix, sql, e.getMessage());
                     MigrationErrorLogger.getInstance().logSqlError(logPrefix, object.toString(), sql, e.getMessage() );
                     continue;
                 }
