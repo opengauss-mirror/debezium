@@ -186,6 +186,7 @@ public class OraclePartitionHandler implements PartitionHandler {
                         PartitionInfo partitionInfo = createPartitionInfo(partitionType, rs);
                         partitionInfo.setPartitionTable(rs.getString("partition_name"));
                         partitionInfo.setParentTable(tableName);
+                        partitionInfo.setTablespaceName(rs.getString("tablespace_name"));
                         partitionInfos.add(partitionInfo);
                     }
                 }
@@ -203,6 +204,7 @@ public class OraclePartitionHandler implements PartitionHandler {
                         PartitionInfo partitionInfo = createPartitionInfo(subPartitionType, rs);
                         partitionInfo.setPartitionTable(rs.getString("subpartition_name"));
                         partitionInfo.setParentTable(partitionName);
+                        partitionInfo.setTablespaceName(rs.getString("tablespace_name"));
                         partitionInfos.add(partitionInfo);
                     }
                 }

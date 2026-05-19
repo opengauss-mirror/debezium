@@ -56,7 +56,11 @@ public abstract class PartitionInfo {
      * parent tables
      */
     protected String parentTable;
-
+    
+    /**
+     * tablespace name
+     */
+    protected String tablespaceName;
     /**
      * setRangeLowerBound
      *

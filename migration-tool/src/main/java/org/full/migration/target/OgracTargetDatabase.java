@@ -481,21 +481,58 @@ public class OgracTargetDatabase extends AbstractTargetDatabase {
             conn.setSchema(table.getTargetSchemaName());
             statement.execute(String.format(DROP_TABLE_SQL, table.getTableName()));
             String createTableSql = tableMeta.getCreateTableSql();
-            if(createTableSql.contains(";")){
-                String[] sqls = createTableSql.split(";");
-                for(String sql : sqls){
-                    if(StringUtils.isNotBlank(sql)){
-                        statement.execute(sql);
-                    }
-                }
-            }else{
-                statement.execute(tableMeta.getCreateTableSql());
-            }
+            
+            executeCreateTableSql(statement, createTableSql, table);
+            
             conn.commit();
             createdTables.add(table.getTargetSchemaName() + "." + table.getTableName());
             LOGGER.info("create {}.{} success", table.getTargetSchemaName(), table.getTableName());
         }
     }
+    
+    private void executeCreateTableSql(Statement statement, String createTableSql, Table table) throws SQLException {
+        try {
+            if (createTableSql.contains(";")) {
+                String[] sqls = createTableSql.split(";");
+                for (String sql : sqls) {
+                    if (StringUtils.isNotBlank(sql)) {
+                        statement.execute(sql);
+                    }
+                }
+            } else {
+                statement.execute(createTableSql);
+            }
+        } catch (SQLException e) {
+            if (isTablespaceNotExistError(e)) {
+                LOGGER.warn("Tablespace not found in create table SQL, removing TABLESPACE clauses and retrying: {}", 
+                        table.getTableName());
+                String sqlWithoutTablespace = removeTablespaceClause(createTableSql);
+                if (sqlWithoutTablespace.contains(";")) {
+                    String[] sqls = sqlWithoutTablespace.split(";");
+                    for (String sql : sqls) {
+                        if (StringUtils.isNotBlank(sql)) {
+                            statement.execute(sql);
+                        }
+                    }
+                } else {
+                    statement.execute(sqlWithoutTablespace);
+                }
+                LOGGER.info("create {}.{} success after removing tablespace", table.getTargetSchemaName(), table.getTableName());
+            } else {
+                throw e;
+            }
+        }
+    }
+    
+    private boolean isTablespaceNotExistError(SQLException e) {
+        String message = e.getMessage().toLowerCase(Locale.ROOT);
+        return message.contains("tablespace") && message.contains("does not exist");
+    }
+    
+    private String removeTablespaceClause(String sql) {
+        return sql.replaceAll("\\s+TABLESPACE\\s+[A-Za-z0-9_]+", "");
+    }
+    
     /**
      * Insert table snapshot information
      * For DataX scenarios, no need to record snapshot information
