@@ -178,7 +178,10 @@ public class Oracle2OgracTranslator implements Source2TargetTranslator {
                 return Optional.of(typeName+"("+column.getLength()+","+column.getScale()+")");
             }
         } else if (typeName.equals("FLOAT")) {
-            return Optional.of("DECIMAL(38," + column.getLength() + ")");
+            if (column.getLength() == 126) {
+                return Optional.of("DOUBLE PRECISION");
+            }
+            return Optional.of("NUMBER(38,12)");
         }
         return Optional.of(typeName);
     }
