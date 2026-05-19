@@ -93,6 +93,7 @@ public interface PartitionHandler {
             String highValue = getRangeUpperBound(partition);
             ddl.append("PARTITION ").append(partition.getPartitionTable())
                     .append(" VALUES LESS THAN (").append(highValue).append(")");
+            ddl.append(generatePartitionTablespaceName(partition));
             if (i < partitions.size() - 1) {
                 ddl.append(", ");
             }
@@ -101,6 +102,15 @@ public interface PartitionHandler {
         return ddl.toString();
     }
 
+    /**
+     * Generate tablespace clause for a partition
+     *
+     * @param partition Partition information
+     * @return Tablespace clause
+     */
+    private String generatePartitionTablespaceName(PartitionInfo partition) {
+        return (partition.getTablespaceName() != null && !partition.getTablespaceName().isEmpty()) ? " TABLESPACE " + partition.getTablespaceName() : "";
+    }
     /**
      * Generate list partition DDL
      *
@@ -114,6 +124,7 @@ public interface PartitionHandler {
             String value = getListPartitionValue(partition);
             ddl.append("PARTITION ").append(partition.getPartitionTable())
                     .append(" VALUES (").append(value).append(")");
+            ddl.append(generatePartitionTablespaceName(partition));
             if (i < partitions.size() - 1) {
                 ddl.append(", ");
             }
@@ -133,6 +144,7 @@ public interface PartitionHandler {
         for (int i = 0; i < partitions.size(); i++) {
             PartitionInfo partition = partitions.get(i);
             ddl.append("PARTITION ").append(partition.getPartitionTable());
+            ddl.append(generatePartitionTablespaceName(partition));
             if (i < partitions.size() - 1) {
                 ddl.append(", ");
             }
