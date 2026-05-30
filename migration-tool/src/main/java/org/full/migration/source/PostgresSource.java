@@ -821,16 +821,20 @@ public class PostgresSource extends SourceDatabase {
                 rangeExpr = rst.getString(2);
             }
             partitionInfo.setPartitionKey(subPartitionKey);
-
             if (rangeExpr != null) {
-                // 16 is length of "FOR VALUES FROM "
-                rangeExpr = rangeExpr.trim().substring(16);
-                // idex of "TO"
-                int toIdx = rangeExpr.toUpperCase(Locale.ROOT).indexOf("TO");
-                String lowerBound = rangeExpr.substring(0, toIdx).trim();
-                String upperBound = rangeExpr.substring(toIdx + 2).trim();
-                partitionInfo.setRangeLowerBound(lowerBound);
-                partitionInfo.setRangeUpperBound(upperBound);
+                if ("DEFAULT".equals(rangeExpr.toUpperCase(Locale.ROOT))) {
+                    partitionInfo.setRangeLowerBound("");
+                    partitionInfo.setRangeUpperBound("(MAXVALUE)");
+                } else {
+                    // 16 is length of "FOR VALUES FROM "
+                    rangeExpr = rangeExpr.trim().substring(16);
+                    // idex of "TO"
+                    int toIdx = rangeExpr.toUpperCase(Locale.ROOT).indexOf("TO");
+                    String lowerBound = rangeExpr.substring(0, toIdx).trim();
+                    String upperBound = rangeExpr.substring(toIdx + 2).trim();
+                    partitionInfo.setRangeLowerBound(lowerBound);
+                    partitionInfo.setRangeUpperBound(upperBound);
+                }
             }
         } catch (SQLException e) {
             LOGGER.error("get range partition value occurred exception", e);
