@@ -71,16 +71,15 @@ public class WorkThread extends Thread {
      *
      * @param schemaMappingMap Map<String, String> the schema mapping map
      * @param connectionInfo ConnectionInfo the connection information
-     * @param sqlTools SqlTools the sql tools
      * @param index int the index
      * @param breakPointRecord the breakpoint
      */
     public WorkThread(Map<String, String> schemaMappingMap, ConnectionInfo connectionInfo,
-                      SqlTools sqlTools, int index, BreakPointRecord breakPointRecord) {
+                      int index, BreakPointRecord breakPointRecord) {
         super("work-thread-" + index);
         this.schemaMappingMap = schemaMappingMap;
         this.connectionInfo = connectionInfo;
-        this.sqlTools = sqlTools;
+        this.sqlTools = new SqlTools(connectionInfo);
         this.breakPointRecord = breakPointRecord;
         this.replayedOffsets = breakPointRecord.getReplayedOffset();
         this.isTransaction = false;
@@ -99,8 +98,8 @@ public class WorkThread extends Thread {
     public void run() {
         Thread.currentThread().setUncaughtExceptionHandler(new ThreadExceptionHandler());
         SinkRecordObject sinkRecordObject = null;
-        connection = connectionInfo.createOpenGaussConnection();
         try {
+            connection = sqlTools.getConnection();
             statement = connection.createStatement();
         }
         catch (SQLException exp) {
@@ -323,7 +322,8 @@ public class WorkThread extends Thread {
             if (!connectionInfo.checkConnectionStatus(connection)) {
                 statement.close();
                 connection.close();
-                connection = connectionInfo.createOpenGaussConnection();
+                sqlTools.refreshConnection();
+                connection = sqlTools.getConnection();
                 statement = connection.createStatement();
             }
             statement.executeUpdate(sql);

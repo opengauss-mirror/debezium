@@ -92,7 +92,7 @@ public class TableReplayTask extends ReplayTask {
         this.threadCount = config.parallelReplayThreadNum;
         for (int i = 0; i < threadCount; i++) {
             WorkThread workThread = new WorkThread(schemaMappingMap, openGaussConnection,
-                    sqlTools, i, breakPointRecord);
+                     i, breakPointRecord);
             threadList.add(workThread);
         }
         this.failSqlCommitter = new MysqlProcessCommitter(config.getFailSqlPath(), config.getFileSizeLimit());
