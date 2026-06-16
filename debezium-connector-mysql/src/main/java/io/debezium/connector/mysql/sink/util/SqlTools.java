@@ -52,7 +52,7 @@ public class SqlTools {
         getObjectWrapSymbol();
     }
 
-    private void refreshConnection() {
+    public void refreshConnection() {
         try {
             if (connection.isValid(1)) {
                 return;
@@ -456,4 +456,9 @@ public class SqlTools {
             }
         }
     }
+
+    public Connection getConnection() {
+        return connection;
+    }
+
 }
