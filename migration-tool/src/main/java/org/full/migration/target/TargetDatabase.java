@@ -358,11 +358,14 @@ public class TargetDatabase extends AbstractTargetDatabase{
         connection.setSchema(targetSchema);
         SliceInfo sliceInfo;
         CopyManager copyManager = new CopyManager((BaseConnection) connection);
+        boolean originalAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
         try (InputStreamReader csvReader = new InputStreamReader(Files.newInputStream(Paths.get(path)),
             StandardCharsets.UTF_8)) {
             String copySql = String.format(COPY_SQL, targetSchema, tableName);
             copyManager.copyIn(copySql, csvReader);
             csvReader.close();
+            connection.commit();
             FileUtils.clearCsvFile(path, isDeleteCsv);
             sliceInfo = tableTask.getSliceInfo();
             progressInfo.setData(calculateProgressData(sliceInfo));
@@ -375,10 +378,24 @@ public class TargetDatabase extends AbstractTargetDatabase{
                 progressInfo.setStatus(ProgressStatus.IN_MIGRATED.getCode());
             }
         } catch (SQLException e) {
+            try {
+                connection.rollback();
+            } catch (SQLException rollbackEx) {
+                LOGGER.warn("rollback failed for {}.{}, err:{}", schemaName, tableName, rollbackEx.getMessage());
+            }
             sliceInfo = tableTask.getSliceInfo();
             progressInfo.setData(calculateProgressData(sliceInfo));
             progressInfo.setRecord(sliceInfo.getRow());
-            boolean isSuccess = copyLineByLine(copyManager, String.format("%s.%s", targetSchema, tableName), path);
+            LOGGER.info("failed to copy data of {}.{}, start to insert line by line.", schemaName, tableName);
+            connection.setAutoCommit(true);
+            boolean isSuccess = false;
+            try {
+                isSuccess = copyLineByLine(copyManager, String.format("%s.%s", targetSchema, tableName), path);
+            } catch (SQLException retryEx) {
+                LOGGER.error("copyLineByLine for {}.{} threw an exception, err:{}",
+                    schemaName, tableName, retryEx.getMessage());
+                throw retryEx;
+            }
             if (!isSuccess) {
                 progressInfo.setStatus(ProgressStatus.MIGRATED_FAILURE.getCode());
                 progressInfo.setPercent(ProgressStatus.MIGRATED_FAILURE.getCode());
@@ -386,6 +403,14 @@ public class TargetDatabase extends AbstractTargetDatabase{
                 LOGGER.error("failed to copy data of {}.{}, error message:{}", schemaName, tableName, e.getMessage());
             }
         } finally {
+            try {
+                if (!connection.getAutoCommit()) {
+                    connection.setAutoCommit(originalAutoCommit);
+                }
+            } catch (SQLException restoreEx) {
+                LOGGER.warn("restore autoCommit failed for {}.{}, err:{}",
+                    schemaName, tableName, restoreEx.getMessage());
+            }
             if (isJsonDump) {
                 sliceInfo = tableTask.getSliceInfo();
                 if (sliceInfo.isLast()) {

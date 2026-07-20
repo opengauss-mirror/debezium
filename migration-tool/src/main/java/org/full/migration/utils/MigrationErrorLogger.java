@@ -29,6 +29,10 @@ public class MigrationErrorLogger {
 
     private MigrationErrorLogger() {
         this.errorLogFilePath = ERROR_LOG_DIR + File.separator + ERROR_LOG_FILE_PREFIX + ERROR_LOG_FILE_SUFFIX;
+        File errorLogDir = new File(ERROR_LOG_DIR);
+        if (!errorLogDir.exists() && !errorLogDir.mkdirs()) {
+            LOGGER.warn("Failed to create error log directory: {}", ERROR_LOG_DIR);
+        }
         LOGGER.info("Migration error log file: {}", errorLogFilePath);
     }
 
