@@ -10,6 +10,8 @@ import static io.debezium.util.Strings.isNullOrEmpty;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.Serializable;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
@@ -1221,12 +1223,10 @@ public class BinlogReader extends AbstractReader {
                 final char[] passwordArray = (password == null) ? null : password.toCharArray();
                 try {
                     KeyStore ks = KeyStore.getInstance("JKS");
-                    ks.load(new FileInputStream(keyFilename), passwordArray);
+                    ks.load(Files.newInputStream(Paths.get(keyFilename)), passwordArray);
 
                     KeyManagerFactory kmf = KeyManagerFactory.getInstance("NewSunX509");
                     kmf.init(ks, passwordArray);
-
-                    keyManagers = kmf.getKeyManagers();
                 }
                 catch (KeyStoreException | IOException | CertificateException | NoSuchAlgorithmException | UnrecoverableKeyException e) {
                     throw new ConnectException("Could not load keystore", e);
@@ -1235,44 +1235,8 @@ public class BinlogReader extends AbstractReader {
 
             // DBZ-1208 Resembles the logic from the upstream BinaryLogClient, only that
             // the accepted TLS version is passed to the constructed factory
-            if (sslMode == SSLMode.PREFERRED || sslMode == SSLMode.REQUIRED) {
-                final KeyManager[] finalKMS = keyManagers;
-                return new DefaultSSLSocketFactory(acceptedTlsVersion) {
-
-                    @Override
-                    protected void initSSLContext(SSLContext sc)
-                            throws GeneralSecurityException {
-                        sc.init(finalKMS, new TrustManager[]{
-                                new X509TrustManager() {
-
-                                    @Override
-                                    public void checkClientTrusted(
-                                                                   X509Certificate[] x509Certificates,
-                                                                   String s)
-                                            throws CertificateException {
-                                    }
-
-                                    @Override
-                                    public void checkServerTrusted(
-                                                                   X509Certificate[] x509Certificates,
-                                                                   String s)
-                                            throws CertificateException {
-                                    }
-
-                                    @Override
-                                    public X509Certificate[] getAcceptedIssuers() {
-                                        return new X509Certificate[0];
-                                    }
-                                }
-                        }, null);
-                    }
-                };
-            }
-            else {
-                return new DefaultSSLSocketFactory(acceptedTlsVersion);
-            }
+            return new DefaultSSLSocketFactory(acceptedTlsVersion);
         }
-
         return null;
     }
 }
