@@ -29,6 +29,15 @@ final class JacksonReader implements DocumentReader, ArrayReader {
     public static final JacksonReader DEFAULT_INSTANCE = new JacksonReader(false);
     public static final JacksonReader FLOAT_NUMBERS_AS_TEXT_INSTANCE = new JacksonReader(true);
 
+    /**
+     * Maximum nesting depth allowed during JSON parsing. Guards against uncontrolled recursion
+     * (CWE-674) and resource exhaustion (CWE-400) when parsing untrusted JSON, such as the
+     * payload of a database signal record (REPORT-00193). Legitimate signal data and Debezium
+     * internal documents are shallow (typically < 10 levels); 512 is far below the depth at
+     * which a StackOverflowError would occur on a default JVM stack.
+     */
+    private static final int MAX_DEPTH = 512;
+
     private static final JsonFactory factory;
     private final boolean handleFloatNumbersAsText;
 
@@ -74,39 +83,42 @@ final class JacksonReader implements DocumentReader, ArrayReader {
 
     @Override
     public Array readArray(InputStream jsonStream) throws IOException {
-        return parseArray(factory.createParser(jsonStream), false);
+        return parseArray(factory.createParser(jsonStream), false, 0);
     }
 
     @Override
     public Array readArray(Reader jsonReader) throws IOException {
-        return parseArray(factory.createParser(jsonReader), false);
+        return parseArray(factory.createParser(jsonReader), false, 0);
     }
 
     @Override
     public Array readArray(URL jsonUrl) throws IOException {
-        return parseArray(factory.createParser(jsonUrl), false);
+        return parseArray(factory.createParser(jsonUrl), false, 0);
     }
 
     @Override
     public Array readArray(File jsonFile) throws IOException {
-        return parseArray(factory.createParser(jsonFile), false);
+        return parseArray(factory.createParser(jsonFile), false, 0);
     }
 
     @Override
     public Array readArray(String jsonArray) throws IOException {
-        return parseArray(factory.createParser(jsonArray), false);
+        return parseArray(factory.createParser(jsonArray), false, 0);
     }
 
     private Document parse(JsonParser parser) throws IOException {
         try {
-            return parseDocument(parser, false);
+            return parseDocument(parser, false, 0);
         }
         finally {
             parser.close();
         }
     }
 
-    private Document parseDocument(JsonParser parser, boolean nested) throws IOException {
+    private Document parseDocument(JsonParser parser, boolean nested, int depth) throws IOException {
+        if (depth >= MAX_DEPTH) {
+            throw new IOException("JSON nesting depth exceeded the maximum allowed limit of " + MAX_DEPTH);
+        }
         // Iterate over the fields in the top-level document ...
         BasicDocument doc = new BasicDocument();
         JsonToken token = null;
@@ -125,10 +137,10 @@ final class JacksonReader implements DocumentReader, ArrayReader {
                     fieldName = parser.getCurrentName();
                     break;
                 case START_OBJECT:
-                    doc.setDocument(fieldName, parseDocument(parser, true));
+                    doc.setDocument(fieldName, parseDocument(parser, true, depth + 1));
                     break;
                 case START_ARRAY:
-                    doc.setArray(fieldName, parseArray(parser, true));
+                    doc.setArray(fieldName, parseArray(parser, true, depth + 1));
                     break;
                 case VALUE_STRING:
                     doc.setString(fieldName, parser.getValueAsString());
@@ -195,7 +207,10 @@ final class JacksonReader implements DocumentReader, ArrayReader {
         return doc;
     }
 
-    private Array parseArray(JsonParser parser, boolean nested) throws IOException {
+    private Array parseArray(JsonParser parser, boolean nested, int depth) throws IOException {
+        if (depth >= MAX_DEPTH) {
+            throw new IOException("JSON nesting depth exceeded the maximum allowed limit of " + MAX_DEPTH);
+        }
         // Iterate over the values in the array ...
         BasicArray array = new BasicArray();
         JsonToken token = null;
@@ -210,10 +225,10 @@ final class JacksonReader implements DocumentReader, ArrayReader {
         while (token != JsonToken.END_ARRAY) {
             switch (token) {
                 case START_OBJECT:
-                    array.add(parseDocument(parser, true));
+                    array.add(parseDocument(parser, true, depth + 1));
                     break;
                 case START_ARRAY:
-                    array.add(parseArray(parser, true));
+                    array.add(parseArray(parser, true, depth + 1));
                     break;
                 case VALUE_STRING:
                     array.add(parser.getValueAsString());
