@@ -72,6 +72,9 @@ public class AbstractIncrementalSnapshotContext<T> implements IncrementalSnapsho
     public static final String EVENT_PRIMARY_KEY = INCREMENTAL_SNAPSHOT_KEY + "_primary_key";
     public static final String TABLE_MAXIMUM_KEY = INCREMENTAL_SNAPSHOT_KEY + "_maximum_key";
 
+    // Upper bound for the incremental snapshot queue to prevent unbounded resource consumption (CWE-400).
+    private static final int MAX_SNAPSHOT_COLLECTIONS = 1024;
+
     /**
      * @code(true) if window is opened and deduplication should be executed
      */
@@ -202,7 +205,15 @@ public class AbstractIncrementalSnapshotContext<T> implements IncrementalSnapsho
     }
 
     private void addTablesIdsToSnapshot(List<T> dataCollectionIds) {
-        dataCollectionsToSnapshot.addAll(dataCollectionIds);
+        for (T id : dataCollectionIds) {
+            if (dataCollectionsToSnapshot.size() >= MAX_SNAPSHOT_COLLECTIONS) {
+                LOGGER.warn("Incremental snapshot queue reached the maximum size of {}, skipping remaining data collections", MAX_SNAPSHOT_COLLECTIONS);
+                break;
+            }
+            if (!dataCollectionsToSnapshot.contains(id)) {
+                dataCollectionsToSnapshot.add(id);
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")
