@@ -204,7 +204,16 @@ public class AbstractIncrementalSnapshotContext<T> implements IncrementalSnapsho
     @SuppressWarnings("unchecked")
     public List<T> addDataCollectionNamesToSnapshot(List<String> dataCollectionIds) {
         final List<T> newDataCollectionIds = dataCollectionIds.stream()
-                .map(x -> (T) TableId.parse(x, useCatalogBeforeSchema))
+                .map(x -> {
+                    try {
+                        return (T) TableId.parse(x, useCatalogBeforeSchema);
+                    }
+                    catch (IllegalArgumentException e) {
+                        LOGGER.warn("Skipping malformed data collection identifier '{}': {}", x, e.getMessage());
+                        return null;
+                    }
+                })
+                .filter(x -> x != null)
                 .collect(Collectors.toList());
         addTablesIdsToSnapshot(newDataCollectionIds);
         return newDataCollectionIds;
