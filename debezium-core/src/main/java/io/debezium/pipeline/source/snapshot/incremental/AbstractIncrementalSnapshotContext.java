@@ -120,8 +120,12 @@ public class AbstractIncrementalSnapshotContext<T> implements IncrementalSnapsho
     }
 
     public boolean closeWindow(String id) {
-        if (notExpectedChunk(id)) {
+        if (currentChunkId == null || !id.equals(currentChunkId + "-close")) {
             LOGGER.info("Received request to close window with id = '{}', expected = '{}', request ignored", id, currentChunkId);
+            return false;
+        }
+        if (!windowOpened) {
+            LOGGER.info("Received request to close window with id = '{}' but window is not opened, request ignored", id);
             return false;
         }
         LOGGER.debug("Closing window for incremental snapshot chunk");
