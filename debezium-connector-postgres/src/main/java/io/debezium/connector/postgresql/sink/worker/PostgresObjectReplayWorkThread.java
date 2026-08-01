@@ -93,7 +93,7 @@ public class PostgresObjectReplayWorkThread extends ReplayWorkThread {
                 String schema = schemaMappingMap.getOrDefault(sourceSchema, sourceSchema);
                 objType = sinkObjectRecord.getObjType();
                 objName = sinkObjectRecord.getObjName();
-                statement.execute(String.format(Locale.ROOT, PostgresSqlConstant.SWITCHSCHEMA, schema));
+                statement.execute(String.format(Locale.ROOT, PostgresSqlConstant.SWITCHSCHEMA, quotePgIdent(schema)));
                 String finalDdl = getFinalDdl(ddl, objType.code(), sourceSchema, schema);
                 LOGGER.info("replay ddl: {}", finalDdl);
                 statement.execute(finalDdl);
@@ -191,5 +191,9 @@ public class PostgresObjectReplayWorkThread extends ReplayWorkThread {
 
     public void setShouldStop(boolean shouldStop) {
         this.shouldStop = shouldStop;
+    }
+
+    private static String quotePgIdent(String identifier) {
+        return "\"" + (identifier == null ? "" : identifier.replace("\"", "\"\"")) + "\"";
     }
 }

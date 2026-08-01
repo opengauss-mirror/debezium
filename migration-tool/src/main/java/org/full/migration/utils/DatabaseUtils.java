@@ -15,10 +15,13 @@ public class DatabaseUtils {
      * @return project name with double quotation
      */
     public static String formatObjName(String name) {
-        if (name != null && !name.startsWith("\"")) {
-            return "\"" + name + "\"";
+        if (name == null) {
+            return null;
         }
-        return name;
+        if (name.startsWith("\"") && name.endsWith("\"") && name.length() >= 2) {
+            return name;
+        }
+        return "\"" + name.replace("\"", "\"\"") + "\"";
     }
 
     /**

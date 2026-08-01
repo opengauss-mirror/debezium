@@ -40,7 +40,9 @@ public abstract class QueryingSnapshotter implements Snapshotter {
     @Override
     public String snapshotTransactionIsolationLevelStatement(SlotCreationResult newSlotInfo) {
         if (newSlotInfo != null) {
-            String snapSet = String.format("SET TRANSACTION SNAPSHOT '%s';", newSlotInfo.snapshotName());
+            String snapshotName = newSlotInfo.snapshotName() == null ? ""
+                    : newSlotInfo.snapshotName().replace("'", "''");
+            String snapSet = String.format("SET TRANSACTION SNAPSHOT '%s';", snapshotName);
             return "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; \n" + snapSet;
         }
         return Snapshotter.super.snapshotTransactionIsolationLevelStatement(newSlotInfo);

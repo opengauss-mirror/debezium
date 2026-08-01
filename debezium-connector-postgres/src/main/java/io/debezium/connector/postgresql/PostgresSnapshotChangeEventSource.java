@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.sql.Statement;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
@@ -227,12 +228,15 @@ public class PostgresSnapshotChangeEventSource extends
             return false;
         }
         boolean hasPartition = false;
-        try (Statement stmt = connection.createStatement();
-             ResultSet rst = stmt.executeQuery(String.format(PostgresSqlConstant.HAVE_PARTITION_SQL, schema, table))) {
-            if (rst.next()) {
-                hasPartition = rst.getBoolean(1);
-            } else {
-                LOGGER.error("cannot get partition info of table {}.{}", schema, table);
+        try (PreparedStatement stmt = connection.prepareStatement(PostgresSqlConstant.HAVE_PARTITION_SQL)) {
+            stmt.setString(1, schema);
+            stmt.setString(2, table);
+            try (ResultSet rst = stmt.executeQuery()) {
+                if (rst.next()) {
+                    hasPartition = rst.getBoolean(1);
+                } else {
+                    LOGGER.error("cannot get partition info of table {}.{}", schema, table);
+                }
             }
         } catch (SQLException e) {
             LOGGER.error("get partition info of table {}.{} occurred SQLException", schema, table, e);
@@ -838,8 +842,6 @@ public class PostgresSnapshotChangeEventSource extends
         RelationalSnapshotContext<PostgresPartition, PostgresOffsetContext> snapshotContext
                 = dataEventsParam.getSnapshotContext();
         LOGGER.info("Exporting data from table '{}' ({} of {} tables)", tableId, tableOrder, tableCount);
-        String sizeSql = String.format(Locale.ROOT, PostgresSqlConstant.METADATASQL, tableId.schema(),
-                tableId.table());
         final Optional<String> selectStatement = determineSnapshotSelect(snapshotContext, tableId);
         if (!selectStatement.isPresent()) {
             LOGGER.warn("For table '{}' the select statement was not provided, skipping table", tableId);
@@ -848,39 +850,43 @@ public class PostgresSnapshotChangeEventSource extends
         }
         try (Connection connection = connectorConfig.getConnection();
              Statement statement = readTableStatementPostgres(connection);
-             ResultSet resultSet = statement.executeQuery(sizeSql)) {
-            if (resultSet.next()) {
-                long size = resultSet.getLong("avgRowLength");
-                long totalRows = resultSet.getLong("tableRows");
-                int pageRows = size == 0 ? EMPTY_TABLE_PAGEROWS : (int) (pageSize.intValue() / size);
-                pageRows = Math.max(pageRows, 1);
-                int totalSlice = -1;
-                double spacePerSlice = -1;
-                if (connectorConfig.isCommitProcess()) {
-                    totalSlice = (int) (totalRows / pageRows) + 5;
-                    spacePerSlice = (double) pageRows * (double) size;
+             PreparedStatement sizeStatement = connection.prepareStatement(PostgresSqlConstant.METADATASQL)) {
+            sizeStatement.setString(1, tableId.schema());
+            sizeStatement.setString(2, tableId.table());
+            try (ResultSet resultSet = sizeStatement.executeQuery()) {
+                if (resultSet.next()) {
+                    long size = resultSet.getLong("avgRowLength");
+                    long totalRows = resultSet.getLong("tableRows");
+                    int pageRows = size == 0 ? EMPTY_TABLE_PAGEROWS : (int) (pageSize.intValue() / size);
+                    pageRows = Math.max(pageRows, 1);
+                    int totalSlice = -1;
+                    double spacePerSlice = -1;
+                    if (connectorConfig.isCommitProcess()) {
+                        totalSlice = (int) (totalRows / pageRows) + 5;
+                        spacePerSlice = (double) pageRows * (double) size;
+                    }
+                    lockTable(tableId, statement);
+                    readAndSendXlogLocation(statement, dataEventsParam);
+                    LOGGER.info("start export data for table {}.{}", tableId.schema(), tableId.table());
+                    long limit = pageRows * exportPageNumber;
+                    long offset = 0L;
+                    long rows = 0L;
+                    PostgresPageSliceParam pageSliceParam = new PostgresPageSliceParam();
+                    pageSliceParam.setPageRows(pageRows);
+                    pageSliceParam.setTotalSlice(totalSlice);
+                    pageSliceParam.setSpacePerSlice(spacePerSlice);
+                    do {
+                        String executeSql = selectStatement.get() + String.format(LIMIT_STATEMENT, limit, offset);
+                        ResultSet rs = statement.executeQuery(executeSql);
+                        rows = processData(dataEventsParam, rs, pageSliceParam);
+                        offset += limit;
+                        pageSliceParam.addRealTotalRows(rows);
+                        pageSliceParam.addSubscript(exportPageNumber);
+                    } while (limit == rows);
+                    unLockTable(connection);
+                    LOGGER.info("\t Finished exporting {} records for table '{}';", pageSliceParam.getRealTotalRows(),
+                            tableId);
                 }
-                lockTable(tableId, statement);
-                readAndSendXlogLocation(statement, dataEventsParam);
-                LOGGER.info("start export data for table {}.{}", tableId.schema(), tableId.table());
-                long limit = pageRows * exportPageNumber;
-                long offset = 0L;
-                long rows = 0L;
-                PostgresPageSliceParam pageSliceParam = new PostgresPageSliceParam();
-                pageSliceParam.setPageRows(pageRows);
-                pageSliceParam.setTotalSlice(totalSlice);
-                pageSliceParam.setSpacePerSlice(spacePerSlice);
-                do {
-                    String executeSql = selectStatement.get() + String.format(LIMIT_STATEMENT, limit, offset);
-                    ResultSet rs = statement.executeQuery(executeSql);
-                    rows = processData(dataEventsParam, rs, pageSliceParam);
-                    offset += limit;
-                    pageSliceParam.addRealTotalRows(rows);
-                    pageSliceParam.addSubscript(exportPageNumber);
-                } while (limit == rows);
-                unLockTable(connection);
-                LOGGER.info("\t Finished exporting {} records for table '{}';", pageSliceParam.getRealTotalRows(),
-                        tableId);
             }
             connection.rollback();
             createIndexEventsForTable(dataEventsParam, connection);
@@ -894,9 +900,7 @@ public class PostgresSnapshotChangeEventSource extends
     }
 
     private void lockTable(TableId tableId, Statement statement) throws SQLException {
-        String schemaName = tableId.schema();
-        String tableName = tableId.table();
-        String lockStatement = String.format("BEGIN; LOCK TABLE %s.%s IN SHARE MODE;", schemaName, tableName);
+        String lockStatement = "BEGIN; LOCK TABLE " + tableId.toDoubleQuotedString() + " IN SHARE MODE;";
         statement.execute(lockStatement);
     }
 
@@ -918,7 +922,7 @@ public class PostgresSnapshotChangeEventSource extends
                 joiner.add(col);
             });
             String pkCreateStmt = String.format(PostgresSqlConstant.CREATEPK_HEADER,
-                    schemaName + "." + tableName, constraintName) + joiner + PostgresSqlConstant.TAIL;
+                    quotePgIdent(schemaName) + "." + quotePgIdent(tableName), quotePgIdent(constraintName)) + joiner + PostgresSqlConstant.TAIL;
             indexDef.remove(constraintName);
             idxDdls.add(pkCreateStmt);
         }
@@ -935,14 +939,16 @@ public class PostgresSnapshotChangeEventSource extends
             throws SQLException {
         // key: constraint name, value: add unique constraint ddl
         Map<String, String> uniqueCons = new HashMap<>();
-        try (Statement stmt = connection.createStatement();
-             ResultSet rst = stmt.executeQuery(
-                 String.format(PostgresSqlConstant.GETUNIQUECONSTRAINT, schema, table))) {
-            while (rst.next()) {
-                String consName = rst.getString(1);
-                String uniqueDdl = String.format(PostgresSqlConstant.ADDUNIQUECONSTRAINT, table,
-                        consName + " " + rst.getString(2));
-                uniqueCons.put(consName, uniqueDdl);
+        try (PreparedStatement stmt = connection.prepareStatement(PostgresSqlConstant.GETUNIQUECONSTRAINT)) {
+            stmt.setString(1, schema);
+            stmt.setString(2, table);
+            try (ResultSet rst = stmt.executeQuery()) {
+                while (rst.next()) {
+                    String consName = rst.getString(1);
+                    String uniqueDdl = String.format(PostgresSqlConstant.ADDUNIQUECONSTRAINT, quotePgIdent(table),
+                            quotePgIdent(consName) + " " + rst.getString(2));
+                    uniqueCons.put(consName, uniqueDdl);
+                }
             }
         }
         return uniqueCons;
@@ -951,10 +957,12 @@ public class PostgresSnapshotChangeEventSource extends
     private Map<String, String> getIndexDef(String table, Connection connection) throws SQLException {
         // key: index name, value: index definition
         Map<String, String> indexInfo = new HashMap<>();
-        try (Statement stmt = connection.createStatement();
-                ResultSet rst = stmt.executeQuery(String.format(PostgresSqlConstant.GETINDEXINFO, table))) {
-            while (rst.next()) {
-                indexInfo.put(rst.getString(1), rst.getString(2));
+        try (PreparedStatement stmt = connection.prepareStatement(PostgresSqlConstant.GETINDEXINFO)) {
+            stmt.setString(1, table);
+            try (ResultSet rst = stmt.executeQuery()) {
+                while (rst.next()) {
+                    indexInfo.put(rst.getString(1), rst.getString(2));
+                }
             }
         }
         return indexInfo;
@@ -965,16 +973,18 @@ public class PostgresSnapshotChangeEventSource extends
         Map<String, List<String>> pkInfo = new HashMap<>();
         Set<String> pkSet = new HashSet<>();
         String constraintName = "";
-        try (Statement stmt = connection.createStatement();
-                ResultSet rst = stmt.executeQuery(String.format(PostgresSqlConstant.GETPKINFO, table))) {
-            while (rst.next()) {
-                if ("".equals(constraintName)) {
-                    constraintName = rst.getString(1);
+        try (PreparedStatement stmt = connection.prepareStatement(PostgresSqlConstant.GETPKINFO)) {
+            stmt.setString(1, table);
+            try (ResultSet rst = stmt.executeQuery()) {
+                while (rst.next()) {
+                    if ("".equals(constraintName)) {
+                        constraintName = rst.getString(1);
+                    }
+                    pkSet.add(rst.getString(2));
                 }
-                pkSet.add(rst.getString(2));
-            }
-            if (!pkSet.isEmpty()) {
-                pkInfo.put(constraintName, new ArrayList<>(pkSet));
+                if (!pkSet.isEmpty()) {
+                    pkInfo.put(constraintName, new ArrayList<>(pkSet));
+                }
             }
         }
         return pkInfo;
@@ -1224,11 +1234,13 @@ public class PostgresSnapshotChangeEventSource extends
         String schemaName = table.id().schema();
         String tableName = table.id().table();
         StringJoiner parents = new StringJoiner(",");
-        try (Statement stmt = connection.createStatement();
-             ResultSet rst = stmt.executeQuery(
-                 String.format(PostgresSqlConstant.GET_PARENT_TABLE, schemaName, tableName))) {
-            while (rst.next()) {
-                parents.add(rst.getString(1));
+        try (PreparedStatement stmt = connection.prepareStatement(PostgresSqlConstant.GET_PARENT_TABLE)) {
+            stmt.setString(1, schemaName);
+            stmt.setString(2, tableName);
+            try (ResultSet rst = stmt.executeQuery()) {
+                while (rst.next()) {
+                    parents.add(rst.getString(1));
+                }
             }
         } catch (SQLException e) {
             LOGGER.error("get parent tables for table {}.{} failed", schemaName, tableName, e);
@@ -1358,12 +1370,14 @@ public class PostgresSnapshotChangeEventSource extends
         }
         String rangeExpr = null;
         String subPartitionKey = null;
-        try (Statement statement = connection.createStatement();
-             ResultSet rst = statement.executeQuery(
-                 String.format(PostgresSqlConstant.GET_PARTITION_EXPR, schema, table))) {
-            if (rst.next()) {
-                subPartitionKey = rst.getString(1);
-                rangeExpr = rst.getString(2);
+        try (PreparedStatement statement = connection.prepareStatement(PostgresSqlConstant.GET_PARTITION_EXPR)) {
+            statement.setString(1, schema);
+            statement.setString(2, table);
+            try (ResultSet rst = statement.executeQuery()) {
+                if (rst.next()) {
+                    subPartitionKey = rst.getString(1);
+                    rangeExpr = rst.getString(2);
+                }
             }
             partitionInfo.setPartitionKey(subPartitionKey);
 
@@ -1389,12 +1403,14 @@ public class PostgresSnapshotChangeEventSource extends
         }
         String listExpr = null;
         String subPartitionKey = null;
-        try (Statement statement = connection.createStatement();
-             ResultSet rst = statement.executeQuery(
-                 String.format(PostgresSqlConstant.GET_PARTITION_EXPR, schema, table))) {
-            if (rst.next()) {
-                subPartitionKey = rst.getString(1);
-                listExpr = rst.getString(2);
+        try (PreparedStatement statement = connection.prepareStatement(PostgresSqlConstant.GET_PARTITION_EXPR)) {
+            statement.setString(1, schema);
+            statement.setString(2, table);
+            try (ResultSet rst = statement.executeQuery()) {
+                if (rst.next()) {
+                    subPartitionKey = rst.getString(1);
+                    listExpr = rst.getString(2);
+                }
             }
             partitionInfo.setPartitionKey(subPartitionKey);
 
@@ -1415,12 +1431,14 @@ public class PostgresSnapshotChangeEventSource extends
         }
         String hashExpr = null;
         String subPartitionKey = null;
-        try (Statement statement = connection.createStatement();
-             ResultSet rst = statement.executeQuery(
-                 String.format(PostgresSqlConstant.GET_PARTITION_EXPR, schema, table))) {
-            if (rst.next()) {
-                subPartitionKey = rst.getString(1);
-                hashExpr = rst.getString(2);
+        try (PreparedStatement statement = connection.prepareStatement(PostgresSqlConstant.GET_PARTITION_EXPR)) {
+            statement.setString(1, schema);
+            statement.setString(2, table);
+            try (ResultSet rst = statement.executeQuery()) {
+                if (rst.next()) {
+                    subPartitionKey = rst.getString(1);
+                    hashExpr = rst.getString(2);
+                }
             }
             partitionInfo.setPartitionKey(subPartitionKey);
 
@@ -1436,11 +1454,13 @@ public class PostgresSnapshotChangeEventSource extends
 
     private List<String> getChildTables(String schemaName, String tableName, Connection connection) {
         List<String> childs = new ArrayList<>();
-        try (Statement stmt = connection.createStatement();
-             ResultSet rst = stmt.executeQuery(String.format(
-                 PostgresSqlConstant.GET_CHILD_TABLE, schemaName, tableName))) {
-            while (rst.next()) {
-                childs.add(rst.getString(1));
+        try (PreparedStatement stmt = connection.prepareStatement(PostgresSqlConstant.GET_CHILD_TABLE)) {
+            stmt.setString(1, schemaName);
+            stmt.setString(2, tableName);
+            try (ResultSet rst = stmt.executeQuery()) {
+                while (rst.next()) {
+                    childs.add(rst.getString(1));
+                }
             }
         } catch (SQLException e) {
             LOGGER.error("get child of table {}.{} failed", schemaName, tableName, e);
@@ -1450,15 +1470,24 @@ public class PostgresSnapshotChangeEventSource extends
 
     private String getPartitionKey(String schemaName, String tableName, Connection connection) {
         String partitionKey = "";
-        try (Statement stmt = connection.createStatement();
-             ResultSet rst = stmt.executeQuery(
-                 String.format(PostgresSqlConstant.GET_PARTITION_KEY, schemaName, tableName))) {
-            if (rst.next()) {
-                partitionKey = rst.getString(1);
+        try (PreparedStatement stmt = connection.prepareStatement(PostgresSqlConstant.GET_PARTITION_KEY)) {
+            stmt.setString(1, schemaName);
+            stmt.setString(2, tableName);
+            try (ResultSet rst = stmt.executeQuery()) {
+                if (rst.next()) {
+                    partitionKey = rst.getString(1);
+                }
             }
         } catch (SQLException e) {
             LOGGER.error("get table partition key occurred SQLException.", e);
         }
         return partitionKey == null ? "" : partitionKey.trim().toUpperCase();
+    }
+
+    /**
+     * Quote a PostgreSQL identifier: wrapped in double quotes, internal double quotes are doubled.
+     */
+    private static String quotePgIdent(String identifier) {
+        return "\"" + (identifier == null ? "" : identifier.replace("\"", "\"\"")) + "\"";
     }
 }

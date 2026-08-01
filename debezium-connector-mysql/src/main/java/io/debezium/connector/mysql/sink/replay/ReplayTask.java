@@ -281,7 +281,7 @@ public class ReplayTask {
         String tableName = sourceField.getTable();
         String newSchemaName = getSinkSchema(schemaName);
         String ddl = ddlOperation.getDdl();
-        sqlList.add("set current_schema to " + newSchemaName + ";");
+        sqlList.add("set current_schema to \"" + newSchemaName.replace("\"", "\"\"") + "\";");
         if (StringUtils.isNullOrEmpty(tableName)) {
             sqlList.add(ddl);
         }

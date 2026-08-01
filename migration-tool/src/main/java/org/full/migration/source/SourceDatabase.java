@@ -41,6 +41,7 @@ import org.full.migration.model.table.TableMeta;
 import org.full.migration.model.table.TablePrimaryKey;
 import org.full.migration.source.constraint.ConstraintProcessor;
 import org.full.migration.source.service.SourceTableService;
+import org.full.migration.utils.DatabaseUtils;
 import org.full.migration.utils.FileUtils;
 import org.full.migration.utils.HexConverter;
 import org.slf4j.Logger;
@@ -745,7 +746,8 @@ public abstract class SourceDatabase {
     public void readObjects(String objectType, String schema) {
         try (Connection conn = connection.getConnection(sourceConfig.getDbConn());
             Statement statement = conn.createStatement()) {
-            String querySql = String.format(getQueryObjectSql(objectType.toLowerCase(Locale.ROOT)), schema);
+            String querySql = String.format(getQueryObjectSql(objectType.toLowerCase(Locale.ROOT)),
+                    escapeSqlLiteral(schema));
             ResultSet rs = statement.executeQuery(querySql);
             while (rs.next()) {
                 DbObject dbObject = new DbObject();
@@ -951,8 +953,9 @@ public abstract class SourceDatabase {
                     String.format("Unique constraint %s on table %s has null columns", constraintName, tableName));
         }
         String columns = String.join(", ", uniqueColumns.split(","));
-        return String.format("ALTER TABLE %s.%s ADD CONSTRAINT \"%s\" UNIQUE (%s)", schemaName, tableName,
-                constraintName, columns);
+        return String.format("ALTER TABLE %s.%s ADD CONSTRAINT %s UNIQUE (%s)",
+                DatabaseUtils.formatObjName(schemaName), DatabaseUtils.formatObjName(tableName),
+                DatabaseUtils.formatObjName(constraintName), columns);
     }
 
     public String buildCheckConstraintSql(String schema, String tableName, String constraintName, String definition)
@@ -961,7 +964,18 @@ public abstract class SourceDatabase {
             throw new TranslatorException(ErrorCode.SQL_TRANSLATION_FAILED.getCode(),
                     String.format("Check constraint %s on table %s has null definition", constraintName, tableName));
         }
-        return String.format("ALTER TABLE %s.%s ADD CONSTRAINT %s CHECK (%s)", schema, tableName, constraintName,
-                definition);
+        return String.format("ALTER TABLE %s.%s ADD CONSTRAINT %s CHECK (%s)",
+                DatabaseUtils.formatObjName(schema), DatabaseUtils.formatObjName(tableName),
+                DatabaseUtils.formatObjName(constraintName), definition);
+    }
+
+    /**
+     * Escape single quotes in a string literal for safe embedding into SQL.
+     *
+     * @param value the raw string value
+     * @return the escaped string value
+     */
+    protected static String escapeSqlLiteral(String value) {
+        return value == null ? "" : value.replace("'", "''");
     }
 }

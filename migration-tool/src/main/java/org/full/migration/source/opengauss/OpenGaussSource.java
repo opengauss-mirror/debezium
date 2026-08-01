@@ -88,7 +88,9 @@ public abstract class OpenGaussSource extends SourceDatabase {
             return;
         }
 
-        String migraTableString = String.join(", ", migraTableNames);
+        String migraTableString = migraTableNames.stream()
+                .map(t -> DatabaseUtils.formatObjName(t))
+                .collect(Collectors.joining(", "));
 
         String createPublicationStmt = String.format(OpenGaussConstants.CREATE_PUBLICATION, migraTableString);
         try (Statement stmt = conn.createStatement()) {
@@ -128,7 +130,8 @@ public abstract class OpenGaussSource extends SourceDatabase {
     public void createSourceLogicalReplicationSlot(Connection conn) {
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(String.format(OpenGaussConstants.PG_CREATE_LOGICAL_REPLICATION_SLOT,
-                     sourceConfig.getSlotName(), sourceConfig.getPluginName()))) {
+                     escapeSqlLiteral(sourceConfig.getSlotName()),
+                     escapeSqlLiteral(sourceConfig.getPluginName())))) {
             LOGGER.info("create logical replication slot {} success.", sourceConfig.getSlotName());
         } catch (SQLException e) {
             LOGGER.warn("fail to create logical replication slot, error message:{}.", e.getMessage());
@@ -144,7 +147,8 @@ public abstract class OpenGaussSource extends SourceDatabase {
     private boolean hasSourceLogicalReplicationSlot(Connection conn) {
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(String.format(
-                     OpenGaussConstants.PG_GET_LOGICAL_REPLICATION_SLOT, sourceConfig.getSlotName()))) {
+                     OpenGaussConstants.PG_GET_LOGICAL_REPLICATION_SLOT,
+                     escapeSqlLiteral(sourceConfig.getSlotName())))) {
             if (!rs.wasNull()) {
                 return true;
             }
@@ -164,7 +168,7 @@ public abstract class OpenGaussSource extends SourceDatabase {
         try (Statement stmt = conn.createStatement()) {
             if (hasSourceLogicalReplicationSlot(conn)) {
                 stmt.executeQuery(String.format(OpenGaussConstants.PG_DROP_LOGICAL_REPLICATION_SLOT,
-                        sourceConfig.getSlotName()));
+                        escapeSqlLiteral(sourceConfig.getSlotName())));
             }
         } catch (SQLException e) {
             LOGGER.warn("fail to drop logical replication slot, error message:{}.", e.getMessage());
@@ -180,7 +184,9 @@ public abstract class OpenGaussSource extends SourceDatabase {
     protected void setReplicaIdentity(Table table) {
         try (Connection conn = connection.getConnection(sourceConfig.getDbConn())) {
             if (!table.isHasPrimaryKey()) {
-                String sql = String.format(OpenGaussConstants.PG_SET_TABLE_REPLICA_IDNTITY_FULL, table.getSchemaName(), table.getTableName());
+                String sql = String.format(OpenGaussConstants.PG_SET_TABLE_REPLICA_IDNTITY_FULL,
+                        DatabaseUtils.formatObjName(table.getSchemaName()),
+                        DatabaseUtils.formatObjName(table.getTableName()));
                 LOGGER.warn("Table '{}' does not has a primary key, will enable replica identity full",
                         table.getSchemaName() + "." + table.getTableName());
                 conn.createStatement().execute(sql);
@@ -201,7 +207,7 @@ public abstract class OpenGaussSource extends SourceDatabase {
     @Override
     protected List<Table> getSchemaAllTables(String schema, Connection conn) {
         List<Table> tables = new ArrayList<>();
-        String queryTableSql = String.format(getQueryTableSql(), schema);
+        String queryTableSql = String.format(getQueryTableSql(), escapeSqlLiteral(schema));
         try (Statement stmt = conn.createStatement();
             ResultSet rs = stmt.executeQuery(queryTableSql)) {
             while (rs.next()) {
@@ -596,7 +602,8 @@ public abstract class OpenGaussSource extends SourceDatabase {
         StringJoiner parents = new StringJoiner(",");
         try (Statement stmt = connection.createStatement();
              ResultSet rst = stmt.executeQuery(
-                     String.format(OpenGaussConstants.GET_PARENT_TABLE, schemaName, tableName))) {
+                     String.format(OpenGaussConstants.GET_PARENT_TABLE,
+                             escapeSqlLiteral(schemaName), escapeSqlLiteral(tableName)))) {
             while (rst.next()) {
                 parents.add(rst.getString(1));
             }
@@ -967,14 +974,15 @@ public abstract class OpenGaussSource extends SourceDatabase {
     protected void lockTable(Table table, Connection conn) throws SQLException {
         try (Statement statement = conn.createStatement()) {
             statement.execute(String.format(OpenGaussConstants.SET_TABLE_SNAPSHOT_SQL,
-                    table.getSchemaName(), table.getTableName()));
+                    DatabaseUtils.formatObjName(table.getSchemaName()),
+                    DatabaseUtils.formatObjName(table.getTableName())));
         }
     }
 
     @Override
     protected String getQueryWithLock(Table table, List<Column> columns, Connection conn) {
         List<String> columnNames = columns.stream().map(column -> {
-            String name = column.getName();
+            String name = DatabaseUtils.formatObjName(column.getName());
             if (PostgresColumnType.isGeometryTypes(column.getTypeName())) {
                 return "ST_AsText(" + name + ") AS " + name;
             }
@@ -987,8 +995,8 @@ public abstract class OpenGaussSource extends SourceDatabase {
         }
         return String.format(queryDataSql,
                 String.join(CommonConstants.DELIMITER, columnNames),
-                table.getSchemaName(),
-                table.getTableName());
+                DatabaseUtils.formatObjName(table.getSchemaName()),
+                DatabaseUtils.formatObjName(table.getTableName()));
     }
 
     @Override
@@ -1024,7 +1032,7 @@ public abstract class OpenGaussSource extends SourceDatabase {
 
     @Override
     protected String getQueryIndexSql(String schema) {
-        return String.format(OpenGaussConstants.QUERY_INDEX_SQL, schema);
+        return String.format(OpenGaussConstants.QUERY_INDEX_SQL, escapeSqlLiteral(schema));
     }
 
     @Override
@@ -1037,7 +1045,7 @@ public abstract class OpenGaussSource extends SourceDatabase {
         try (Statement stmt = conn.createStatement();
             ResultSet colRs = stmt.executeQuery(
                 String.format(OpenGaussConstants.QUERY_INDEX_COL_SQL, objectId,
-                    tableIndex.getIndexName()))) {
+                    escapeSqlLiteral(tableIndex.getIndexName())))) {
             while (colRs.next()) {
                 indexCols.add(colRs.getString("column_name"));
             }
@@ -1051,7 +1059,7 @@ public abstract class OpenGaussSource extends SourceDatabase {
         if (tableIndex.isUnique()) {
             try (Statement stmt = conn.createStatement();
                  ResultSet constraintRs = stmt.executeQuery(String.format(OpenGaussConstants.QUERY_CONSTRAINTS_SQL,
-                         schema, tableIndex.getIndexName()))) {
+                         escapeSqlLiteral(schema), escapeSqlLiteral(tableIndex.getIndexName())))) {
                 while (constraintRs.next()) {
                     tableIndex.setConstraint(constraintRs.getInt(1) > 0);
                 }
@@ -1066,7 +1074,7 @@ public abstract class OpenGaussSource extends SourceDatabase {
 
     @Override
     protected String getQueryFkSql(String schema) {
-        return String.format(OpenGaussConstants.QUERY_FOREIGN_KEY_SQL, schema);
+        return String.format(OpenGaussConstants.QUERY_FOREIGN_KEY_SQL, escapeSqlLiteral(schema));
     }
 
     @Override
@@ -1098,7 +1106,15 @@ public abstract class OpenGaussSource extends SourceDatabase {
                 String inheritsDdl = null;
                 String parents = getParentTables(conn, table);
                 if (!(StringUtils.isEmpty(parents))) {
-                    inheritsDdl = String.format(" Inherits (%s)", parents);
+                    String[] parentArray = parents.split(",");
+                    StringBuilder quoted = new StringBuilder();
+                    for (int i = 0; i < parentArray.length; i++) {
+                        if (i > 0) {
+                            quoted.append(",");
+                        }
+                        quoted.append(DatabaseUtils.formatObjName(parentArray[i].trim()));
+                    }
+                    inheritsDdl = String.format(" Inherits (%s)", quoted.toString());
                 }
                 Optional<String> createTableSqlOptional = generateTableDefinition(conn, table, inheritsDdl);
                 if (createTableSqlOptional.isPresent()) {

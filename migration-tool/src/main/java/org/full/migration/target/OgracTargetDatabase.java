@@ -302,8 +302,8 @@ public class OgracTargetDatabase extends AbstractTargetDatabase {
             for (String permission : requiredPermissions) {
                 String checkPermissionSql = String.format(
                     "SELECT 1 FROM ADM_TAB_PRIVS WHERE grantee = '%s' AND privilege = '%s'",
-                    username.toUpperCase(Locale.ROOT),
-                    permission
+                    escapeSqlLiteral(username.toUpperCase(Locale.ROOT)),
+                    escapeSqlLiteral(permission)
                 );
                 try (ResultSet rs = statement.executeQuery(checkPermissionSql)) {
                     if (!rs.next()) {
@@ -311,7 +311,7 @@ public class OgracTargetDatabase extends AbstractTargetDatabase {
                         String grantPermissionSql = String.format(
                             "GRANT %s TO %s",
                             permission,
-                            username
+                            quoteIdent(username)
                         );
                         statement.execute(grantPermissionSql);
                         LOGGER.info("Granted {} to user: {}", permission, username);
@@ -368,12 +368,16 @@ public class OgracTargetDatabase extends AbstractTargetDatabase {
                 }
                 if (object instanceof TableAutoIncrement tableAutoIncrement) {
                     try {
-                        executeSql = String.format(CREATE_AUTO_INCREMENT_SQL, tableAutoIncrement.getSchemaName(),
-                                tableAutoIncrement.getTableName(), tableAutoIncrement.getColumnName());
+                        executeSql = String.format(CREATE_AUTO_INCREMENT_SQL,
+                                quoteIdent(tableAutoIncrement.getSchemaName()),
+                                quoteIdent(tableAutoIncrement.getTableName()),
+                                tableAutoIncrement.getColumnName());
                         statement.executeUpdate(executeSql);
                         LOGGER.info("write {}  [{}] success", logPrefix, executeSql);
-                        executeSql = String.format(RESET_AUTO_INCREMENT_SQL, tableAutoIncrement.getSchemaName(),
-                                tableAutoIncrement.getTableName(), tableAutoIncrement.getMaxAutoIncrement());
+                        executeSql = String.format(RESET_AUTO_INCREMENT_SQL,
+                                quoteIdent(tableAutoIncrement.getSchemaName()),
+                                quoteIdent(tableAutoIncrement.getTableName()),
+                                tableAutoIncrement.getMaxAutoIncrement());
                         statement.executeUpdate(executeSql);
                         LOGGER.info("write {}  [{}] success", logPrefix, executeSql);
                     } catch (SQLException e) {
@@ -392,7 +396,8 @@ public class OgracTargetDatabase extends AbstractTargetDatabase {
     }
 
     private Optional<String> getCreatePkSql(TablePrimaryKey tablePrimaryKey) {
-        return Optional.of(String.format(CREATE_PK_SQL, tablePrimaryKey.getSchemaName(), tablePrimaryKey.getTableName(),
+        return Optional.of(String.format(CREATE_PK_SQL, quoteIdent(tablePrimaryKey.getSchemaName()),
+                quoteIdent(tablePrimaryKey.getTableName()),
                 DatabaseUtils.formatMultiColName(tablePrimaryKey.getColumnName())));
     }
 
@@ -409,9 +414,12 @@ public class OgracTargetDatabase extends AbstractTargetDatabase {
 
     private Optional<String> getCreateFkSql(TableForeignKey tableForeignKey) {
         return Optional.of(
-                String.format(CREATE_FK_SQL, tableForeignKey.getSchemaName(), tableForeignKey.getParentTable(),
-                        tableForeignKey.getFkName(), tableForeignKey.getParentColumn(), tableForeignKey.getSchemaName(),
-                        tableForeignKey.getReferencedTable(),DatabaseUtils.formatMultiColName(tableForeignKey.getReferencedColumn())));
+                String.format(CREATE_FK_SQL, quoteIdent(tableForeignKey.getSchemaName()),
+                        quoteIdent(tableForeignKey.getParentTable()),
+                        quoteIdent(tableForeignKey.getFkName()), tableForeignKey.getParentColumn(),
+                        quoteIdent(tableForeignKey.getSchemaName()),
+                        quoteIdent(tableForeignKey.getReferencedTable()),
+                        DatabaseUtils.formatMultiColName(tableForeignKey.getReferencedColumn())));
     }
 
     /**
@@ -479,7 +487,8 @@ public class OgracTargetDatabase extends AbstractTargetDatabase {
             Table table = tableMeta.getTable();
             conn.setAutoCommit(false);
             conn.setSchema(table.getTargetSchemaName());
-            statement.execute(String.format(DROP_TABLE_SQL, table.getTableName()));
+            statement.execute(String.format(DROP_TABLE_SQL,
+                    table.getTableName().replace("\"", "\"\"")));
             String createTableSql = tableMeta.getCreateTableSql();
             
             executeCreateTableSql(statement, createTableSql, table);
@@ -603,5 +612,25 @@ public class OgracTargetDatabase extends AbstractTargetDatabase {
             dataXManager.shutdown();
             LOGGER.info("DataXManager shutdown completed");
         }
+    }
+
+    /**
+     * Quote a SQL identifier by doubling internal double quotes.
+     *
+     * @param identifier the raw identifier
+     * @return the identifier with internal quotes escaped
+     */
+    private static String quoteIdent(String identifier) {
+        return identifier == null ? "" : identifier.replace("\"", "\"\"");
+    }
+
+    /**
+     * Escape single quotes in a SQL string literal.
+     *
+     * @param value the raw value
+     * @return the escaped value
+     */
+    private static String escapeSqlLiteral(String value) {
+        return value == null ? "" : value.replace("'", "''");
     }
 }

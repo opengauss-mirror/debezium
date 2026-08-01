@@ -238,20 +238,20 @@ public class OracleSqlTools extends SqlTools {
         if (tableFullName.split("\\.").length < 2) {
             return null;
         }
-        String sql = String.format(Locale.ENGLISH,
-                "SELECT a.owner AS schema, a.table_name AS table_name FROM dba_constraints a,dba_constraints b "
+        String sql = "SELECT a.owner AS schema, a.table_name AS table_name FROM dba_constraints a,dba_constraints b "
                         + "WHERE a.constraint_type = 'R' AND b.constraint_type = 'P' "
                         + "AND a.r_constraint_name = b.constraint_name  "
-                        + "AND b.table_name = '%s' AND b.owner = '%s'",
-                tableFullName.split("\\.")[1].toUpperCase(Locale.ROOT),
-                tableFullName.split("\\.")[0].toUpperCase(Locale.ROOT));
-        try (PreparedStatement preparedStatement = connection.prepareStatement(sql);
-             ResultSet resultSet = preparedStatement.executeQuery();) {
-            List<String> tableList = new ArrayList<>();
-            while (resultSet.next()) {
-                tableList.add(resultSet.getString("SCHEMA") + "." + resultSet.getString("TABLE_NAME"));
+                        + "AND b.table_name = ? AND b.owner = ?";
+        try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+            preparedStatement.setString(1, tableFullName.split("\\.")[1].toUpperCase(Locale.ROOT));
+            preparedStatement.setString(2, tableFullName.split("\\.")[0].toUpperCase(Locale.ROOT));
+            try (ResultSet resultSet = preparedStatement.executeQuery()) {
+                List<String> tableList = new ArrayList<>();
+                while (resultSet.next()) {
+                    tableList.add(resultSet.getString("SCHEMA") + "." + resultSet.getString("TABLE_NAME"));
+                }
+                return tableList;
             }
-            return tableList;
         } catch (SQLException e) {
             LOGGER.error("SQL exception occurred in sql tools", e);
         }

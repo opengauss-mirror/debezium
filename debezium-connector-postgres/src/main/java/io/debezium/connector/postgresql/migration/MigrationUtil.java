@@ -34,9 +34,13 @@ public class MigrationUtil {
      */
     public static void switchSchema(String schema, Connection connection) {
         try (Statement stmt = connection.createStatement()) {
-            stmt.execute(String.format(Locale.ROOT, PostgresSqlConstant.SWITCHSCHEMA, schema));
+            stmt.execute(String.format(Locale.ROOT, PostgresSqlConstant.SWITCHSCHEMA, quotePgIdent(schema)));
         } catch (SQLException e) {
             LOGGER.error("postgresql set search_path occurred SQLException", e);
         }
+    }
+
+    private static String quotePgIdent(String identifier) {
+        return "\"" + (identifier == null ? "" : identifier.replace("\"", "\"\"")) + "\"";
     }
 }

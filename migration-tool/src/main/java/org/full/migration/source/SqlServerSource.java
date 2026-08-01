@@ -93,7 +93,7 @@ public class SqlServerSource extends SourceDatabase {
     @Override
     protected List<Table> getSchemaAllTables(String schema, Connection conn) {
         List<Table> tables = new ArrayList<>();
-        String queryTableSql = String.format(SqlServerSqlConstants.QUERY_TABLE_SQL, schema);
+        String queryTableSql = String.format(SqlServerSqlConstants.QUERY_TABLE_SQL, escapeSqlLiteral(schema));
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(queryTableSql)) {
             while (rs.next()) {
@@ -177,7 +177,7 @@ public class SqlServerSource extends SourceDatabase {
                 return "";
             }
             String nullType = column.isOptional() ? "" : " NOT NULL ";
-            columnDdl.add(String.format("%s %s %s", colName, colType, nullType));
+            columnDdl.add(String.format("\"%s\" %s %s", colName.replace("\"", "\"\""), colType, nullType));
         }
         return columnDdl.toString();
     }
@@ -388,8 +388,10 @@ public class SqlServerSource extends SourceDatabase {
             return name;
         }).collect(Collectors.toList());
         return String.format(SqlServerSqlConstants.QUERY_WITH_LOCK_SQL,
-            String.join(CommonConstants.DELIMITER, columnNames), table.getCatalogName(), table.getSchemaName(),
-            table.getTableName());
+            String.join(CommonConstants.DELIMITER, columnNames),
+            escapeBracketIdent(table.getCatalogName()),
+            escapeBracketIdent(table.getSchemaName()),
+            escapeBracketIdent(table.getTableName()));
     }
 
     @Override
@@ -438,10 +440,12 @@ public class SqlServerSource extends SourceDatabase {
             startValue = startValue == 0 ? (increment > 0 ? 1 : -1) : startValue;
             boolean isCycling = rs.getBoolean("isCycling");
             long currentValue = rs.getLong("currentValue");
+            String seqName = rs.getString("name");
             return String.format(Locale.ROOT,
-                "CREATE SEQUENCE IF NOT EXISTS %s START WITH %d INCREMENT BY %d MINVALUE %d MAXVALUE %d %s CACHE %d; "
-                    + "SELECT setval('%s', %d);", rs.getString("name"), startValue, increment, minValue, maxValue,
-                isCycling ? "CYCLE" : "NOCYCLE", cacheSize, rs.getString("name"), currentValue);
+                "CREATE SEQUENCE IF NOT EXISTS \"%s\" START WITH %d INCREMENT BY %d MINVALUE %d MAXVALUE %d %s CACHE %d; "
+                    + "SELECT setval('%s', %d);",
+                seqName.replace("\"", "\"\""), startValue, increment, minValue, maxValue,
+                isCycling ? "CYCLE" : "NOCYCLE", cacheSize, escapeSqlLiteral(seqName), currentValue);
         }
         return rs.getString("definition");
     }
@@ -463,7 +467,7 @@ public class SqlServerSource extends SourceDatabase {
 
     @Override
     protected String getQueryIndexSql(String schema) {
-        return String.format(SqlServerSqlConstants.QUERY_INDEX_SQL, schema);
+        return String.format(SqlServerSqlConstants.QUERY_INDEX_SQL, escapeSqlLiteral(schema));
     }
 
     @Override
@@ -477,7 +481,7 @@ public class SqlServerSource extends SourceDatabase {
         try (Statement stmt = conn.createStatement();
             ResultSet colRs = stmt.executeQuery(
                 String.format(SqlServerSqlConstants.QUERY_INDEX_COL_SQL, objectId, objectId,
-                    tableIndex.getIndexName()))) {
+                    escapeSqlLiteral(tableIndex.getIndexName())))) {
             while (colRs.next()) {
                 indexCols.add(colRs.getString("name"));
             }
@@ -498,10 +502,20 @@ public class SqlServerSource extends SourceDatabase {
 
     @Override
     protected String getQueryFkSql(String schema) {
-        return String.format(SqlServerSqlConstants.QUERY_FOREIGN_KEY_SQL, schema);
+        return String.format(SqlServerSqlConstants.QUERY_FOREIGN_KEY_SQL, escapeSqlLiteral(schema));
     }
 
     private String convertCondition(String definition) {
         return definition.replace("[", "").replace("]", "");
+    }
+
+    /**
+     * Escape a SQL Server bracket-quoted identifier by doubling internal ].
+     *
+     * @param identifier the raw identifier
+     * @return the escaped identifier
+     */
+    private static String escapeBracketIdent(String identifier) {
+        return identifier == null ? "" : identifier.replace("]", "]]");
     }
 }
