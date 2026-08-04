@@ -15,7 +15,6 @@ public interface SqlDatabaseController extends DatabaseController<SqlDatabaseCli
     default SqlDatabaseClient getDatabaseClient(String username, String password) {
         String databaseUrl = getPublicDatabaseUrl();
         LOGGER.info("Creating SQL database client for '" + databaseUrl + "'");
-        LOGGER.info("Using credentials '" + username + "' / '" + password + "'");
         return new SqlDatabaseClient(databaseUrl, username, password);
     }
 

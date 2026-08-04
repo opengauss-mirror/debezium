@@ -148,12 +148,12 @@ public class TargetDatabase extends AbstractTargetDatabase{
     public void createSchemas(Set<String> schemas) {
         for (String schema : schemas) {
             try (Connection conn = connection.getConnection(dbConfig); Statement stmt = conn.createStatement()) {
-                String sql = String.format(CREATE_SCHEMA_SQL, schema);
+                String sql = String.format(CREATE_SCHEMA_SQL, quoteIdent(schema));
                 if (isKeepExistingSchema) {
                     stmt.execute(sql);
                 } else {
                     conn.setAutoCommit(false);
-                    stmt.execute(String.format(DROP_SCHEMA_SQL, schema));
+                    stmt.execute(String.format(DROP_SCHEMA_SQL, quoteIdent(schema)));
                     stmt.execute(sql);
                     conn.commit();
                 }
@@ -327,7 +327,9 @@ public class TargetDatabase extends AbstractTargetDatabase{
         String tableName = tableData.getTable().getTableName();
         String xlogLocation = tableData.getSnapshotPoint();
         try (Statement stmt = conn.createStatement()) {
-            String sql = String.format(CommonConstants.INSERT_REPLICA_TABLES_SQL, schemaName, tableName, xlogLocation, xlogLocation);
+            String sql = String.format(CommonConstants.INSERT_REPLICA_TABLES_SQL,
+                    escapeSqlLiteral(schemaName), escapeSqlLiteral(tableName),
+                    escapeSqlLiteral(xlogLocation), escapeSqlLiteral(xlogLocation));
             stmt.execute(sql);
             LOGGER.info("{}.{} snapshot information has inserted into sch_debezium.pg_replica_tables.",
                     schemaName, tableName);
@@ -362,7 +364,7 @@ public class TargetDatabase extends AbstractTargetDatabase{
         connection.setAutoCommit(false);
         try (InputStreamReader csvReader = new InputStreamReader(Files.newInputStream(Paths.get(path)),
             StandardCharsets.UTF_8)) {
-            String copySql = String.format(COPY_SQL, targetSchema, tableName);
+            String copySql = String.format(COPY_SQL, quoteIdent(targetSchema), quoteIdent(tableName));
             copyManager.copyIn(copySql, csvReader);
             csvReader.close();
             connection.commit();
@@ -390,7 +392,8 @@ public class TargetDatabase extends AbstractTargetDatabase{
             connection.setAutoCommit(true);
             boolean isSuccess = false;
             try {
-                isSuccess = copyLineByLine(copyManager, String.format("%s.%s", targetSchema, tableName), path);
+                isSuccess = copyLineByLine(copyManager,
+                        quoteIdent(targetSchema) + "." + quoteIdent(tableName), path);
             } catch (SQLException retryEx) {
                 LOGGER.error("copyLineByLine for {}.{} threw an exception, err:{}",
                     schemaName, tableName, retryEx.getMessage());
@@ -769,15 +772,18 @@ public class TargetDatabase extends AbstractTargetDatabase{
     }
 
     private Optional<String> getCreatePkSql(TablePrimaryKey tablePrimaryKey) {
-        return Optional.of(String.format(CREATE_PK_SQL, tablePrimaryKey.getSchemaName(), tablePrimaryKey.getTableName(),
-                tablePrimaryKey.getPkName(), DatabaseUtils.formatMultiColName(tablePrimaryKey.getColumnName())));
+        return Optional.of(String.format(CREATE_PK_SQL, quoteIdent(tablePrimaryKey.getSchemaName()),
+                quoteIdent(tablePrimaryKey.getTableName()), quoteIdent(tablePrimaryKey.getPkName()),
+                DatabaseUtils.formatMultiColName(tablePrimaryKey.getColumnName())));
     }
 
     private Optional<String> getCreateFkSql(TableForeignKey tableForeignKey) {
         return Optional.of(
-            String.format(CREATE_FK_SQL, tableForeignKey.getSchemaName(), tableForeignKey.getParentTable(),
-                tableForeignKey.getFkName(), tableForeignKey.getParentColumn(), tableForeignKey.getSchemaName(),
-                tableForeignKey.getReferencedTable(), tableForeignKey.getReferencedColumn()));
+            String.format(CREATE_FK_SQL, quoteIdent(tableForeignKey.getSchemaName()),
+                quoteIdent(tableForeignKey.getParentTable()),
+                quoteIdent(tableForeignKey.getFkName()), tableForeignKey.getParentColumn(),
+                quoteIdent(tableForeignKey.getSchemaName()), quoteIdent(tableForeignKey.getReferencedTable()),
+                tableForeignKey.getReferencedColumn()));
     }
 
     /**
@@ -790,5 +796,25 @@ public class TargetDatabase extends AbstractTargetDatabase{
         } catch (SQLException e) {
             LOGGER.error("drop replica schema(sch_debezium) has occurred an exception, detail:{}", e.getMessage());
         }
+    }
+
+    /**
+     * Quote a SQL identifier by doubling internal double quotes.
+     *
+     * @param identifier the raw identifier
+     * @return the identifier with internal quotes escaped
+     */
+    private static String quoteIdent(String identifier) {
+        return identifier == null ? "" : identifier.replace("\"", "\"\"");
+    }
+
+    /**
+     * Escape single quotes in a SQL string literal.
+     *
+     * @param value the raw value
+     * @return the escaped value
+     */
+    private static String escapeSqlLiteral(String value) {
+        return value == null ? "" : value.replace("'", "''");
     }
 }

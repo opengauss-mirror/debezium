@@ -243,7 +243,7 @@ public class PostgresDataReplayWorkThread extends ReplayWorkThread {
     }
 
     private void processFullPrefix(SinkDataRecord sinkDataRecord, String tableFullName) {
-        String truncateSql = String.format("truncate table %s;", tableFullName);
+        String truncateSql = String.format("truncate table %s;", quotePgQualifiedIdent(tableFullName));
         try {
             statement.executeUpdate(truncateSql);
         } catch (SQLException sqlException) {
@@ -272,8 +272,8 @@ public class PostgresDataReplayWorkThread extends ReplayWorkThread {
             CopyManager copyManager = new CopyManager((BaseConnection) connection);
             FileReader csvReader = new FileReader(path);
             long start = System.currentTimeMillis();
-            row = copyManager.copyIn(String.format(Locale.ROOT, PostgresSqlConstant.COPY_SQL, tableFullName),
-                    csvReader);
+            row = copyManager.copyIn(String.format(Locale.ROOT, PostgresSqlConstant.COPY_SQL,
+                    quotePgQualifiedIdent(tableFullName)), csvReader);
             copyTime += System.currentTimeMillis() - start;
             if (isCommitProcess) {
                 if (sliceNumber > totalSlice) {
@@ -519,5 +519,24 @@ public class PostgresDataReplayWorkThread extends ReplayWorkThread {
      */
     public Map<String, ProgressInfo> getTableProcessMap() {
         return tableProcessMap;
+    }
+
+    private static String quotePgIdent(String identifier) {
+        return "\"" + (identifier == null ? "" : identifier.replace("\"", "\"\"")) + "\"";
+    }
+
+    private static String quotePgQualifiedIdent(String qualifiedName) {
+        if (qualifiedName == null) {
+            return "\"\"";
+        }
+        String[] parts = qualifiedName.split("\\.");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) {
+                sb.append(".");
+            }
+            sb.append(quotePgIdent(parts[i]));
+        }
+        return sb.toString();
     }
 }

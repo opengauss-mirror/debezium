@@ -57,12 +57,12 @@ public class PostgresSqlConstant {
      */
     public static final String GETPKINFO = "SELECT conname AS constraint_name, a.attname AS column_name "
             + "FROM pg_constraint con JOIN pg_attribute a ON a.attnum = ANY(con.conkey) AND a.attrelid = con.conrelid "
-            + "    JOIN pg_class c ON c.oid = con.conrelid WHERE con.contype = 'p' AND c.relname = '%s'";
+            + "    JOIN pg_class c ON c.oid = con.conrelid WHERE con.contype = 'p' AND c.relname = ?";
 
     /**
      * get table index info
      */
-    public static final String GETINDEXINFO = "select indexname, indexdef from pg_indexes where tablename = '%s'";
+    public static final String GETINDEXINFO = "select indexname, indexdef from pg_indexes where tablename = ?";
 
     /**
      * add table unique constraint info
@@ -74,7 +74,7 @@ public class PostgresSqlConstant {
      */
     public static final String GETUNIQUECONSTRAINT = "SELECT conname, pg_get_constraintdef(p.oid) AS "
             + " constraint_definition FROM pg_constraint p JOIN pg_class c ON p.conrelid = c.oid "
-            + " JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = '%s' and c.relname = '%s' "
+            + " JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = ? and c.relname = ? "
             + " AND p.contype = 'u';" ;
 
     /**
@@ -98,33 +98,33 @@ public class PostgresSqlConstant {
      */
     public static final String GET_PARENT_TABLE = "SELECT p.relname AS parent_table_name FROM pg_inherits i JOIN "
             + " pg_class c ON i.inhrelid = c.oid JOIN pg_class p ON i.inhparent = p.oid "
-            + " JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = '%s' and c.relname = '%s'";
+            + " JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = ? and c.relname = ?";
 
     /**
      * if table have partitions
      */
     public static final String HAVE_PARTITION_SQL = "select relispartition from pg_class c join pg_namespace n ON"
-            + " c.relnamespace = n.oid where n.nspname = '%s' and c.relname = '%s'";
+            + " c.relnamespace = n.oid where n.nspname = ? and c.relname = ?";
 
     /**
      * get child tables
      */
     public static final String GET_CHILD_TABLE = "SELECT c.relname AS child_table_name FROM pg_inherits i "
             + " JOIN pg_class c ON i.inhrelid = c.oid JOIN pg_class p ON i.inhparent = p.oid "
-            + " JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = '%s' AND p.relname = '%s'";
+            + " JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = ? AND p.relname = ?";
 
     /**
      * get table partition key
      */
     public static final String GET_PARTITION_KEY = "select pg_get_partkeydef(c.oid) from pg_class c "
-            + " join pg_namespace n on c.relnamespace = n.oid where n.nspname = '%s' and relname = '%s'";
+            + " join pg_namespace n on c.relnamespace = n.oid where n.nspname = ? and relname = ?";
 
     /**
      * get table partition expression
      */
     public static final String GET_PARTITION_EXPR = "select pg_get_partkeydef(c.oid), "
             + " pg_get_expr(relpartbound, c.oid) from pg_class c join pg_namespace n on c.relnamespace = n.oid "
-            + " where n.nspname = '%s' and relname = '%s'";
+            + " where n.nspname = ? and relname = ?";
 
     /**
      * sql to create schema sch_debezium and table pg_replica_tables
@@ -177,8 +177,8 @@ public class PostgresSqlConstant {
             + "    pg_class c"
             + "    LEFT JOIN pg_namespace n on n.oid = c.relnamespace"
             + " where"
-            + "    n.nspname = '%s' "
-            + "    and c.relname = '%s' "
+            + "    n.nspname = ? "
+            + "    and c.relname = ? "
             + " order by"
             + "    c.reltuples asc;";
 

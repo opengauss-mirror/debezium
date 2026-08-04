@@ -64,6 +64,20 @@ import static java.lang.Math.toIntExact;
 public class OpengaussReplicationConnection extends JdbcConnection implements ReplicationConnection {
     private static Logger LOGGER = LoggerFactory.getLogger(OpengaussReplicationConnection.class);
 
+    /**
+     * Escape a SQL string literal: single quotes are doubled.
+     */
+    private static String escapeStringLiteral(String value) {
+        return value == null ? "" : value.replace("'", "''");
+    }
+
+    /**
+     * Quote a SQL identifier: wrapped in double quotes, internal double quotes are doubled.
+     */
+    private static String quoteIdent(String identifier) {
+        return "\"" + (identifier == null ? "" : identifier.replace("\"", "\"\"")) + "\"";
+    }
+
     private final String slotName;
     private final String publicationName;
     private final RelationalTableFilters tableFilter;
@@ -139,9 +153,9 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
         String createPublicationStmt;
         if (OpengaussConnectorConfig.LogicalDecoder.PGOUTPUT.equals(plugin)) {
             LOGGER.info("Initializing PgOutput logical decoder publication");
-            try {
-                String selectPublication = String.format("SELECT COUNT(1) FROM pg_publication WHERE pubname = '%s'", publicationName);
-                try (Statement stmt = connection.createStatement();ResultSet rs = stmt.executeQuery(selectPublication)) {
+            try (Statement stmt = connection.createStatement()) {
+                String selectPublication = "SELECT COUNT(1) FROM pg_publication WHERE pubname = '" + escapeStringLiteral(publicationName) + "'";
+                try (ResultSet rs = stmt.executeQuery(selectPublication)) {
                     if (rs.next()) {
                         Long count = rs.getLong(1);
                         if (count == 0L) {
@@ -173,15 +187,14 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
     }
 
     private void appointAllTableCreatePublication(Statement stmt) throws SQLException {
-        String createPublicationStmt = String.format("CREATE PUBLICATION %s FOR ALL TABLES "
-                + "WITH(publish='insert,update,delete,truncate',ddl='all');",
-                publicationName);
+        String createPublicationStmt = "CREATE PUBLICATION " + quoteIdent(publicationName) + " FOR ALL TABLES "
+                + "WITH(publish='insert,update,delete,truncate',ddl='all');";
         LOGGER.info("Creating Publication with statement '{}'", createPublicationStmt);
         try {
             // Publication doesn't exist, create it.
             stmt.execute(createPublicationStmt);
         } catch (SQLException e) {
-            createPublicationStmt = String.format("CREATE PUBLICATION %s FOR ALL TABLES;", publicationName);
+            createPublicationStmt = "CREATE PUBLICATION " + quoteIdent(publicationName) + " FOR ALL TABLES;";
             LOGGER.info("Create Publication with publish parameter failed, "
                     + "Attempt to create Publication with statement '{}'", createPublicationStmt);
             stmt.execute(createPublicationStmt);
@@ -204,16 +217,15 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
                     .collect(Collectors.toSet());
             tableFilterString = newTablesToCapture.stream().map(TableId::toDoubleQuotedString).collect(Collectors.joining(", "));
             if (tableFilterString.isEmpty()) {
-                throw new DebeziumException(String.format("No table filters found for filtered publication %s", publicationName));
+                throw new DebeziumException("No table filters found for filtered publication " + publicationName);
             }
-            createPublicationStmt = String.format("CREATE PUBLICATION %s FOR TABLE %s;",
-                    publicationName, tableFilterString);
+            createPublicationStmt = "CREATE PUBLICATION " + quoteIdent(publicationName) + " FOR TABLE " + tableFilterString + ";";
             LOGGER.info("Creating Publication with statement '{}'", createPublicationStmt);
             // Publication doesn't exist, create it but restrict to the tableFilter.
             stmt.execute(createPublicationStmt);
         }
         catch (Exception e) {
-            throw new ConnectException(String.format("Unable to create filtered publication %s for %s", publicationName, tableFilterString),
+            throw new ConnectException("Unable to create filtered publication " + publicationName + " for " + tableFilterString,
                     e);
         }
     }
@@ -387,8 +399,9 @@ public class OpengaussReplicationConnection extends JdbcConnection implements Re
         initPublication();
 
         try (Statement stmt = connection.createStatement()) {
-            String createCommand = String.format("SELECT * FROM pg_create_logical_replication_slot('%s', '%s');",
-                    slotName, plugin.getPostgresPluginName());
+            String createCommand = "SELECT * FROM pg_create_logical_replication_slot('"
+                    + escapeStringLiteral(slotName) + "', '"
+                    + escapeStringLiteral(plugin.getPostgresPluginName()) + "');";
             LOGGER.info("Creating replication slot with command {}", createCommand);
             stmt.execute(createCommand);
             // when we are in Postgres 9.4+, we can parse the slot creation info,

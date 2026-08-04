@@ -6,6 +6,7 @@
 package io.debezium.connector.mysql.sink.util;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -69,26 +70,28 @@ public class SqlTools {
 
     private TableMetaData getTableMetaData(String schemaName, String tableName, long timeMillis) {
         List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
-        String sql = String.format(Locale.ENGLISH, "select column_name, data_type, numeric_scale, "
-                        + "character_maximum_length from information_schema.columns where table_schema = '%s' "
-                        + "and table_name = '%s' order by ordinal_position;",
-                schemaName, tableName);
+        String sql = "select column_name, data_type, numeric_scale, "
+                        + "character_maximum_length from information_schema.columns where table_schema = ? "
+                        + "and table_name = ? order by ordinal_position;";
         TableMetaData tableMetaData = null;
-        try (Statement statement = connection.createStatement();
-                ResultSet rs = statement.executeQuery(sql)) {
-            while (rs.next()) {
-                ColumnMetaData columnMetaData = new ColumnMetaData(rs.getString("column_name"),
-                        rs.getString("data_type"), rs.getString("numeric_scale") == null ? -1
-                                : rs.getInt("numeric_scale"));
-                if (rs.getString("character_maximum_length") != null) {
-                    columnMetaData.setLength(rs.getInt("character_maximum_length"));
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, schemaName);
+            statement.setString(2, tableName);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    ColumnMetaData columnMetaData = new ColumnMetaData(rs.getString("column_name"),
+                            rs.getString("data_type"), rs.getString("numeric_scale") == null ? -1
+                                    : rs.getInt("numeric_scale"));
+                    if (rs.getString("character_maximum_length") != null) {
+                        columnMetaData.setLength(rs.getInt("character_maximum_length"));
+                    }
+                    columnMetaDataList.add(columnMetaData);
                 }
-                columnMetaDataList.add(columnMetaData);
+                for (int i = 0; i < columnMetaDataList.size(); i++) {
+                    columnMetaDataList.get(i).setPrimaryColumn(isColumnPrimary(schemaName, tableName, i + 1));
+                }
+                tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
             }
-            for (int i = 0; i < columnMetaDataList.size(); i++) {
-                columnMetaDataList.get(i).setPrimaryColumn(isColumnPrimary(schemaName, tableName, i + 1));
-            }
-            tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
         }
         catch (SQLException exp) {
             refreshConnection();
@@ -138,19 +141,22 @@ public class SqlTools {
         if (name.length == 2) {
             tableName = name[1];
         }
-        String sql = String.format(Locale.ENGLISH, "select c.relname, ns.nspname from pg_class c left join"
+        String sql = "select c.relname, ns.nspname from pg_class c left join"
                 + " pg_namespace ns on c.relnamespace=ns.oid left join pg_constraint cons on c.oid=cons.conrelid"
                 + " left join pg_class oc on cons.confrelid=oc.oid"
                 + " left join  pg_namespace ons on oc.relnamespace=ons.oid"
-                + " where oc.relname='%s' and ons.nspname='%s';",
-                tableName, schemaName);
+                + " where oc.relname=? and ons.nspname=?;";
         refreshConnection();
-        try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
-            List<String> tableList = new ArrayList<>();
-            while (rs.next()) {
-                tableList.add(rs.getString("nspname") + "." + rs.getString("relname"));
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, tableName);
+            statement.setString(2, schemaName);
+            try (ResultSet rs = statement.executeQuery()) {
+                List<String> tableList = new ArrayList<>();
+                while (rs.next()) {
+                    tableList.add(rs.getString("nspname") + "." + rs.getString("relname"));
+                }
+                return tableList;
             }
-            return tableList;
         }
         catch (SQLException e) {
             LOGGER.error("{}SQL exception occurred in sql tools", ErrorCode.SQL_EXCEPTION, e);
@@ -159,17 +165,21 @@ public class SqlTools {
     }
 
     private String[] getPrimaryKeyValue(String schemaName, String tableName) {
-        String sql = String.format(Locale.ENGLISH, "select conkey from pg_constraint where "
-                + "conrelid = (select oid from pg_class where relname = '%s' and "
-                + "relnamespace = (select oid from pg_namespace where nspname= '%s')) and"
-                + " contype = 'p';", tableName, schemaName);
+        String sql = "select conkey from pg_constraint where "
+                + "conrelid = (select oid from pg_class where relname = ? and "
+                + "relnamespace = (select oid from pg_namespace where nspname= ?)) and"
+                + " contype = 'p';";
         refreshConnection();
-        try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
-            while (rs.next()) {
-                String indexes = rs.getString("conkey");
-                if (indexes != null) {
-                    return indexes.substring(indexes.indexOf("{") + 1, indexes.lastIndexOf("}"))
-                            .split(",");
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, tableName);
+            statement.setString(2, schemaName);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    String indexes = rs.getString("conkey");
+                    if (indexes != null) {
+                        return indexes.substring(indexes.indexOf("{") + 1, indexes.lastIndexOf("}"))
+                                .split(",");
+                    }
                 }
             }
         }

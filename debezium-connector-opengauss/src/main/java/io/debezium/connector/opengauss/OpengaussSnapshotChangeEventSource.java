@@ -47,6 +47,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermission;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -93,8 +94,8 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
             + "    pg_class c"
             + "    LEFT JOIN pg_namespace n on n.oid = c.relnamespace"
             + " where"
-            + "    n.nspname = '%s' "
-            + "    and c.relname = '%s' "
+            + "    n.nspname = ? "
+            + "    and c.relname = ? "
             + " order by"
             + "    c.reltuples asc;";
 
@@ -578,7 +579,6 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
         RelationalSnapshotContext<OpengaussPartition,
                 OpengaussOffsetContext> snapshotContext = dataEventsParam.getSnapshotContext();
         LOGGER.info("Exporting data from table '{}' ({} of {} tables)", table.id(), tableOrder, tableCount);
-        String sizeSql = String.format(Locale.ROOT, METADATASQL, table.id().schema(), table.id().table());
         final Optional<String> selectStatement = determineSnapshotSelect(snapshotContext, table.id());
         if (!selectStatement.isPresent()) {
             LOGGER.warn("For table '{}' the select statement was not provided, skipping table", table.id());
@@ -587,14 +587,18 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
         }
         try (Connection connection = connectorConfig.getConnection(connectorConfig);
              Statement statement = readTableStatementOpengauss(connection);
-             ResultSet resultSet = statement.executeQuery(sizeSql)) {
-            if (resultSet.next()) {
-                long size = resultSet.getLong("avgRowLength");
-                int pageRows = size == 0 ? 100000 : (int) (pageSize.intValue() / size);
-                pageRows = Math.max(pageRows, 1);
-                ResultSet rs = statement.executeQuery(selectStatement.get());
-                unLockTable(tableCount, dataEventsParam.getSnapshotContext());
-                processData(dataEventsParam, rs, pageRows, ogFullSourceProcessInfo, size);
+             PreparedStatement sizeStatement = connection.prepareStatement(METADATASQL)) {
+            sizeStatement.setString(1, table.id().schema());
+            sizeStatement.setString(2, table.id().table());
+            try (ResultSet resultSet = sizeStatement.executeQuery()) {
+                if (resultSet.next()) {
+                    long size = resultSet.getLong("avgRowLength");
+                    int pageRows = size == 0 ? 100000 : (int) (pageSize.intValue() / size);
+                    pageRows = Math.max(pageRows, 1);
+                    ResultSet rs = statement.executeQuery(selectStatement.get());
+                    unLockTable(tableCount, dataEventsParam.getSnapshotContext());
+                    processData(dataEventsParam, rs, pageRows, ogFullSourceProcessInfo, size);
+                }
             }
             connection.commit();
         } catch (SQLException e) {

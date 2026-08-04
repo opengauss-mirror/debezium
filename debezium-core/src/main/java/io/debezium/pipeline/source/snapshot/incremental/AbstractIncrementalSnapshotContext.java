@@ -39,11 +39,41 @@ public class AbstractIncrementalSnapshotContext<T> implements IncrementalSnapsho
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AbstractIncrementalSnapshotContext.class);
 
+    // Best-effort deserialization filter (JDK 9+) to mitigate unsafe deserialization (CWE-502).
+    // Loaded reflectively so the source remains Java 8 compatible for the Cassandra build profile.
+    private static final java.lang.reflect.Method SET_OBJECT_INPUT_FILTER;
+    private static final Object PK_WHITELIST_FILTER;
+    static {
+        java.lang.reflect.Method setFilter = null;
+        Object filter = null;
+        try {
+            Class<?> filterClass = Class.forName("java.io.ObjectInputFilter");
+            setFilter = ObjectInputStream.class.getMethod("setObjectInputFilter", filterClass);
+            Class<?> configClass = Class.forName("java.io.ObjectInputFilter$Config");
+            java.lang.reflect.Method createFilter = configClass.getMethod("createFilter", String.class);
+            // Allow only primary-key value types and primitive/object arrays; reject everything else.
+            String pattern = "java.lang.Number;java.lang.String;java.util.UUID;"
+                    + "java.math.BigInteger;java.math.BigDecimal;"
+                    + "java.lang.Integer;java.lang.Long;java.lang.Short;java.lang.Byte;"
+                    + "java.lang.Float;java.lang.Double;java.lang.Boolean;java.lang.Character;"
+                    + "[Ljava.lang.Object;;[B;[I;[J;[S;[Z;[F;[D;[C;!*";
+            filter = createFilter.invoke(null, pattern);
+        }
+        catch (ReflectiveOperationException | RuntimeException e) {
+            // JDK 8 or filter unavailable: fall back to legacy (unfiltered) behavior.
+        }
+        SET_OBJECT_INPUT_FILTER = setFilter;
+        PK_WHITELIST_FILTER = filter;
+    }
+
     // TODO Consider which (if any) information should be exposed in source info
     public static final String INCREMENTAL_SNAPSHOT_KEY = "incremental_snapshot";
     public static final String DATA_COLLECTIONS_TO_SNAPSHOT_KEY = INCREMENTAL_SNAPSHOT_KEY + "_collections";
     public static final String EVENT_PRIMARY_KEY = INCREMENTAL_SNAPSHOT_KEY + "_primary_key";
     public static final String TABLE_MAXIMUM_KEY = INCREMENTAL_SNAPSHOT_KEY + "_maximum_key";
+
+    // Upper bound for the incremental snapshot queue to prevent unbounded resource consumption (CWE-400).
+    private static final int MAX_SNAPSHOT_COLLECTIONS = 1024;
 
     /**
      * @code(true) if window is opened and deduplication should be executed
@@ -93,8 +123,12 @@ public class AbstractIncrementalSnapshotContext<T> implements IncrementalSnapsho
     }
 
     public boolean closeWindow(String id) {
-        if (notExpectedChunk(id)) {
+        if (currentChunkId == null || !id.equals(currentChunkId + "-close")) {
             LOGGER.info("Received request to close window with id = '{}', expected = '{}', request ignored", id, currentChunkId);
+            return false;
+        }
+        if (!windowOpened) {
+            LOGGER.info("Received request to close window with id = '{}' but window is not opened, request ignored", id);
             return false;
         }
         LOGGER.debug("Closing window for incremental snapshot chunk");
@@ -131,6 +165,14 @@ public class AbstractIncrementalSnapshotContext<T> implements IncrementalSnapsho
     private Object[] serializedStringToArray(String field, String serialized) {
         try (final ByteArrayInputStream bis = new ByteArrayInputStream(HexConverter.convertFromHex(serialized));
                 ObjectInputStream ois = new ObjectInputStream(bis)) {
+            if (SET_OBJECT_INPUT_FILTER != null && PK_WHITELIST_FILTER != null) {
+                try {
+                    SET_OBJECT_INPUT_FILTER.invoke(ois, PK_WHITELIST_FILTER);
+                }
+                catch (ReflectiveOperationException e) {
+                    // ignore; proceed without filter
+                }
+            }
             return (Object[]) ois.readObject();
         }
         catch (Exception e) {
@@ -163,13 +205,30 @@ public class AbstractIncrementalSnapshotContext<T> implements IncrementalSnapsho
     }
 
     private void addTablesIdsToSnapshot(List<T> dataCollectionIds) {
-        dataCollectionsToSnapshot.addAll(dataCollectionIds);
+        for (T id : dataCollectionIds) {
+            if (dataCollectionsToSnapshot.size() >= MAX_SNAPSHOT_COLLECTIONS) {
+                LOGGER.warn("Incremental snapshot queue reached the maximum size of {}, skipping remaining data collections", MAX_SNAPSHOT_COLLECTIONS);
+                break;
+            }
+            if (!dataCollectionsToSnapshot.contains(id)) {
+                dataCollectionsToSnapshot.add(id);
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")
     public List<T> addDataCollectionNamesToSnapshot(List<String> dataCollectionIds) {
         final List<T> newDataCollectionIds = dataCollectionIds.stream()
-                .map(x -> (T) TableId.parse(x, useCatalogBeforeSchema))
+                .map(x -> {
+                    try {
+                        return (T) TableId.parse(x, useCatalogBeforeSchema);
+                    }
+                    catch (IllegalArgumentException e) {
+                        LOGGER.warn("Skipping malformed data collection identifier '{}': {}", x, e.getMessage());
+                        return null;
+                    }
+                })
+                .filter(x -> x != null)
                 .collect(Collectors.toList());
         addTablesIdsToSnapshot(newDataCollectionIds);
         return newDataCollectionIds;

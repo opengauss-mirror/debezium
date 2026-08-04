@@ -6,7 +6,9 @@ package org.full.migration.test.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 import java.io.FileInputStream;
 import java.util.HashMap;
@@ -37,7 +39,10 @@ public class ConfigManager {
      */
     private Map<String, Object> loadConfig(String configFilePath) {
         try (FileInputStream fis = new FileInputStream(configFilePath)) {
-            Yaml yaml = new Yaml();
+            // Use SafeConstructor to only allow standard YAML tags and block arbitrary
+            // class instantiation via global tags (e.g. !!ClassName), mitigating the
+            // unsafe deserialization risk (CVE-2022-1471). Plain maps/scalars are unaffected.
+            Yaml yaml = new Yaml(new SafeConstructor(new LoaderOptions()));
             return yaml.load(fis);
         } catch (Exception e) {
             LOGGER.error("Error loading configuration: " + e.getMessage(), e);

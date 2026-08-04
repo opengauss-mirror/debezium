@@ -82,18 +82,20 @@ public class MysqlSqlTools extends SqlTools {
      */
     public TableMetaData getTableMetaData(String schemaName, String tableName) {
         List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
-        String sql = String.format(Locale.ENGLISH, "select column_name, data_type, column_key from " +
-                        "information_schema.columns where table_schema = '%s' and table_name = '%s'" +
-                        " order by ordinal_position;",
-                schemaName, tableName);
+        String sql = "select column_name, data_type, column_key from " +
+                        "information_schema.columns where table_schema = ? and table_name = ?" +
+                        " order by ordinal_position;";
         TableMetaData tableMetaData = null;
-        try (Statement statement = refreshConnection().createStatement();
-             ResultSet rs = statement.executeQuery(sql)) {
-            while (rs.next()) {
-                columnMetaDataList.add(new ColumnMetaData(rs.getString("column_name"),
-                        rs.getString("data_type"), "PRI".equals(rs.getString("column_key"))));
+        try (PreparedStatement statement = refreshConnection().prepareStatement(sql)) {
+            statement.setString(1, schemaName);
+            statement.setString(2, tableName);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    columnMetaDataList.add(new ColumnMetaData(rs.getString("column_name"),
+                            rs.getString("data_type"), "PRI".equals(rs.getString("column_key"))));
+                }
+                tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
             }
-            tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
         } catch (SQLException exp) {
             try {
                 if (!connection.isValid(1)) {
@@ -115,16 +117,19 @@ public class MysqlSqlTools extends SqlTools {
      * @return List<String> the table name list rely on the old table
      */
     public List<String> getForeignTableList(String tableFullName) {
-        String sql = String.format(Locale.ENGLISH, "select TABLE_NAME, TABLE_SCHEMA from INFORMATION_SCHEMA"
-                + ".KEY_COLUMN_USAGE where REFERENCED_TABLE_NAME='%s' and TABLE_SCHEMA='%s'", tableFullName
-                .split("\\.")[1], tableFullName.split("\\.")[0]);
-        try (PreparedStatement preparedStatement = refreshConnection().prepareStatement(sql);
-             ResultSet resultSet = preparedStatement.executeQuery();) {
-            List<String> tableList = new ArrayList<>();
-            while (resultSet.next()) {
-                tableList.add(resultSet.getString("TABLE_SCHEMA") + "." + resultSet.getString("TABLE_NAME"));
+        String sql = "select TABLE_NAME, TABLE_SCHEMA from INFORMATION_SCHEMA"
+                + ".KEY_COLUMN_USAGE where REFERENCED_TABLE_NAME=? and TABLE_SCHEMA=?";
+        String[] parts = tableFullName.split("\\.");
+        try (PreparedStatement preparedStatement = refreshConnection().prepareStatement(sql)) {
+            preparedStatement.setString(1, parts.length > 1 ? parts[1] : "");
+            preparedStatement.setString(2, parts[0]);
+            try (ResultSet resultSet = preparedStatement.executeQuery()) {
+                List<String> tableList = new ArrayList<>();
+                while (resultSet.next()) {
+                    tableList.add(resultSet.getString("TABLE_SCHEMA") + "." + resultSet.getString("TABLE_NAME"));
+                }
+                return tableList;
             }
-            return tableList;
         } catch (SQLException e) {
             LOGGER.error("{}SQL exception occurred in sql tools", ErrorCode.SQL_EXCEPTION, e);
         }
@@ -230,12 +235,13 @@ public class MysqlSqlTools extends SqlTools {
         String column = columnString;
         String query = sql;
         for (ColumnMetaData columnMetaData : columnList) {
+            String quotedColumn = "`" + columnMetaData.getColumnName().replace("`", "``") + "`";
             if ("bit".equals(columnMetaData.getColumnType())) {
                 hasSpecialType = true;
                 column = column.replace(columnMetaData.getColumnName(),
                         "@" + columnMetaData.getColumnName());
                 condition.append(String.format(Locale.ROOT, " %s=cast(@%s as signed)",
-                        columnMetaData.getColumnName(), columnMetaData.getColumnName()));
+                        quotedColumn, columnMetaData.getColumnName()));
                 condition.append(",");
             }
             if (binaryTypes.contains(columnMetaData.getColumnType())) {
@@ -243,7 +249,7 @@ public class MysqlSqlTools extends SqlTools {
                 column = column.replace(columnMetaData.getColumnName(),
                         "@" + columnMetaData.getColumnName());
                 condition.append(String.format(Locale.ROOT, " %s=UNHEX(@%s)",
-                        columnMetaData.getColumnName(), columnMetaData.getColumnName()));
+                        quotedColumn, columnMetaData.getColumnName()));
                 condition.append(",");
             }
         }
@@ -385,6 +391,23 @@ public class MysqlSqlTools extends SqlTools {
      * @return String the wrapped name
      */
     public String loadFullSql(String tableFullName) {
-        return String.format(Locale.ROOT, LOAD_SQL, tableFullName, System.lineSeparator());
+        String quotedTableFullName = quoteMysqlTableFullName(tableFullName);
+        return String.format(Locale.ROOT, LOAD_SQL, quotedTableFullName, System.lineSeparator());
+    }
+
+    /**
+     * Quote a MySQL table full name (schema.table) by wrapping each part in backticks
+     * and doubling any internal backticks.
+     */
+    private static String quoteMysqlTableFullName(String tableFullName) {
+        String[] parts = tableFullName.split("\\.", 2);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) {
+                sb.append(".");
+            }
+            sb.append("`").append(parts[i].replace("`", "``")).append("`");
+        }
+        return sb.toString();
     }
 }

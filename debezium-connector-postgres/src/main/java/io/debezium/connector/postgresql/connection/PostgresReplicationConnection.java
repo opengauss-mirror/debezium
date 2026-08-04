@@ -58,6 +58,20 @@ public class PostgresReplicationConnection extends JdbcConnection implements Rep
 
     private static Logger LOGGER = LoggerFactory.getLogger(PostgresReplicationConnection.class);
 
+    /**
+     * Escape a SQL string literal: single quotes are doubled.
+     */
+    private static String escapeStringLiteral(String value) {
+        return value == null ? "" : value.replace("'", "''");
+    }
+
+    /**
+     * Quote a SQL identifier: wrapped in double quotes, internal double quotes are doubled.
+     */
+    private static String quoteIdent(String identifier) {
+        return "\"" + (identifier == null ? "" : identifier.replace("\"", "\"\"")) + "\"";
+    }
+
     private final String slotName;
     private final String publicationName;
     private final RelationalTableFilters tableFilter;
@@ -133,7 +147,7 @@ public class PostgresReplicationConnection extends JdbcConnection implements Rep
         if (PostgresConnectorConfig.LogicalDecoder.PGOUTPUT.equals(plugin)) {
             LOGGER.info("Initializing PgOutput logical decoder publication");
             try {
-                String selectPublication = String.format("SELECT COUNT(1) FROM pg_publication WHERE pubname = '%s'", publicationName);
+                String selectPublication = "SELECT COUNT(1) FROM pg_publication WHERE pubname = '" + escapeStringLiteral(publicationName) + "'";
                 try (Statement stmt = pgConnection().createStatement(); ResultSet rs = stmt.executeQuery(selectPublication)) {
                     if (rs.next()) {
                         Long count = rs.getLong(1);
@@ -143,7 +157,7 @@ public class PostgresReplicationConnection extends JdbcConnection implements Rep
                                 case DISABLED:
                                     throw new ConnectException("Publication autocreation is disabled, please create one and restart the connector.");
                                 case ALL_TABLES:
-                                    createPublicationStmt = String.format("CREATE PUBLICATION %s FOR ALL TABLES;", publicationName);
+                                    createPublicationStmt = "CREATE PUBLICATION " + quoteIdent(publicationName) + " FOR ALL TABLES;";
                                     LOGGER.info("Creating Publication with statement '{}'", createPublicationStmt);
                                     // Publication doesn't exist, create it.
                                     stmt.execute(createPublicationStmt);
@@ -153,15 +167,15 @@ public class PostgresReplicationConnection extends JdbcConnection implements Rep
                                         Set<TableId> tablesToCapture = determineCapturedTables();
                                         tableFilterString = tablesToCapture.stream().map(TableId::toDoubleQuotedString).collect(Collectors.joining(", "));
                                         if (tableFilterString.isEmpty()) {
-                                            throw new DebeziumException(String.format("No table filters found for filtered publication %s", publicationName));
+                                            throw new DebeziumException("No table filters found for filtered publication " + publicationName);
                                         }
-                                        createPublicationStmt = String.format("CREATE PUBLICATION %s FOR TABLE %s;", publicationName, tableFilterString);
+                                        createPublicationStmt = "CREATE PUBLICATION " + quoteIdent(publicationName) + " FOR TABLE " + tableFilterString + ";";
                                         LOGGER.info("Creating Publication with statement '{}'", createPublicationStmt);
                                         // Publication doesn't exist, create it but restrict to the tableFilter.
                                         stmt.execute(createPublicationStmt);
                                     }
                                     catch (Exception e) {
-                                        throw new ConnectException(String.format("Unable to create filtered publication %s for %s", publicationName, tableFilterString),
+                                        throw new ConnectException("Unable to create filtered publication " + publicationName + " for " + tableFilterString,
                                                 e);
                                     }
                                     break;
@@ -351,11 +365,8 @@ public class PostgresReplicationConnection extends JdbcConnection implements Rep
         initPublication();
 
         try (Statement stmt = pgConnection().createStatement()) {
-            String createCommand = String.format(
-                    "CREATE_REPLICATION_SLOT \"%s\" %s LOGICAL %s",
-                    slotName,
-                    tempPart,
-                    plugin.getPostgresPluginName());
+            String createCommand = "CREATE_REPLICATION_SLOT " + quoteIdent(slotName) + " "
+                    + tempPart + " LOGICAL " + plugin.getPostgresPluginName();
             LOGGER.info("Creating replication slot with command {}", createCommand);
             stmt.execute(createCommand);
             // when we are in Postgres 9.4+, we can parse the slot creation info,

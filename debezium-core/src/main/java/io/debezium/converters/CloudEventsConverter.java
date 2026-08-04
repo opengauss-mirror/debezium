@@ -323,10 +323,12 @@ public class CloudEventsConverter implements Converter {
                         if (ceField.name().equals(CloudEventsMaker.FieldName.DATA)) {
                             struct.put(ceField, dataField.value());
                         }
-                        struct.put(ceField, incompleteStruct.get(ceField));
+                        else {
+                            struct.put(ceField, incompleteStruct.get(ceField));
+                        }
                     }
 
-                    return new SchemaAndValue(schema, value);
+                    return new SchemaAndValue(schema, struct);
                 }
                 catch (SerializationException | IOException | IllegalAccessException | InvocationTargetException e) {
                     throw new DataException("Converting byte[] to Kafka Connect data failed due to serialization error: ", e);

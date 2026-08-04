@@ -288,7 +288,15 @@ public class OracleSourceDatabase extends SourceDatabase {
 
     private String getInheritsDdlIfNeeded(String parents) {
         if (!(StringUtils.isEmpty(parents))) {
-            return String.format(" Inherits (%s)", parents);
+            String[] parentArray = parents.split(",");
+            StringBuilder quoted = new StringBuilder();
+            for (int i = 0; i < parentArray.length; i++) {
+                if (i > 0) {
+                    quoted.append(",");
+                }
+                quoted.append(quoteIdent(parentArray[i].trim()));
+            }
+            return String.format(" Inherits (%s)", quoted.toString());
         }
         return null;
     }
@@ -328,7 +336,8 @@ public class OracleSourceDatabase extends SourceDatabase {
         if (commentText == null || commentText.isEmpty()) {
             return Optional.empty();
         }
-        String tableCommentSql = String.format("COMMENT ON TABLE %s IS '%s'", tableName, commentText);
+        String tableCommentSql = String.format("COMMENT ON TABLE \"%s\" IS '%s'",
+                tableName.replace("\"", "\"\""), escapeSqlLiteral(commentText));
         return Optional.of(tableCommentSql);
     }
 
@@ -974,8 +983,8 @@ public class OracleSourceDatabase extends SourceDatabase {
 
     private long queryMaxValue(Connection conn, TableAutoIncrement tableAutoIncrement) {
         String querySql = String.format(OracleSqlConstants.QUERY_TABLE_COLUMN_MAX_VALUE_SQL,
-                tableAutoIncrement.getColumnName().toUpperCase(Locale.ROOT),
-                tableAutoIncrement.getTableName().toUpperCase(Locale.ROOT));
+                quoteIdent(tableAutoIncrement.getColumnName().toUpperCase(Locale.ROOT)),
+                quoteIdent(tableAutoIncrement.getTableName().toUpperCase(Locale.ROOT)));
         try (PreparedStatement pstmt = conn.prepareStatement(querySql)) {
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -990,7 +999,7 @@ public class OracleSourceDatabase extends SourceDatabase {
 
     @Override
     protected String getQueryFkSql(String schema) {
-        return String.format(OracleSqlConstants.QUERY_FK_SQL, schema.toUpperCase(Locale.ROOT));
+        return String.format(OracleSqlConstants.QUERY_FK_SQL, escapeSqlLiteral(schema.toUpperCase(Locale.ROOT)));
     }
 
     @Override
@@ -1095,5 +1104,18 @@ public class OracleSourceDatabase extends SourceDatabase {
 
     protected String getQueryAutoIncrementSql() {
         return OracleSqlConstants.QUERY_AUTO_INCREMENT_COLUMNS_SQL;
+    }
+
+    /**
+     * Quote a SQL identifier by wrapping it in double quotes and doubling internal quotes.
+     *
+     * @param identifier the raw identifier
+     * @return the quoted and escaped identifier
+     */
+    private static String quoteIdent(String identifier) {
+        if (identifier == null) {
+            return "\"\"";
+        }
+        return "\"" + identifier.replace("\"", "\"\"") + "\"";
     }
 }

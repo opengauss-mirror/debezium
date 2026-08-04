@@ -71,6 +71,7 @@ public class PostgresSource extends SourceDatabase {
             put("regnamespace", "varchar");
         }
     };
+
     public PostgresSource(GlobalConfig globalConfig) {
         super(globalConfig);
         this.connection = new PostgresConnection();
@@ -100,7 +101,8 @@ public class PostgresSource extends SourceDatabase {
                     }
                     LOGGER.info("Creating new publication dbz_publication for plugin '{}'", sourceConfig.getPluginName());
                     try {
-                        migraTableString = String.join(", ", migraTableNames);;
+                        migraTableString = String.join(", ", migraTableNames);
+                        ;
                         if (migraTableString.isEmpty()) {
                             LOGGER.warn("No table found for publication dbz_publication");
                         }
@@ -196,7 +198,7 @@ public class PostgresSource extends SourceDatabase {
      * getSchemaAllTables
      *
      * @param schema schema
-     * @param conn conn
+     * @param conn   conn
      * @return tables
      */
     @Override
@@ -204,7 +206,7 @@ public class PostgresSource extends SourceDatabase {
         List<Table> tables = new ArrayList<>();
         String queryTableSql = String.format(PostgresSqlConstants.QUERY_TABLE_SQL, schema);
         try (Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery(queryTableSql)) {
+             ResultSet rs = stmt.executeQuery(queryTableSql)) {
             while (rs.next()) {
                 String tableName = rs.getString("TableName");
                 Table table = new Table(sourceConfig.getDbConn().getDatabase(), schema, tableName);
@@ -236,7 +238,7 @@ public class PostgresSource extends SourceDatabase {
     /**
      * createCustomOrDomainTypesSql
      *
-     * @param conn conn
+     * @param conn   conn
      * @param schema schema
      * @return postgresCustomTypeMetas
      */
@@ -253,7 +255,7 @@ public class PostgresSource extends SourceDatabase {
     /**
      * createCompositeTypeSql
      *
-     * @param conn conn
+     * @param conn   conn
      * @param schema schema
      * @return postgresCustomTypeMetas
      */
@@ -286,7 +288,7 @@ public class PostgresSource extends SourceDatabase {
     /**
      * createEnumTypeSql
      *
-     * @param conn conn
+     * @param conn   conn
      * @param schema schema
      * @return postgresCustomTypeMetas
      */
@@ -325,7 +327,7 @@ public class PostgresSource extends SourceDatabase {
     /**
      * createDomainTypeSql
      *
-     * @param conn conn
+     * @param conn   conn
      * @param schema schema
      * @return postgresCustomTypeMetas
      */
@@ -385,7 +387,7 @@ public class PostgresSource extends SourceDatabase {
 
             // 已经带引号的值保持原样，不带引号的加单引号
             if (value.startsWith("\"") && value.endsWith("\"")) {
-                sb.append("'").append(value.substring(1, value.length()-1)).append("'");
+                sb.append("'").append(value.substring(1, value.length() - 1)).append("'");
             } else {
                 sb.append("'").append(value).append("'");
             }
@@ -397,14 +399,14 @@ public class PostgresSource extends SourceDatabase {
      * getPartitionTableSize
      *
      * @param schemaName schemaName
-     * @param tableName tableName
+     * @param tableName  tableName
      * @param connection connection
      * @return partitionTableSize
      */
     private Map<String, Long> getPartitionTableSize(String schemaName, String tableName, Connection connection) {
         Map<String, Long> result = new HashMap<>();
-            result.put("totalTableSize", 0L);
-            result.put("tableRows", 0L);
+        result.put("totalTableSize", 0L);
+        result.put("tableRows", 0L);
         try (Statement stmt = connection.createStatement();
              ResultSet rst = stmt.executeQuery(
                      String.format(PostgresSqlConstants.QUERY_PATITION_TABLE_SIZE_SQL, schemaName, tableName))) {
@@ -426,10 +428,10 @@ public class PostgresSource extends SourceDatabase {
     /**
      * getGeneratedDefine
      *
-     * @param conn conn
-     * @param schema schema
+     * @param conn      conn
+     * @param schema    schema
      * @param tableName tableName
-     * @param column column
+     * @param column    column
      * @return generatedDefine
      */
     @Override
@@ -498,7 +500,7 @@ public class PostgresSource extends SourceDatabase {
     /**
      * getColumnDdl
      *
-     * @param table table
+     * @param table   table
      * @param columns columns
      * @return columnDdl
      */
@@ -524,6 +526,7 @@ public class PostgresSource extends SourceDatabase {
     public String getColumnDdl(Table table, List<Column> columns, String targetDatabaseType) {
         return getColumnDdl(table, columns);
     }
+
     /**
      * getColumnType
      *
@@ -614,7 +617,7 @@ public class PostgresSource extends SourceDatabase {
             if (rst.next()) {
                 pgServerVersion = rst.getString(1);
             }
-        }catch (SQLException e) {
+        } catch (SQLException e) {
             LOGGER.error("get current server version failed. errMsg: {}", e.getMessage());
         }
         return getServerVersionNum(pgServerVersion);
@@ -623,13 +626,13 @@ public class PostgresSource extends SourceDatabase {
     /**
      * isPartitionChildTable
      *
-     * @param schema schema
-     * @param table table
+     * @param schema     schema
+     * @param table      table
      * @param connection connection
      * @return hasPartition
      */
     @Override
-    public boolean isPartitionChildTable(String schema, String table, Connection connection){
+    public boolean isPartitionChildTable(String schema, String table, Connection connection) {
         // below pg10 no exist partition table
         boolean hasPartition = false;
         try (Statement stmt = connection.createStatement();
@@ -654,7 +657,7 @@ public class PostgresSource extends SourceDatabase {
      * getParentTables
      *
      * @param connection connection
-     * @param table table
+     * @param table      table
      * @return parents
      */
     @Override
@@ -681,7 +684,7 @@ public class PostgresSource extends SourceDatabase {
      * @return partitionDdl
      */
     @Override
-    public String getPartitionDdl(Connection conn, String schemaName, String tableName, boolean isSubPartition) throws SQLException{
+    public String getPartitionDdl(Connection conn, String schemaName, String tableName, boolean isSubPartition) throws SQLException {
         if (getCurrentServerVersion(conn)
                 < ServerVersion.from(PostgresSqlConstants.PG_SERVER_V10).getVersionNum()) {
             return "";
@@ -961,7 +964,8 @@ public class PostgresSource extends SourceDatabase {
             }
             return name;
         }).collect(Collectors.toList());
-        String queryDataSql = PostgresSqlConstants.QUERY_WITH_LOCK_SQL;;
+        String queryDataSql = PostgresSqlConstants.QUERY_WITH_LOCK_SQL;
+        ;
         List<String> childs = getChildTables(table.getSchemaName(), table.getTableName(), conn);
         if (childs.size() > 0) {
             if (!table.isPartition()) {
@@ -995,8 +999,8 @@ public class PostgresSource extends SourceDatabase {
                 return PostgresSqlConstants.QUERY_SEQUENCE_SQL;
             default:
                 LOGGER.error(
-                    "objectType {} is invalid, please check the object of migration in [view, function, trigger, "
-                        + "procedure, sequence]", objectType);
+                        "objectType {} is invalid, please check the object of migration in [view, function, trigger, "
+                                + "procedure, sequence]", objectType);
                 throw new IllegalArgumentException(objectType + "is an unsupported type.");
         }
     }
@@ -1047,13 +1051,13 @@ public class PostgresSource extends SourceDatabase {
     private long[] getDataTypeBounds(int systemTypeId) {
         switch (systemTypeId) {
             case 23: // int
-                return new long[] {-2147483648L, 2147483647L};
+                return new long[]{-2147483648L, 2147483647L};
             case 21: // smallint
-                return new long[] {-32768L, 32767L};
+                return new long[]{-32768L, 32767L};
             case 16: // tinyint
-                return new long[] {0L, 255L};
+                return new long[]{0L, 255L};
             case 20: // bigint
-                return new long[] {-9223372036854775808L, 9223372036854775807L};
+                return new long[]{-9223372036854775808L, 9223372036854775807L};
             default:
                 throw new IllegalArgumentException("Unsupported data type ID: " + systemTypeId);
         }
@@ -1071,9 +1075,9 @@ public class PostgresSource extends SourceDatabase {
         long objectId = rs.getLong("object_id");
         List<String> indexCols = new ArrayList<>();
         try (Statement stmt = conn.createStatement();
-            ResultSet colRs = stmt.executeQuery(
-                String.format(PostgresSqlConstants.QUERY_INDEX_COL_SQL, objectId,
-                    tableIndex.getIndexName()))) {
+             ResultSet colRs = stmt.executeQuery(
+                     String.format(PostgresSqlConstants.QUERY_INDEX_COL_SQL, objectId,
+                             tableIndex.getIndexName()))) {
             while (colRs.next()) {
                 indexCols.add(DatabaseUtils.formatObjName(colRs.getString("column_name")));
             }

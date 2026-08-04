@@ -1627,15 +1627,16 @@ public class OpengaussConnectorConfig extends RelationalDatabaseConnectorConfig 
 
     private boolean isSystemAdmin(Connection connection) {
         String username = user();
-        String checkSql = String.format("select rolsystemadmin from pg_roles where rolname= '%s';", username);
+        String checkSql = "select rolsystemadmin from pg_roles where rolname= ?;";
 
         boolean isAdmin = false;
-        try (Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery(checkSql)
-        ) {
-            if (resultSet.next()) {
-                String permissionStr = resultSet.getString("rolsystemadmin");
-                isAdmin = "1".equals(permissionStr) || "t".equals(permissionStr);
+        try (PreparedStatement statement = connection.prepareStatement(checkSql)) {
+            statement.setString(1, username);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    String permissionStr = resultSet.getString("rolsystemadmin");
+                    isAdmin = "1".equals(permissionStr) || "t".equals(permissionStr);
+                }
             }
         } catch (SQLException e) {
             LOGGER.warn("Check user {} sysadmin permission failed. Error: {}", username, e.getMessage());

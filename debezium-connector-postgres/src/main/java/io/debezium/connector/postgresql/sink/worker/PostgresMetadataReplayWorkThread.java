@@ -181,11 +181,11 @@ public class PostgresMetadataReplayWorkThread extends ReplayWorkThread {
 
     private void createDestSchema(String schema) {
         try {
-            statement.execute(String.format(PostgresSqlConstant.SCHEMACREATE, schema));
+            statement.execute(String.format(PostgresSqlConstant.SCHEMACREATE, quotePgIdent(schema)));
             schemaCreateMap.put(schema, true);
         } catch (SQLException e) {
             LOGGER.error("create dest schema occured SQLException, error sql: "
-                    + String.format(PostgresSqlConstant.SCHEMACREATE, schema), e);
+                    + String.format(PostgresSqlConstant.SCHEMACREATE, quotePgIdent(schema)), e);
         }
     }
 
@@ -245,14 +245,15 @@ public class PostgresMetadataReplayWorkThread extends ReplayWorkThread {
             String colName = columnStruct.getString("name");
             String colType = getColumnType(columnStruct);
             String nullType = columnStruct.getBoolean("optional") ? "" : " NOT NULL ";
-            columnDdl.add(String.format("%s %s %s", colName, colType, nullType));
+            columnDdl.add(String.format("%s %s %s", quotePgIdent(colName), colType, nullType));
         }
         String defColumns = columnDdl.toString();
         String partitionDdl = sinkMetadataRecord.getPartition();
         String schema = sinkMetadataRecord.getSchemaName();
         String table = sinkMetadataRecord.getTableName();
         String targetSchema = schemaMappingMap.getOrDefault(schema, schema);
-        String createStmt = String.format(CREATETABLE_TEMP, targetSchema, table, targetSchema, table,
+        String createStmt = String.format(CREATETABLE_TEMP, quotePgIdent(targetSchema), quotePgIdent(table),
+                quotePgIdent(targetSchema), quotePgIdent(table),
                 defColumns, partitionDdl);
         // table have parents should inherit parents
         StringBuilder createStmtBuilder = new StringBuilder(createStmt);
@@ -271,7 +272,15 @@ public class PostgresMetadataReplayWorkThread extends ReplayWorkThread {
         String parents = sinkMetadataRecord.getParents();
         String inheritsDdl = "";
         if (!("".equals(parents))) {
-            inheritsDdl = String.format(" Inherits (%s)", parents);
+            String[] parentArray = parents.split(",");
+            StringBuilder quoted = new StringBuilder();
+            for (int i = 0; i < parentArray.length; i++) {
+                if (i > 0) {
+                    quoted.append(",");
+                }
+                quoted.append(quotePgQualifiedIdent(parentArray[i].trim()));
+            }
+            inheritsDdl = String.format(" Inherits (%s)", quoted.toString());
         }
         createStmtBuilder.append(inheritsDdl);
     }
@@ -350,5 +359,24 @@ public class PostgresMetadataReplayWorkThread extends ReplayWorkThread {
 
     public void setShouldStop(boolean shouldStop) {
         this.shouldStop = shouldStop;
+    }
+
+    private static String quotePgIdent(String identifier) {
+        return "\"" + (identifier == null ? "" : identifier.replace("\"", "\"\"")) + "\"";
+    }
+
+    private static String quotePgQualifiedIdent(String qualifiedName) {
+        if (qualifiedName == null) {
+            return "\"\"";
+        }
+        String[] parts = qualifiedName.split("\\.");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) {
+                sb.append(".");
+            }
+            sb.append(quotePgIdent(parts[i]));
+        }
+        return sb.toString();
     }
 }

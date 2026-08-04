@@ -75,7 +75,8 @@ public abstract class AbstractTargetDatabase implements ITargetDatabase {
             Table table = tableMeta.getTable();
             conn.setAutoCommit(false);
             conn.setSchema(table.getTargetSchemaName());
-            statement.execute(String.format(DROP_TABLE_SQL, table.getTableName()));
+            statement.execute(String.format(DROP_TABLE_SQL,
+                    table.getTableName().replace("\"", "\"\"")));
             statement.execute(tableMeta.getCreateTableSql());
             conn.commit();
             createdTables.add(table.getTargetSchemaName() + "." + table.getTableName());

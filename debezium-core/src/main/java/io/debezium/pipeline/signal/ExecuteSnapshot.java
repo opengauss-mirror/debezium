@@ -50,6 +50,10 @@ public class ExecuteSnapshot implements Signal.Action {
             return false;
         }
         SnapshotType type = getSnapshotType(signalPayload.data);
+        if (type == null) {
+            LOGGER.warn("Skipping execute-snapshot signal for data collections '{}' due to unknown snapshot type", dataCollections);
+            return false;
+        }
         LOGGER.info("Requested '{}' snapshot of data collections '{}'", type, dataCollections);
         switch (type) {
             case INCREMENTAL:

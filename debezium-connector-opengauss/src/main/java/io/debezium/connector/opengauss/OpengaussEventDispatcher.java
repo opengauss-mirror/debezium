@@ -90,7 +90,12 @@ public class OpengaussEventDispatcher<T extends DataCollectionId> extends EventD
      */
     public void dispatchDdlReplicationMessage(Partition partition, OffsetContext offsetContext, Long decodeTimestamp,
                                               OgOutputDdlReplicationMessage message) throws InterruptedException {
-        logicalDecodingMessageMonitor.ddlReplicationMessageEvent(partition, offsetContext, decodeTimestamp, message);
+        if (messageFilter.isIncluded(message.getPrefix())) {
+            logicalDecodingMessageMonitor.ddlReplicationMessageEvent(partition, offsetContext, decodeTimestamp, message);
+        }
+        else {
+            LOGGER.trace("Filtered ddl replication message with prefix{}", message.getPrefix());
+        }
     }
 
     private void enqueueLogicalDecodingMessage(SourceRecord record) throws InterruptedException {

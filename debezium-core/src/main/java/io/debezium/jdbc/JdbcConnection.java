@@ -1175,8 +1175,8 @@ public class JdbcConnection implements AutoCloseable {
      */
     public String connectionString(String urlPattern) {
         Properties props = config.asProperties();
-        return findAndReplace(urlPattern, props, JdbcConfiguration.DATABASE, JdbcConfiguration.HOSTNAME, JdbcConfiguration.PORT,
-                JdbcConfiguration.USER, JdbcConfiguration.PASSWORD);
+        return findAndReplace(urlPattern, props, JdbcConfiguration.DATABASE, JdbcConfiguration.HOSTNAME,
+                JdbcConfiguration.PORT, JdbcConfiguration.USER);
     }
 
     /**

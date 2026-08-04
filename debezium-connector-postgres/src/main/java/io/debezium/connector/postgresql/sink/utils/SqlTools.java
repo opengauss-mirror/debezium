@@ -18,6 +18,7 @@ package io.debezium.connector.postgresql.sink.utils;
 import java.io.FileReader;
 import java.io.IOException;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -93,26 +94,28 @@ public class SqlTools {
 
     private TableMetaData getTableMetaData(String schemaName, String tableName, long timeMillis) {
         List<ColumnMetaData> columnMetaDataList = new ArrayList<>();
-        String sql = String.format(Locale.ENGLISH, "select column_name, data_type, numeric_scale, "
-                + "character_maximum_length from information_schema.columns where table_schema = '%s' "
-                + "and table_name = '%s' order by ordinal_position;",
-                schemaName, tableName);
+        String sql = "select column_name, data_type, numeric_scale, "
+                + "character_maximum_length from information_schema.columns where table_schema = ? "
+                + "and table_name = ? order by ordinal_position;";
         TableMetaData tableMetaData = null;
-        try (Statement statement = connection.createStatement();
-                ResultSet rs = statement.executeQuery(sql)) {
-            while (rs.next()) {
-                ColumnMetaData columnMetaData = new ColumnMetaData(rs.getString("column_name"),
-                        rs.getString("data_type"), rs.getString("numeric_scale") == null ? -1
-                                : rs.getInt("numeric_scale"));
-                if (rs.getString("character_maximum_length") != null) {
-                    columnMetaData.setLength(rs.getInt("character_maximum_length"));
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, schemaName);
+            statement.setString(2, tableName);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    ColumnMetaData columnMetaData = new ColumnMetaData(rs.getString("column_name"),
+                            rs.getString("data_type"), rs.getString("numeric_scale") == null ? -1
+                                    : rs.getInt("numeric_scale"));
+                    if (rs.getString("character_maximum_length") != null) {
+                        columnMetaData.setLength(rs.getInt("character_maximum_length"));
+                    }
+                    columnMetaDataList.add(columnMetaData);
                 }
-                columnMetaDataList.add(columnMetaData);
+                for (int i = 0; i < columnMetaDataList.size(); i++) {
+                    columnMetaDataList.get(i).setPrimaryKeyColumn(isColumnPrimary(schemaName, tableName, i + 1));
+                }
+                tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
             }
-            for (int i = 0; i < columnMetaDataList.size(); i++) {
-                columnMetaDataList.get(i).setPrimaryKeyColumn(isColumnPrimary(schemaName, tableName, i + 1));
-            }
-            tableMetaData = new TableMetaData(schemaName, tableName, columnMetaDataList);
         }
         catch (SQLException exp) {
             try {
@@ -153,18 +156,21 @@ public class SqlTools {
      * @return List<String> the table name list rely on the old table
      */
     public List<String> getForeignTableList(String tableFullName) {
-        String sql = String.format(Locale.ENGLISH, "select c.relname, ns.nspname from pg_class c left join"
+        String sql = "select c.relname, ns.nspname from pg_class c left join"
                 + " pg_namespace ns on c.relnamespace=ns.oid left join pg_constraint cons on c.oid=cons.conrelid"
                 + " left join pg_class oc on cons.confrelid=oc.oid"
                 + " left join  pg_namespace ons on oc.relnamespace=ons.oid"
-                + " where oc.relname='%s' and ons.nspname='%s';",
-                tableFullName.split("\\.")[1], tableFullName.split("\\.")[0]);
-        try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
-            List<String> tableList = new ArrayList<>();
-            while (rs.next()) {
-                tableList.add(rs.getString("ns.nspname") + "." + rs.getString("c.relname"));
+                + " where oc.relname=? and ons.nspname=?;";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, tableFullName.split("\\.")[1]);
+            statement.setString(2, tableFullName.split("\\.")[0]);
+            try (ResultSet rs = statement.executeQuery()) {
+                List<String> tableList = new ArrayList<>();
+                while (rs.next()) {
+                    tableList.add(rs.getString("ns.nspname") + "." + rs.getString("c.relname"));
+                }
+                return tableList;
             }
-            return tableList;
         } catch (SQLException e) {
             LOGGER.error("SQL exception occurred in sql tools", e);
         }
@@ -172,16 +178,20 @@ public class SqlTools {
     }
 
     private String[] getPrimaryKeyValue(String schemaName, String tableName) {
-        String sql = String.format(Locale.ENGLISH, "select conkey from pg_constraint where "
-                + "conrelid = (select oid from pg_class where relname = '%s' and "
-                + "relnamespace = (select oid from pg_namespace where nspname= '%s')) and"
-                + " contype = 'p';", tableName, schemaName);
-        try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
-            while (rs.next()) {
-                String indexes = rs.getString("conkey");
-                if (indexes != null) {
-                    return indexes.substring(indexes.indexOf("{") + 1, indexes.lastIndexOf("}"))
-                            .split(",");
+        String sql = "select conkey from pg_constraint where "
+                + "conrelid = (select oid from pg_class where relname = ? and "
+                + "relnamespace = (select oid from pg_namespace where nspname= ?)) and"
+                + " contype = 'p';";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, tableName);
+            statement.setString(2, schemaName);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    String indexes = rs.getString("conkey");
+                    if (indexes != null) {
+                        return indexes.substring(indexes.indexOf("{") + 1, indexes.lastIndexOf("}"))
+                                .split(",");
+                    }
                 }
             }
         }
@@ -505,7 +515,27 @@ public class SqlTools {
             throws SQLException, IOException {
         CopyManager copyManager = new CopyManager((BaseConnection) connection);
         FileReader csvReader = new FileReader(path);
-        return copyManager.copyIn(String.format(Locale.ROOT, COPY_SQL, tableFullName), csvReader);
+        String safeTableFullName = quotePgQualifiedIdent(tableFullName);
+        return copyManager.copyIn(String.format(Locale.ROOT, COPY_SQL, safeTableFullName), csvReader);
+    }
+
+    private static String quotePgIdent(String identifier) {
+        return "\"" + (identifier == null ? "" : identifier.replace("\"", "\"\"")) + "\"";
+    }
+
+    private static String quotePgQualifiedIdent(String qualifiedName) {
+        if (qualifiedName == null) {
+            return "\"\"";
+        }
+        String[] parts = qualifiedName.split("\\.");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) {
+                sb.append(".");
+            }
+            sb.append(quotePgIdent(parts[i]));
+        }
+        return sb.toString();
     }
 
     /**
@@ -542,10 +572,14 @@ public class SqlTools {
      */
     public String getTableRecordSnapshotSql(SinkDataRecord sinkDataRecord) {
         SourceDataField sourceField = sinkDataRecord.getSourceField();
-        String schema = sourceField.getSchema();
-        String table = sourceField.getTable();
+        String schema = escapePgStringLiteral(sourceField.getSchema());
+        String table = escapePgStringLiteral(sourceField.getTable());
         DataReplayOperation dataReplayOperation = sinkDataRecord.getDataReplayOperation();
-        String xlogLocation = dataReplayOperation.getSnapshot();
+        String xlogLocation = escapePgStringLiteral(dataReplayOperation.getSnapshot());
         return String.format(PostgresSqlConstant.INSERT_REPLICA_TABLES_SQL, schema, table, xlogLocation, xlogLocation);
+    }
+
+    private static String escapePgStringLiteral(String value) {
+        return value == null ? "" : value.replace("'", "''");
     }
 }

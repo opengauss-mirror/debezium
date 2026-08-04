@@ -840,7 +840,7 @@ public class OpengaussConnection extends JdbcConnection {
                     return;
                 }
                 sqlMode += "".equals(sqlMode) ? "ansi_quotes" : ",ansi_quotes";
-                statement.executeUpdate(String.format("set dolphin.sql_mode='%s'", sqlMode));
+                statement.executeUpdate("set dolphin.sql_mode='" + sqlMode.replace("'", "''") + "'");
             }
         } catch (SQLException e) {
             LOGGER.warn("Parameter: dolphin.sql_mode, setting failed.");
