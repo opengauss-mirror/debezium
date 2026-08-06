@@ -1,0 +1,39 @@
+# Pre-commit hooks — repos use GitCode mirrors (not GitHub)
+# Install: pip install pre-commit && pre-commit install
+# Docs: https://pre-commit.com/
+
+minimum_pre_commit_version: "3.0.0"
+default_stages: [pre-commit]
+
+exclude: |
+  (?x)^(
+    .*\.tokens|
+    debezium-ddl-parser/gen/.*|
+    .*/target/.*|
+    .*/generated-sources/.*
+  )$
+
+repos:
+  - repo: https://gitcode.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude_types: [binary]
+      - id: end-of-file-fixer
+        exclude_types: [binary]
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      # MongoDB fixtures are often NDJSON (one object per line), not a single JSON doc
+      - id: check-json
+        exclude: ^debezium-connector-mongodb/src/test/resources/
+      # CDI placeholder beans.xml files may be empty
+      - id: check-xml
+        exclude: (^|.*/)META-INF/beans\.xml$
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+      - id: check-symlinks
+      # Do not use mixed-line-ending --fix=lf: with core.autocrlf=true on Windows
+      # it rewrites the whole tree and makes git status show thousands of false diffs.
+      - id: detect-private-key

@@ -159,6 +159,25 @@ to the database and use logical decoding to read the transaction log. Several ne
 integration test were added.
 ```
 
+### Pre-commit hooks
+
+This repository uses [pre-commit](https://pre-commit.com/) for lightweight checks before each commit (trailing whitespace, EOF, YAML/JSON/XML syntax, merge conflict markers, large files, etc.). Hook repositories are mirrored on [GitCode](https://gitcode.com/) instead of GitHub.
+
+Install once (requires Python 3 and pip):
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+Optional — run against all files:
+
+```bash
+pre-commit run --all-files
+```
+
+Configuration lives in `.pre-commit-config.yaml`. Java code style is still enforced by Maven (see below); pre-commit does not replace Checkstyle/formatter.
+
 ### Code Formatting
 
 This project utilizes a set of code style rules that are automatically applied by the build process.  There are two ways in which you can apply these rules while contributing:
@@ -169,7 +188,7 @@ This project utilizes a set of code style rules that are automatically applied b
 
 3. With the command `mvn process-sources` the code style rules can be applied automatically.
 
-In the event that a pull request is submitted with code style violations, continuous integration will fail the pull request build.  
+In the event that a pull request is submitted with code style violations, continuous integration will fail the pull request build.
 
 To fix pull requests with code style violations, simply run the project's build locally and allow the automatic formatting happen.  Once the build completes, you will have some local repository files modified to fix the coding style which can be amended on your pull request.  Once the pull request is synchronized with the formatting changes, CI will rerun the build.
 
@@ -179,7 +198,7 @@ To run the build, navigate to the project's root directory and run:
 
 It might be useful to simply run a _validate_ check against the code instead of automatically applying code style changes.  If you want to simply run validation, navigate to the project's root directory and run:
 
-    $ mvn clean install -Dformat.formatter.goal=validate -Dformat.imports.goal=check     
+    $ mvn clean install -Dformat.formatter.goal=validate -Dformat.imports.goal=check
 
 Please note that when running _validate_ checks, the build will stop as soon as it encounters its first violation.  This means it is necessary to run the build multiple times until no violations are detected.
 
