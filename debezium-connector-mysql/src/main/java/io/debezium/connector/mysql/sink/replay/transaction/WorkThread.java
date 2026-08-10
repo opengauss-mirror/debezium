@@ -51,6 +51,7 @@ public class WorkThread extends Thread {
     private boolean isTransaction;
     private boolean isConnection = true;
     private boolean isAlive = true;
+    private boolean isWaiting = false;
 
     /**
      * Constructor
@@ -114,12 +115,30 @@ public class WorkThread extends Thread {
         synchronized (lock) {
             try {
                 cleanTransaction();
+                isWaiting = true;
                 lock.wait();
             }
             catch (InterruptedException exp) {
-                LOGGER.error("{}Interrupted exception occurred", ErrorCode.THREAD_INTERRUPTED_EXCEPTION, exp);
+                // Distinguish a normal shutdown (interrupted to wake up from wait) from an abnormal interruption.
+                if (isAlive) {
+                    LOGGER.error("{}Interrupted exception occurred", ErrorCode.THREAD_INTERRUPTED_EXCEPTION, exp);
+                }
+                else {
+                    LOGGER.info("Work thread {} is interrupted for shutdown", this.getName());
+                }
+                Thread.currentThread().interrupt();
+            }
+            finally {
+                isWaiting = false;
             }
         }
+    }
+
+    /**
+     * Check if thread is waiting for new transaction
+     */
+    public boolean isWaiting() {
+        return isWaiting && isAlive && isConnection;
     }
 
     /**
@@ -132,46 +151,143 @@ public class WorkThread extends Thread {
     @Override
     public void run() {
         Thread.currentThread().setUncaughtExceptionHandler(new ThreadExceptionHandler());
-        try (Connection connection = connectionInfo.createOpenGaussConnection();
-                Statement statement = connection.createStatement()) {
-            while (isConnection) {
-                pauseThread();
-                replayTransaction(statement, connection);
+        Connection connection = null;
+        Statement statement = null;
+        while (isAlive) {
+            try {
+                if (connection == null || connection.isClosed()) {
+                    connection = connectionInfo.createOpenGaussConnection();
+                    statement = connection.createStatement();
+                    isConnection = true;
+                    LOGGER.info("Work thread {} connected to database successfully", this.getName());
+                }
+                while (isConnection && isAlive) {
+                    pauseThread();
+                    if (!isAlive) {
+                        break;
+                    }
+                    if (txn == null) {
+                        continue;
+                    }
+                    replayTransaction(statement, connection);
+                }
+            }
+            catch (Throwable exp) {
+                String errorMsg = exp.getMessage() != null ? exp.getMessage() : exp.toString();
+                LOGGER.error("{}Exception occurred in work thread {}: {}",
+                        ErrorCode.DB_CONNECTION_EXCEPTION, this.getName(), errorMsg, exp);
+                if (txn != null) {
+                    failCount++;
+                    List<String> tmpSqlList = new ArrayList<>();
+                    tmpSqlList.add("-- " + sqlPattern.format(LocalDateTime.now()) + ": " + txn.getSourceField());
+                    tmpSqlList.add("-- Connection exception: " + errorMsg);
+                    tmpSqlList.addAll(txn.getSqlList() != null ? txn.getSqlList() : new ArrayList<>());
+                    tmpSqlList.add(System.lineSeparator());
+                    failSqlList.addAll(tmpSqlList);
+                }
+                isConnection = false;
+                try {
+                    if (statement != null && !statement.isClosed()) {
+                        statement.close();
+                    }
+                    if (connection != null && !connection.isClosed()) {
+                        connection.close();
+                    }
+                }
+                catch (SQLException closeEx) {
+                    LOGGER.warn("Failed to close connection after error", closeEx);
+                }
+                statement = null;
+                connection = null;
+                cleanTransaction();
+                if (isAlive) {
+                    LOGGER.info("Work thread {} will attempt to reconnect in 5 seconds", this.getName());
+                    try {
+                        Thread.sleep(5000);
+                    }
+                    catch (InterruptedException ie) {
+                        LOGGER.warn("Reconnect wait interrupted", ie);
+                        Thread.currentThread().interrupt();
+                    }
+                }
             }
         }
-        catch (Throwable exp) {
-            LOGGER.error("{}Exception occurred in work thread {} and the exp message is {}",
-                    ErrorCode.DB_CONNECTION_EXCEPTION, this.getName(), exp.getMessage());
+        LOGGER.info("Work thread {} is stopping", this.getName());
+        try {
+            if (statement != null && !statement.isClosed()) {
+                statement.close();
+            }
+            if (connection != null && !connection.isClosed()) {
+                connection.close();
+            }
+        }
+        catch (SQLException closeEx) {
+            LOGGER.warn("Failed to close connection during shutdown", closeEx);
         }
     }
 
-    private void replayTransaction(Statement statement, Connection connection) throws SQLException {
-        boolean shouldStartTransaction = txn.getSqlList().size() > 1;
-        if (shouldStartTransaction) {
-            statement.execute(BEGIN);
+    private void replayTransaction(Statement statement, Connection connection) {
+        if (txn == null) {
+            return;
         }
-        boolean isSuccess = executeTxnSql(statement, connection);
-        if (isSuccess) {
+        try {
+            boolean shouldStartTransaction = txn.getSqlList() != null && txn.getSqlList().size() > 1;
             if (shouldStartTransaction) {
-                statement.execute(COMMIT);
+                statement.execute(BEGIN);
             }
-            successCount++;
-        }
-        else {
-            if (shouldStartTransaction && isConnection) {
-                statement.execute(ROLLBACK);
+            boolean isSuccess = executeTxnSql(statement, connection);
+            if (isSuccess) {
+                if (shouldStartTransaction) {
+                    statement.execute(COMMIT);
+                }
+                successCount++;
             }
-            failCount++;
-            List<String> tmpSqlList = new ArrayList<>();
-            tmpSqlList.add("-- " + sqlPattern.format(LocalDateTime.now()) + ": " + txn.getSourceField());
-            tmpSqlList.add("-- " + txn.getExpMessage());
-            tmpSqlList.addAll(txn.getSqlList());
-            tmpSqlList.add(System.lineSeparator());
-            failSqlList.addAll(tmpSqlList);
+            else {
+                if (shouldStartTransaction && isConnection) {
+                    try {
+                        statement.execute(ROLLBACK);
+                    }
+                    catch (SQLException rollbackEx) {
+                        LOGGER.warn("Failed to rollback transaction after error", rollbackEx);
+                    }
+                }
+                recordFailSql();
+            }
+            if (isConnection) {
+                buildAndSaveBpInfo();
+            }
         }
-        if (isConnection) {
-            buildAndSaveBpInfo();
+        catch (SQLException exp) {
+            // Transaction control statements (BEGIN/COMMIT) or breakpoint saving failed.
+            // An internal error must never block the thread: only mark the transaction as failed and
+            // continue with the next one, unless the connection itself is confirmed broken (then reconnect).
+            if (!connectionInfo.checkConnectionStatus(connection)) {
+                isConnection = false;
+            }
+            String errorMsg = exp.getMessage() != null ? exp.getMessage() : exp.toString();
+            txn.setExpMessage(errorMsg);
+            recordFailSql();
         }
+        catch (Throwable exp) {
+            // Any internal error (e.g. breakpoint persistence) must never block the thread:
+            // record the failure and continue processing the next transaction.
+            String errorMsg = exp.getMessage() != null ? exp.getMessage() : exp.toString();
+            txn.setExpMessage(errorMsg);
+            recordFailSql();
+        }
+        finally {
+            cleanTransaction();
+        }
+    }
+
+    private void recordFailSql() {
+        failCount++;
+        List<String> tmpSqlList = new ArrayList<>();
+        tmpSqlList.add("-- " + sqlPattern.format(LocalDateTime.now()) + ": " + txn.getSourceField());
+        tmpSqlList.add("-- " + txn.getExpMessage());
+        tmpSqlList.addAll(txn.getSqlList() != null ? txn.getSqlList() : new ArrayList<>());
+        tmpSqlList.add(System.lineSeparator());
+        failSqlList.addAll(tmpSqlList);
     }
 
     /**
@@ -180,7 +296,7 @@ public class WorkThread extends Thread {
      * @return boolean the canUse
      */
     public boolean canUse() {
-        return isAlive;
+        return isAlive && isConnection;
     }
 
     /**
@@ -192,21 +308,36 @@ public class WorkThread extends Thread {
         isAlive = alive;
     }
 
+    /**
+     * Sets the isStop.
+     *
+     * @param isStop boolean isStop
+     */
+    public void setIsStop(boolean isStop) {
+        if (isStop) {
+            this.isAlive = false;
+            this.isConnection = false;
+            this.interrupt();
+        }
+    }
+
     private boolean executeTxnSql(Statement statement, Connection connection) {
         for (String sql : txn.getSqlList()) {
             try {
                 statement.execute(sql);
             }
             catch (SQLException exp) {
+                String errorMsg = exp.getMessage() != null ? exp.getMessage() : exp.toString();
                 if (!connectionInfo.checkConnectionStatus(connection)) {
                     isConnection = false;
+                    txn.setExpMessage("Connection failed: " + errorMsg);
                     return false;
                 }
                 LOGGER.error("{}SQL exception occurred in transaction {}", ErrorCode.SQL_EXCEPTION,
                     txn.getSourceField());
                 LOGGER.error("{}The error SQL statement executed is: {}", ErrorCode.SQL_EXCEPTION, sql);
-                LOGGER.error("{}the cause of the exception is {}", ErrorCode.SQL_EXCEPTION, exp.getMessage());
-                txn.setExpMessage(exp.getMessage());
+                LOGGER.error("{}the cause of the exception is {}", ErrorCode.SQL_EXCEPTION, errorMsg);
+                txn.setExpMessage(errorMsg);
                 return false;
             }
             finally {
@@ -218,9 +349,10 @@ public class WorkThread extends Thread {
 
     private void buildAndSaveBpInfo() {
         if (txn != null) {
-            if (txn.getIsDml()) {
+            List<String> sqlList = txn.getSqlList();
+            if (txn.getIsDml() && sqlList != null && sqlList.size() > 0) {
                 replayedOffsets.add(txn.getTxnBeginOffset());
-                replayedOffsets.addAll(txn.getSqlOffsets());
+                replayedOffsets.addAll(txn.getSqlOffsets() != null ? txn.getSqlOffsets() : new ArrayList<>());
                 replayedOffsets.add(txn.getTxnEndOffset());
             } else {
                 replayedOffsets.add(txn.getTxnBeginOffset());
@@ -280,11 +412,18 @@ public class WorkThread extends Thread {
     }
 
     private void feedBackModifiedTable() {
-        if (!txn.getIsDml() && SqlTools.isCreateOrAlterTableStatement(txn.getSqlList().get(1))) {
-            String schemaName = txn.getSourceField().getDatabase();
-            String tableName = txn.getSourceField().getTable();
-            String tableFullName = schemaName + "." + tableName;
-            feedBackQueue.add(tableFullName);
+        if (txn == null) {
+            return;
+        }
+        List<String> sqlList = txn.getSqlList();
+        if (!txn.getIsDml() && sqlList != null && sqlList.size() > 1
+                && SqlTools.isCreateOrAlterTableStatement(sqlList.get(1))) {
+            String schemaName = txn.getSourceField() != null ? txn.getSourceField().getDatabase() : null;
+            String tableName = txn.getSourceField() != null ? txn.getSourceField().getTable() : null;
+            if (schemaName != null && tableName != null) {
+                String tableFullName = schemaName + "." + tableName;
+                feedBackQueue.add(tableFullName);
+            }
         }
     }
 }

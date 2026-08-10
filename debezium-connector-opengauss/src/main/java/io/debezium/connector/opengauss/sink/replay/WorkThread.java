@@ -474,19 +474,20 @@ public class WorkThread extends Thread {
     }
 
     private void printSqlException(String data, Exception exp, String sql) {
+        String expMsg = exp.getMessage() != null ? exp.getMessage().replaceAll(System.lineSeparator(), "; ") : exp.toString();
         failSqlList.add("-- "
                 + sqlPattern.format(LocalDateTime.now())
                 + ": "
                 + data
                 + System.lineSeparator()
                 + "-- "
-                + exp.getMessage().replaceAll(System.lineSeparator(), "; ")
+                + expMsg
                 + System.lineSeparator()
                 + sql
                 + System.lineSeparator());
         LOGGER.error("{}SQL exception occurred in data {}", ErrorCode.SQL_EXCEPTION, data);
         LOGGER.error("{}The error SQL statement executed is: {}", ErrorCode.SQL_EXCEPTION, sql);
-        LOGGER.error("{}The cause of the exception is {}", ErrorCode.SQL_EXCEPTION, exp.getMessage());
+        LOGGER.error("{}The cause of the exception is {}", ErrorCode.SQL_EXCEPTION, expMsg);
     }
 
     /**
