@@ -332,19 +332,20 @@ public class WorkThread extends Thread {
         }
         catch (SQLException exp) {
             failCount++;
+            String expMsg = exp.getMessage() != null ? exp.getMessage().replaceAll(System.lineSeparator(), "; ") : exp.toString();
             failSqlList.add("-- "
                     + sqlPattern.format(LocalDateTime.now())
                     + ": "
                     + sinkRecordObject.getSourceField()
                     + System.lineSeparator()
                     + "-- "
-                    + exp.getMessage().replaceAll(System.lineSeparator(), "; ")
+                    + expMsg
                     + System.lineSeparator()
                     + sql + System.lineSeparator());
             LOGGER.error("{}SQL exception occurred in struct date {}", ErrorCode.SQL_EXCEPTION,
                 sinkRecordObject.getSourceField());
             LOGGER.error("{}The error SQL statement executed is: {}", ErrorCode.SQL_EXCEPTION, sql);
-            LOGGER.error("{}The cause of the exception is {}", ErrorCode.SQL_EXCEPTION, exp.getMessage());
+            LOGGER.error("{}The cause of the exception is {}", ErrorCode.SQL_EXCEPTION, expMsg);
         }
     }
 

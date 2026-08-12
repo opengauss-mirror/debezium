@@ -124,8 +124,9 @@ public class WorkThread extends Thread {
             }
         }
         catch (Throwable exp) {
+            String errorMsg = exp.getMessage() != null ? exp.getMessage() : exp.toString();
             LOGGER.error("Exception occurred in work thread {} and the exp message is {}",
-                    this.getName(), exp.getMessage());
+                    this.getName(), errorMsg);
         }
     }
 

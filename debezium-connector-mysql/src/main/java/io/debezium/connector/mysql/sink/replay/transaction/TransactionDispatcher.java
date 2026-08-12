@@ -125,6 +125,11 @@ public class TransactionDispatcher {
      */
     public void setIsStop(boolean isStop) {
         this.isStop = isStop;
+        if (isStop) {
+            for (WorkThread workThread : threadList) {
+                workThread.setIsStop(true);
+            }
+        }
     }
 
     /**
@@ -197,11 +202,6 @@ public class TransactionDispatcher {
                     selectedTransaction = txn;
                 }
                 else {
-                    if (LOGGER.isInfoEnabled()) {
-                        String txnString = txn.toString();
-                        LOGGER.info("In {}, ready to replay the transaction: {}", workThread.getName(),
-                                txnString.substring(0, Math.min(2048, txnString.length())));
-                    }
                     workThread.resumeThread(txn);
                 }
             }
@@ -406,18 +406,21 @@ public class TransactionDispatcher {
 
     private WorkThread canParallelAndFindFreeThread(Transaction transaction, ArrayList<WorkThread> threadList) {
         WorkThread freeWorkThread = null;
-        Transaction runningTransaction = null;
         for (WorkThread workThread : threadList) {
-            if (workThread.canUse()) {
-                runningTransaction = workThread.getTransaction();
+            // Skip threads that are unavailable (disconnected or stopped) instead of aborting the whole dispatch.
+            if (!workThread.canUse()) {
+                continue;
             }
+            Transaction runningTransaction = workThread.getTransaction();
             if (runningTransaction != null) {
+                // Skip busy threads whose running transaction conflicts with the new one; keep looking for
+                // another free thread so a single conflicting transaction cannot block all parallel dispatch.
                 boolean canParallel = transaction.interleaved(runningTransaction);
                 if (!canParallel) {
-                    return null;
+                    continue;
                 }
             }
-            else {
+            else if (workThread.isWaiting() && freeWorkThread == null) {
                 freeWorkThread = workThread;
             }
         }

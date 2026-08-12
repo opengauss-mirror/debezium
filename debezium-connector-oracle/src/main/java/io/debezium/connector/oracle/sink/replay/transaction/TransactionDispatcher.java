@@ -133,11 +133,6 @@ public class TransactionDispatcher {
                     selectedTransaction = txn;
                 }
                 else {
-                    if (LOGGER.isInfoEnabled()) {
-                        String txnString = txn.toString();
-                        LOGGER.info("In {}, ready to replay the transaction: {}", workThread.getName(),
-                                txnString.substring(0, Math.min(2048, txnString.length())));
-                    }
                     workThread.resumeThread(txn);
                 }
             }
