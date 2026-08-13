@@ -123,8 +123,12 @@ public class PostgreSqlTools extends SqlTools {
     private boolean isColumnPrimary(String schemaName, String tableName, int columnIndex) {
         String[] primaryColumns = getPrimaryKeyValue(schemaName, tableName);
         for (String primaryColumn : primaryColumns) {
-            if (Integer.parseInt(primaryColumn) == columnIndex) {
-                return true;
+            try {
+                if (Integer.parseInt(primaryColumn.trim()) == columnIndex) {
+                    return true;
+                }
+            } catch (NumberFormatException e) {
+                LOGGER.warn("Failed to parse primary key column index '{}', skip it", primaryColumn);
             }
         }
         return false;
@@ -141,7 +145,10 @@ public class PostgreSqlTools extends SqlTools {
                 while (rs.next()) {
                     String indexes = rs.getString("conkey");
                     if (indexes != null) {
-                        return indexes.substring(indexes.indexOf("{") + 1, indexes.lastIndexOf("}")).split(",");
+                        // conkey is smallint[], some drivers return elements wrapped in double quotes
+                        // (e.g. {"1"}), strip the quotes before parsing
+                        return indexes.substring(indexes.indexOf("{") + 1, indexes.lastIndexOf("}"))
+                                .replace("\"", "").split(",");
                     }
                 }
             }

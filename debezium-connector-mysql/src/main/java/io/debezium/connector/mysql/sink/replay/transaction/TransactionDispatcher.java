@@ -125,11 +125,6 @@ public class TransactionDispatcher {
      */
     public void setIsStop(boolean isStop) {
         this.isStop = isStop;
-        if (isStop) {
-            for (WorkThread workThread : threadList) {
-                workThread.setIsStop(true);
-            }
-        }
     }
 
     /**
@@ -339,7 +334,7 @@ public class TransactionDispatcher {
                 }
                 catch (InterruptedException e) {
                     LOGGER.error("{}Interrupted exception occurred while thread sleeping",
-                        ErrorCode.THREAD_INTERRUPTED_EXCEPTION, e);
+                            ErrorCode.THREAD_INTERRUPTED_EXCEPTION, e);
                 }
             }
         });
@@ -394,8 +389,8 @@ public class TransactionDispatcher {
                 for (int i = 0; i < threadList.size(); i++) {
                     if (!threadList.get(i).isAlive() && threadList.get(i).canUse()) {
                         LOGGER.error(
-                            "{}Total {} work thread, current work thread {} is dead, so doesn't use it any more.",
-                            ErrorCode.THREAD_INTERRUPTED_EXCEPTION, threadList.size(), i);
+                                "{}Total {} work thread, current work thread {} is dead, so doesn't use it any more.",
+                                ErrorCode.THREAD_INTERRUPTED_EXCEPTION, threadList.size(), i);
                         threadList.get(i).setAlive(false);
                     }
                 }
@@ -406,21 +401,18 @@ public class TransactionDispatcher {
 
     private WorkThread canParallelAndFindFreeThread(Transaction transaction, ArrayList<WorkThread> threadList) {
         WorkThread freeWorkThread = null;
+        Transaction runningTransaction = null;
         for (WorkThread workThread : threadList) {
-            // Skip threads that are unavailable (disconnected or stopped) instead of aborting the whole dispatch.
-            if (!workThread.canUse()) {
-                continue;
+            if (workThread.canUse()) {
+                runningTransaction = workThread.getTransaction();
             }
-            Transaction runningTransaction = workThread.getTransaction();
             if (runningTransaction != null) {
-                // Skip busy threads whose running transaction conflicts with the new one; keep looking for
-                // another free thread so a single conflicting transaction cannot block all parallel dispatch.
                 boolean canParallel = transaction.interleaved(runningTransaction);
                 if (!canParallel) {
-                    continue;
+                    return null;
                 }
             }
-            else if (workThread.isWaiting() && freeWorkThread == null) {
+            else {
                 freeWorkThread = workThread;
             }
         }

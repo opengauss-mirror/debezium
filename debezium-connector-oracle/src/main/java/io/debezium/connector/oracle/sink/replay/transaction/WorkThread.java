@@ -117,16 +117,15 @@ public class WorkThread extends Thread {
     @Override
     public void run() {
         try (Connection connection = connectionInfo.createOpenGaussConnection();
-                Statement statement = connection.createStatement()) {
+             Statement statement = connection.createStatement()) {
             while (true) {
                 pauseThread();
                 replayTransaction(statement);
             }
         }
         catch (Throwable exp) {
-            String errorMsg = exp.getMessage() != null ? exp.getMessage() : exp.toString();
             LOGGER.error("Exception occurred in work thread {} and the exp message is {}",
-                    this.getName(), errorMsg);
+                    this.getName(), exp.getMessage());
         }
     }
 
