@@ -21,13 +21,15 @@ import org.slf4j.LoggerFactory;
 
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.Comparator;
 import java.util.Locale;
@@ -48,14 +50,37 @@ public class FileUtils {
      * @param jsonStr jsonStr
      */
     public static void writeToFile(File file, String jsonStr) {
-        if (file.exists()) {
-            try (FileWriter fileWriter = new FileWriter(file, false)) {
-                fileWriter.write(jsonStr + System.lineSeparator());
-            } catch (IOException exp) {
-                LOGGER.warn(
-                    "IO exception occurred while writing progress to file, process or fail sql will not be committed",
-                    exp);
+        if (file == null) {
+            return;
+        }
+        Path filePath = file.toPath();
+        try {
+            if (isSymbolicLinkInvolved(filePath)) {
+                LOGGER.warn("Refuse to write progress file [{}]: the path is or is contained in a symbolic link.",
+                    filePath);
+                return;
             }
+            if (!Files.exists(filePath)) {
+                return;
+            }
+            // Open for write without truncating, re-check that the path is still not a symbolic link,
+            // and only then truncate and write through the already opened handle. The handle is bound
+            // to the file resolved at open time, so a symbolic link pre-placed or swapped in before the
+            // open can no longer redirect the truncation/write to an arbitrary file (CWE-59). Opening
+            // without truncating avoids destroying an existing file before the re-check completes.
+            try (FileChannel channel = FileChannel.open(filePath, StandardOpenOption.WRITE)) {
+                if (Files.isSymbolicLink(filePath)) {
+                    LOGGER.warn("Refuse to write progress file [{}]: it was replaced by a symbolic link.",
+                        filePath);
+                    return;
+                }
+                channel.truncate(0L);
+                channel.write(ByteBuffer.wrap((jsonStr + System.lineSeparator()).getBytes(StandardCharsets.UTF_8)));
+            }
+        } catch (IOException exp) {
+            LOGGER.warn(
+                "IO exception occurred while writing progress to file, process or fail sql will not be committed",
+                exp);
         }
     }
 
@@ -68,14 +93,39 @@ public class FileUtils {
     public static File initFile(String path) {
         File processFile = null;
         try {
+            Path filePath = Paths.get(path);
+            if (isSymbolicLinkInvolved(filePath)) {
+                LOGGER.warn("Refuse to initialize progress file [{}]: the path is or is contained in a symbolic link.",
+                    path);
+                return null;
+            }
             processFile = new File(path);
             if (!processFile.exists()) {
-                Files.createFile(Paths.get(path));
+                Files.createFile(filePath);
             }
         } catch (IOException exp) {
             LOGGER.warn("Failed to create directors, please check file path.", exp);
         }
         return processFile;
+    }
+
+    /**
+     * Check whether the given path itself or any of its parent directories is a symbolic link.
+     * Creating or truncating a progress file through a symbolic link would allow a lower privilege
+     * user that can write the status directory to redirect the write to an arbitrary file the
+     * migration process can modify (CWE-59). Every path component is checked, so a symbolic link
+     * used as the status directory itself is rejected as well.
+     *
+     * @param path Path the path to check
+     * @return Boolean true when the path itself or one of its parents is a symbolic link
+     */
+    private static boolean isSymbolicLinkInvolved(Path path) {
+        for (Path current = path; current != null; current = current.getParent()) {
+            if (Files.isSymbolicLink(current)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
