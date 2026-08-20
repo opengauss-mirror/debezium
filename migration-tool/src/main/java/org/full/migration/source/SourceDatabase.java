@@ -551,24 +551,50 @@ public abstract class SourceDatabase {
     private void extractData(Table table, List<Column> columns, Connection conn)
         throws SQLException, IOException, InterruptedException {
         conn.setAutoCommit(false);
-        lockTable(table, conn);
-        String snapshotPoint = null;
-        if (sourceConfig.getIsRecordSnapshot()) {
-            snapshotPoint = recordSnapshotPoint(conn);
+        try {
+            lockTable(table, conn);
+            String snapshotPoint = null;
+            if (sourceConfig.getIsRecordSnapshot()) {
+                snapshotPoint = recordSnapshotPoint(conn);
+            }
+            int pageRows = calculatePageSize(table);
+            LOGGER.info("start to export data for table {}.{}", table.getSchemaName(), table.getTableName());
+            try (Statement stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                stmt.setFetchSize(pageRows);
+                List<Column> queryColumns = columns.stream()
+                    .filter(column -> !column.isGenerated())
+                    .collect(Collectors.toList());
+                String lockQuery = getQueryWithLock(table, queryColumns, conn);
+                try (ResultSet rs = stmt.executeQuery(lockQuery)) {
+                    exportResultSetToCsv(rs, table, queryColumns, pageRows, snapshotPoint);
+                }
+            }
+            conn.commit();
+        } catch (SQLException | IOException e) {
+            rollbackAfterExtractFailure(conn, table);
+            throw e;
         }
-        int pageRows = calculatePageSize(table);
-        LOGGER.info("start to export data for table {}.{}", table.getSchemaName(), table.getTableName());
-        try (Statement stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-            stmt.setFetchSize(pageRows);
-            List<Column> queryColumns = columns.stream()
-                .filter(column -> !column.isGenerated())
-                .collect(Collectors.toList());
-            String lockQuery = getQueryWithLock(table, queryColumns, conn);
-            try (ResultSet rs = stmt.executeQuery(lockQuery)) {
-                exportResultSetToCsv(rs, table, queryColumns, pageRows, snapshotPoint);
+    }
+
+    /**
+     * 回滚单表导出事务，及时释放事务内持有的表锁；回滚失败说明连接事务状态未知，
+     * 关闭连接以禁止外层逐表循环继续复用该连接。
+     *
+     * @param conn conn
+     * @param table table
+     */
+    private void rollbackAfterExtractFailure(Connection conn, Table table) {
+        try {
+            conn.rollback();
+        } catch (SQLException rollbackEx) {
+            LOGGER.error("fail to rollback after exporting table {}.{}, the connection will be closed",
+                table.getSchemaName(), table.getTableName(), rollbackEx);
+            try {
+                conn.close();
+            } catch (SQLException closeEx) {
+                LOGGER.error("fail to close connection after rollback failure", closeEx);
             }
         }
-        conn.commit();
     }
 
     private int calculatePageSize(Table table) {
