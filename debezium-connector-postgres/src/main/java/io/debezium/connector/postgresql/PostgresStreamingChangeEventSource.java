@@ -264,20 +264,7 @@ public class PostgresStreamingChangeEventSource implements StreamingChangeEventS
                     maybeWarnAboutGrowingWalBacklog(true);
                 }
                 else if (message.getOperation() == Operation.MESSAGE) {
-                    offsetContext.updateWalPosition(lsn, lastCompletelyProcessedLsn, message.getCommitTime(), toLong(message.getTransactionId()),
-                            taskContext.getSlotXmin(connection));
-
-                    // non-transactional message that will not be followed by a COMMIT message
-                    if (message.isLastEventForLsn()) {
-                        commitMessage(partition, offsetContext, lsn);
-                    }
-
-                    dispatcher.dispatchLogicalDecodingMessage(
-                            partition,
-                            offsetContext,
-                            clock.currentTimeAsInstant().toEpochMilli(),
-                            (LogicalDecodingMessage) message);
-
+                    handleLogicalDecodingMessage(partition, offsetContext, (LogicalDecodingMessage) message, lsn);
                     maybeWarnAboutGrowingWalBacklog(true);
                 }
                 // DML event
@@ -374,6 +361,37 @@ public class PostgresStreamingChangeEventSource implements StreamingChangeEventS
         offsetContext.updateCommitPosition(lsn, lastCompletelyProcessedLsn);
         maybeWarnAboutGrowingWalBacklog(false);
         dispatcher.dispatchHeartbeatEvent(partition, offsetContext);
+    }
+
+    /**
+     * Handles a non-transactional logical decoding message (e.g. emitted via
+     * {@code pg_logical_emit_message(false, ...)}).
+     * <p>
+     * The payload must be enqueued <em>before</em> the commit position is advanced and any heartbeat
+     * carrying that position is published. Otherwise the heartbeat's offset (which already contains the
+     * message LSN) could be committed and the replication slot flushed past this message before the message
+     * itself is delivered; if the connector then stops or crashes, the message would be silently lost on
+     * restart (REPORT-00340 / CWE-696).
+     */
+    void handleLogicalDecodingMessage(PostgresPartition partition, PostgresOffsetContext offsetContext,
+                                      LogicalDecodingMessage message, Lsn lsn)
+            throws SQLException, InterruptedException {
+        offsetContext.updateWalPosition(lsn, lastCompletelyProcessedLsn, message.getCommitTime(), toLong(message.getTransactionId()),
+                taskContext.getSlotXmin(connection));
+
+        // enqueue the real payload first, then advance the commit position and publish the heartbeat
+        // carrying it; otherwise the message could be lost if the connector stops right after the
+        // heartbeat offset is committed
+        dispatcher.dispatchLogicalDecodingMessage(
+                partition,
+                offsetContext,
+                clock.currentTimeAsInstant().toEpochMilli(),
+                message);
+
+        // non-transactional message that will not be followed by a COMMIT message
+        if (message.isLastEventForLsn()) {
+            commitMessage(partition, offsetContext, lsn);
+        }
     }
 
     /**
