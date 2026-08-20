@@ -170,8 +170,12 @@ public class ChangeEventSourceCoordinator<P extends Partition, O extends OffsetC
         if (catchUpStreamingResult.performedCatchUpStreaming) {
             streamingConnected(false);
             commitOffsetLock.lock();
-            streamingSource = null;
-            commitOffsetLock.unlock();
+            try {
+                streamingSource = null;
+            }
+            finally {
+                commitOffsetLock.unlock();
+            }
         }
         eventDispatcher.setEventListener(snapshotMetrics);
         SnapshotResult<O> snapshotResult = snapshotSource.execute(context, partition, previousOffset);
@@ -224,8 +228,14 @@ public class ChangeEventSourceCoordinator<P extends Partition, O extends OffsetC
     }
 
     public void commitOffset(Map<String, ?> offset) {
-        if (!commitOffsetLock.isLocked() && streamingSource != null && offset != null) {
-            streamingSource.commitOffset(offset);
+        commitOffsetLock.lock();
+        try {
+            if (streamingSource != null && offset != null) {
+                streamingSource.commitOffset(offset);
+            }
+        }
+        finally {
+            commitOffsetLock.unlock();
         }
     }
 
