@@ -389,7 +389,10 @@ public class ReplayTask {
         PriorityBlockingQueue<Long> replayedOffsets = breakPointRecord.getReplayedOffset();
         Long offset = replayedOffsets.peek();
         Long endOffset = INVALID_VALUE;
-        if (replayedOffsets.isEmpty()) {
+        // Judge emptiness by the same peek() result instead of a separate isEmpty() call: replay
+        // worker threads offer offsets concurrently and can turn an empty queue non-empty between
+        // the two calls, which would leave offset null and later crash on offset++ (CWE-362).
+        if (offset == null) {
             return sinkQueueFirstOffset == null ? endOffset : sinkQueueFirstOffset;
         }
         boolean isContinuous = true;
