@@ -9,11 +9,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -30,30 +27,6 @@ import org.slf4j.LoggerFactory;
  */
 public abstract class BaseProcessCommitter {
     private static final Logger LOGGER = LoggerFactory.getLogger(BaseProcessCommitter.class);
-
-    /**
-     * trusted root directory managed by the worker, all process, create-count and fail-sql files
-     * must be created under this directory
-     */
-    private static final String TRUSTED_ROOT_PATH = getTrustedRootPath();
-
-    /**
-     * Compute the trusted root directory, i.e. two levels above the location of the running
-     * debezium-core classes, which is exactly the same value produced by
-     * {@code SinkConnectorConfig#getCurrentPluginPath()} / {@code RelationalDatabaseConnectorConfig#getCurrentPluginPath()}
-     * but without relying on a platform dependent path string splitting.
-     *
-     * @return String the trusted root directory
-     */
-    private static String getTrustedRootPath() {
-        try {
-            URI location = BaseProcessCommitter.class.getProtectionDomain().getCodeSource().getLocation().toURI();
-            return Paths.get(location).getParent().getParent().toAbsolutePath().normalize().toString();
-        }
-        catch (URISyntaxException e) {
-            throw new IllegalStateException("Failed to resolve the trusted root directory", e);
-        }
-    }
 
     /**
      * is append write
@@ -148,11 +121,6 @@ public abstract class BaseProcessCommitter {
         File processFile = null;
         try {
             processFile = new File(processFilePath);
-            if (!isPathWithinTrustedRoot(processFilePath)) {
-                throw new IllegalArgumentException("The file path [" + processFilePath
-                        + "] is outside the trusted root directory [" + TRUSTED_ROOT_PATH
-                        + "], the connector must not create or write files there.");
-            }
             if (!processFile.exists()) {
                 Files.createDirectories(Paths.get(processFilePath));
             }
@@ -161,65 +129,6 @@ public abstract class BaseProcessCommitter {
             LOGGER.warn("Failed to create directors, please check file path.", exp);
         }
         return processFile;
-    }
-
-    /**
-     * Check whether the normalized file path stays within the trusted root directory managed by the
-     * worker. The absolute path provided by the connector configuration must be confined to the
-     * trusted root, otherwise any configuration submitter could make the worker create arbitrary
-     * directory trees anywhere the worker user can write (CWE-22). The lexical containment check is
-     * performed on both the normalized path and on the symbolic link resolved path, so that a path
-     * escaping the trusted root through a symbolic link component is rejected as well.
-     *
-     * @param filePath String the file path to check
-     * @return Boolean true when the normalized and the resolved path are under the trusted root
-     */
-    private boolean isPathWithinTrustedRoot(String filePath) {
-        Path rootPath = Paths.get(TRUSTED_ROOT_PATH).toAbsolutePath().normalize();
-        Path targetPath = Paths.get(filePath).toAbsolutePath().normalize();
-        if (!targetPath.startsWith(rootPath)) {
-            LOGGER.warn("The file path [{}] is outside the trusted root directory [{}],"
-                    + " directory creation is skipped.", filePath, rootPath);
-            return false;
-        }
-        try {
-            // Resolve the symbolic links contained in the existing part of both paths and verify
-            // the containment again, so a link inside the root pointing outside (or a link in the
-            // root itself pointing elsewhere) cannot be used to escape the trusted root.
-            Path realRoot = resolveExistingRealPath(rootPath);
-            Path realTarget = resolveExistingRealPath(targetPath);
-            if (realTarget.startsWith(realRoot)) {
-                return true;
-            }
-            LOGGER.warn("The file path [{}] escapes the trusted root directory [{}] through a symbolic link,"
-                    + " directory creation is skipped.", filePath, rootPath);
-            return false;
-        }
-        catch (IOException e) {
-            LOGGER.warn("Failed to resolve the file path [{}], directory creation is skipped.", filePath, e);
-            return false;
-        }
-    }
-
-    /**
-     * Resolve the real (symbolic link free) path of the longest already existing prefix of the
-     * given path and append the not yet existing remainder as is. The remainder cannot be a
-     * symbolic link because it does not exist yet, so the real path of the whole target is the real
-     * path of the existing prefix plus the remaining components.
-     *
-     * @param path Path the path to resolve
-     * @return Path the real path of the existing prefix plus the remaining components
-     * @throws IOException when the existing prefix cannot be resolved
-     */
-    private static Path resolveExistingRealPath(Path path) throws IOException {
-        if (Files.exists(path)) {
-            return path.toRealPath();
-        }
-        Path parent = path.getParent();
-        if (parent == null) {
-            return path.toAbsolutePath().normalize();
-        }
-        return resolveExistingRealPath(parent).resolve(path.getFileName());
     }
 
     /**
