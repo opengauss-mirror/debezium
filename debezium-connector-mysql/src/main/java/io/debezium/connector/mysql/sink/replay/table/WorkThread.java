@@ -142,16 +142,16 @@ public class WorkThread extends Thread {
                 failCount++;
                 if (sinkRecordObject != null) {
                     String tableFullName = schemaMappingMap.get(sinkRecordObject.getSourceField().getDatabase()) + "."
-                        + sinkRecordObject.getSourceField().getTable();
+                            + sinkRecordObject.getSourceField().getTable();
                     oldTableMap.remove(tableFullName);
                     LOGGER.error("{}DataException occurred because of invalid field, possible reason is tables "
-                            + "of openGauss and MySQL have same table name {} but different table structure.",
-                        ErrorCode.DATA_CONVERT_EXCEPTION, tableFullName, exp);
+                                    + "of openGauss and MySQL have same table name {} but different table structure.",
+                            ErrorCode.DATA_CONVERT_EXCEPTION, tableFullName, exp);
                     return;
                 }
                 LOGGER.error("{}DataException occurred because of invalid field, possible reason is tables "
-                        + "of openGauss and MySQL have same table name but different table structure.",
-                    ErrorCode.DATA_CONVERT_EXCEPTION, exp);
+                                + "of openGauss and MySQL have same table name but different table structure.",
+                        ErrorCode.DATA_CONVERT_EXCEPTION, exp);
             }
         }
     }
@@ -331,8 +331,9 @@ public class WorkThread extends Thread {
             successCount++;
         }
         catch (SQLException exp) {
+            String expMsg = exp.getMessage() != null ? exp.getMessage()
+                    .replaceAll(System.lineSeparator(), "; ") : exp.toString();
             failCount++;
-            String expMsg = exp.getMessage() != null ? exp.getMessage().replaceAll(System.lineSeparator(), "; ") : exp.toString();
             failSqlList.add("-- "
                     + sqlPattern.format(LocalDateTime.now())
                     + ": "
@@ -343,9 +344,9 @@ public class WorkThread extends Thread {
                     + System.lineSeparator()
                     + sql + System.lineSeparator());
             LOGGER.error("{}SQL exception occurred in struct date {}", ErrorCode.SQL_EXCEPTION,
-                sinkRecordObject.getSourceField());
+                    sinkRecordObject.getSourceField());
             LOGGER.error("{}The error SQL statement executed is: {}", ErrorCode.SQL_EXCEPTION, sql);
-            LOGGER.error("{}The cause of the exception is {}", ErrorCode.SQL_EXCEPTION, expMsg);
+            LOGGER.error("{}The cause of the exception is {}", ErrorCode.SQL_EXCEPTION, exp.getMessage());
         }
     }
 

@@ -99,9 +99,13 @@ public class OpengaussSqlTools extends SqlTools {
     private boolean isColumnPrimary(String schemaName, String tableName, int columnIndex) {
         String[] primaryColumns = getPrimaryKeyValue(schemaName, tableName);
         for (String primaryColumn : primaryColumns) {
-            int index = Integer.parseInt(primaryColumn);
-            if (index == columnIndex) {
-                return true;
+            try {
+                int index = Integer.parseInt(primaryColumn.trim());
+                if (index == columnIndex) {
+                    return true;
+                }
+            } catch (NumberFormatException e) {
+                LOGGER.warn("Failed to parse primary key column index '{}', skip it", primaryColumn);
             }
         }
         return false;
@@ -149,8 +153,10 @@ public class OpengaussSqlTools extends SqlTools {
                 while (rs.next()) {
                     String indexes = rs.getString("conkey");
                     if (indexes != null) {
+                        // conkey is smallint[], some drivers return elements wrapped in double quotes
+                        // (e.g. {"1"}), strip the quotes before parsing
                         return indexes.substring(indexes.indexOf("{") + 1, indexes.lastIndexOf("}"))
-                                .split(",");
+                                .replace("\"", "").split(",");
                     }
                 }
             }
