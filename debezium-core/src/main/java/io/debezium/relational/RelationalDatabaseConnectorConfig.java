@@ -1305,7 +1305,7 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
         String path = RelationalDatabaseConnectorConfig.class.getProtectionDomain()
                 .getCodeSource().getLocation().getPath();
         StringBuilder sb = new StringBuilder();
-        String[] paths = path.split(File.separator);
+        String[] paths = path.split(Pattern.quote(File.separator));
         for (int i = 0; i < paths.length - 2; i++) {
             sb.append(paths[i]).append(File.separator);
         }

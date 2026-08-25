@@ -733,7 +733,19 @@ public class OpengaussSnapshotChangeEventSource extends RelationalSnapshotChange
 
     private String generateFileName(String schema, String table, int subscript) {
         return new File(csvPath) + File.separator + String.format(Locale.ROOT, "%s_%s_%d.csv",
-                schema, table, subscript);
+                sanitizeFileNameComponent(schema), sanitizeFileNameComponent(table), subscript);
+    }
+
+    /**
+     * Sanitizes a schema/table name used to build a CSV export file name so that it cannot contain
+     * path separators or path traversal sequences (e.g. {@code ..\..\evil}), which would otherwise
+     * allow the CSV file to be written to an arbitrary location outside the configured export
+     * directory (CWE-22). All path separators are replaced with '_', so the resulting name is always
+     * a single path component in which '..' can no longer escape the directory. Ordinary names that
+     * contain neither '/' nor '\' are returned unchanged.
+     */
+    private String sanitizeFileNameComponent(String name) {
+        return name.replace('\\', '_').replace('/', '_');
     }
 
     private ChangeRecordEmitter getFilePathRecordEmitter(RelationalSnapshotContext<OpengaussPartition,
