@@ -72,11 +72,11 @@ openGauss-FullReplicate是一个用Java编写的数据迁移工具。该工具�
 
 ## 2.2 安装包下载
 
-安装包下载地址：https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/openGauss-FullReplicate-7.0.0-RC3.tar.gz
-其中7.0.0-RC3表示当前版本号。
+安装包下载地址：https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/openGauss-FullReplicate-7.0.0.tar.gz
+其中7.0.0表示当前版本号。
 
 ```bash
-wget https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/openGauss-FullReplicate-7.0.0-RC3.tar.gz
+wget https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/openGauss-FullReplicate-7.0.0.tar.gz
 ```
 
 ## 2.3 安装包解压
@@ -84,7 +84,7 @@ wget https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/openGauss-F
 下载完成后，解压压缩包。
 
 ```
-tar -zxvf openGauss-FullReplicate-7.0.0-RC3.tar.gz
+tar -zxvf openGauss-FullReplicate-7.0.0.tar.gz
 ```
 
 解压后参考目录如下：
@@ -94,10 +94,10 @@ openGauss-FullReplicate/
 openGauss-FullReplicate/config/
 openGauss-FullReplicate/config/config.yml
 openGauss-FullReplicate/build_commit_id.log
-openGauss-FullReplicate/openGauss-FullReplicate-7.0.0-RC3.jar
+openGauss-FullReplicate/openGauss-FullReplicate-7.0.0.jar
 ```
 
-其中openGauss-FullReplicate-7.0.0-RC3.jar为工具的主程序，config文件夹下为配置文件模板。
+其中openGauss-FullReplicate-7.0.0.jar为工具的主程序，config文件夹下为配置文件模板。
 
 # 3. 配置文件说明
 配置文件使用yaml文件规则配置，需要特别注意对齐，缩进表示层级关系，缩进时不允许使用Tab键，只允许使用空格，缩进的空格数目不重要，但相同层级的元素左侧需要对齐。
@@ -216,34 +216,34 @@ datax:
 
 ```bash
 # 迁移表
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start datax_table --source oracle --config /**/**/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start datax_table --source oracle --config /**/**/config.yml
 
 # 迁移主键
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start primarykey --source oracle --config /**/**/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start primarykey --source oracle --config /**/**/config.yml
 
 # 迁移外键
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start foreignkey --source oracle --config /**/**/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start foreignkey --source oracle --config /**/**/config.yml
 
 # 迁移索引
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start index --source oracle --config /**/**/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start index --source oracle --config /**/**/config.yml
 
 # 迁移约束
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start constraint --source oracle --config /**/**/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start constraint --source oracle --config /**/**/config.yml
 
 # 迁移视图
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start view --source oracle --config /**/**/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start view --source oracle --config /**/**/config.yml
 
 # 迁移函数
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start function --source oracle --config /**/**/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start function --source oracle --config /**/**/config.yml
 
 # 迁移触发器
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start trigger --source oracle --config /**/**/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start trigger --source oracle --config /**/**/config.yml
 
 # 迁移存储过程
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start procedure --source oracle --config /**/**/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start procedure --source oracle --config /**/**/config.yml
 
 # 迁移序列
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start sequence --source oracle --config /**/**/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start sequence --source oracle --config /**/**/config.yml
 ```
 
 # 5. 默认的类型转换规则
@@ -500,7 +500,7 @@ SQL> SELECT '测试中文' FROM DUAL;
 
 3. **内存配置建议**：
    - 执行迁移命令时，可通过 `-Xmx` 参数调整JVM最大内存
-   - 示例：`java -Xmx8g -jar openGauss-FullReplicate-7.0.0-RC3.jar --start datax_table --source oracle --config config.yml`
+   - 示例：`java -Xmx8g -jar openGauss-FullReplicate-7.0.0.jar --start datax_table --source oracle --config config.yml`
    - 确保执行机器有足够的物理内存，避免使用过多交换空间
 
 #### 7.1.3 操作系统要求

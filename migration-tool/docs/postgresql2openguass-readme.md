@@ -85,34 +85,34 @@ sourceConfig:
 
 ```bash
 # 迁移表
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start table --source postgresql --config /path/to/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start table --source postgresql --config /path/to/config.yml
 
 # 迁移主键
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start primarykey --source postgresql --config /path/to/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start primarykey --source postgresql --config /path/to/config.yml
 
 # 迁移外键
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start foreignkey --source postgresql --config /path/to/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start foreignkey --source postgresql --config /path/to/config.yml
 
 # 迁移索引
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start index --source postgresql --config /path/to/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start index --source postgresql --config /path/to/config.yml
 
 # 迁移约束
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start constraint --source postgresql --config /path/to/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start constraint --source postgresql --config /path/to/config.yml
 
 # 迁移视图
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start view --source postgresql --config /path/to/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start view --source postgresql --config /path/to/config.yml
 
 # 迁移函数
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start function --source postgresql --config /path/to/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start function --source postgresql --config /path/to/config.yml
 
 # 迁移触发器
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start trigger --source postgresql --config /path/to/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start trigger --source postgresql --config /path/to/config.yml
 
 # 迁移存储过程
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start procedure --source postgresql --config /path/to/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start procedure --source postgresql --config /path/to/config.yml
 
 # 迁移序列
-java -jar openGauss-FullReplicate-7.0.0-RC3.jar --start sequence --source postgresql --config /path/to/config.yml
+java -jar openGauss-FullReplicate-7.0.0.jar --start sequence --source postgresql --config /path/to/config.yml
 ```
 
 ### 3.2 命令参数说明
