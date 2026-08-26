@@ -32,15 +32,15 @@ java -version
 参考如下命令，下载最新版本安装包：
 
 ```bash
-wget https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/openGauss-FullReplicate-7.0.0-RC3.tar.gz
+wget https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/openGauss-FullReplicate-7.0.0.tar.gz
 ```
 
-下载成功后，得到安装包 `openGauss-FullReplicate-7.0.0-RC3.tar.gz`（`7.0.0-RC3` 为版本号）。
+下载成功后，得到安装包 `openGauss-FullReplicate-7.0.0.tar.gz`（`7.0.0` 为版本号）。
 
 ### 4.3 解压安装包
 
 ```bash
-tar -zxvf openGauss-FullReplicate-7.0.0-RC3.tar.gz
+tar -zxvf openGauss-FullReplicate-7.0.0.tar.gz
 ```
 
 ### 4.4 验证目录结构
@@ -50,11 +50,11 @@ tar -zxvf openGauss-FullReplicate-7.0.0-RC3.tar.gz
 ```tex
 ./openGauss-FullReplicate
 ├── build_commit_id.log
-├── openGauss-FullReplicate-7.0.0-RC3.jar
+├── openGauss-FullReplicate-7.0.0.jar
 └── config
     ├── config.yml
     └── oracle2ograc_config.yml
 ```
 
-- `openGauss-FullReplicate-7.0.0-RC3.jar`：工具主程序
+- `openGauss-FullReplicate-7.0.0.jar`：工具主程序
 - `config/`：配置文件模板目录
