@@ -53,6 +53,7 @@ public class SourceConfig {
     private Integer retryNum;
     private String fileSize;
     private Integer threadQueueCapacity;
+    private Integer metaPageSize;
     @NotNull(message = "This parameter is required")
     private DatabaseConfig dbConn;
     @NotNull(message = "This parameter is required")

@@ -604,7 +604,11 @@ public class TargetDatabase extends AbstractTargetDatabase{
      * @param objectType objectType
      */
     public void writeObjects(String sourceDbType, String objectType) {
-        try (Connection conn = connection.getConnection(dbConfig); Statement statement = conn.createStatement()) {
+        Connection conn = null;
+        Statement statement = null;
+        try {
+            conn = connection.getConnection(dbConfig);
+            statement = conn.createStatement();
             while (!QueueManager.getInstance().isQueuePollEnd(QueueManager.OBJECT_QUEUE)) {
                 DbObject object = (DbObject) QueueManager.getInstance().pollQueue(QueueManager.OBJECT_QUEUE);
                 if (object == null) {
@@ -617,28 +621,55 @@ public class TargetDatabase extends AbstractTargetDatabase{
                 if (createObjectSql.contains(sourceSchema + ".")) {
                     createObjectSql = createObjectSql.replace(sourceSchema + ".", targetSchema + ".");
                 }
-                try {
-                    executeCreateObject(sourceDbType, objectType, targetSchema, conn, statement, createObjectSql, sourceFullName);
-                } catch (SQLException e) {
-                    LOGGER.warn(
-                            "Method 1 directly execute create {} {} has occurred an exception, detail:{}, so translate it"
-                                    + " according to sql-translator.", objectType, sourceFullName.getFullName(), e.getMessage());
-                    Optional<String> translatedSql = TranslatorFactory.translate(sourceDbType,
-                            createObjectSql, false, false);
-                    if (!translatedSql.isPresent()) {
-                        handleCreateFailure(objectType, sourceFullName, "sql-translator failed");
-                    } else {
+                boolean success = false;
+                boolean reconnected = false;
+                while (!success) {
+                    try {
+                        executeCreateObject(sourceDbType, objectType, targetSchema, conn, statement, createObjectSql, sourceFullName);
+                        success = true;
+                    } catch (SQLException e) {
+                        LOGGER.warn(
+                                "Method 1 directly execute create {} {} has occurred an exception, detail:{}, so translate it"
+                                        + " according to sql-translator.", objectType, sourceFullName.getFullName(), e.getMessage());
+                        Optional<String> translatedSql = TranslatorFactory.translate(sourceDbType,
+                                createObjectSql, false, false);
+                        if (!translatedSql.isPresent()) {
+                            handleCreateFailure(objectType, sourceFullName, "sql-translator failed");
+                        } else {
+                            try {
+                                executeCreateObject(sourceDbType, objectType, targetSchema, conn, statement, translatedSql.get(), sourceFullName);
+                                success = true;
+                            } catch (SQLException ex) {
+                                handleCreateFailure(objectType, sourceFullName, e.getMessage());
+                            }
+                        }
+                        if (reconnected || !isConnectionBroken(conn)) {
+                            break;
+                        }
+                        LOGGER.warn("target connection is broken, reconnecting and retrying: {}",
+                            sourceFullName.getFullName());
+                        closeQuietly(statement);
+                        closeQuietly(conn);
                         try {
-                            executeCreateObject(sourceDbType, objectType, targetSchema, conn, statement, translatedSql.get(), sourceFullName);
-                        } catch (SQLException ex) {
-                            handleCreateFailure(objectType, sourceFullName, e.getMessage());
+                            conn = connection.getConnection(dbConfig);
+                            statement = conn.createStatement();
+                            reconnected = true;
+                        } catch (SQLException reconnectEx) {
+                            LOGGER.error("reconnect to target database failed, detail:{}", reconnectEx.getMessage());
+                            break;
                         }
                     }
+                }
+                if (!success) {
+                    continue;
                 }
             }
             LOGGER.info("{} has finished to write {}.", Thread.currentThread().getName(), objectType);
         } catch (SQLException e) {
             LOGGER.warn("write {} has occurred an exception, detail:{}", objectType, e.getMessage());
+        } finally {
+            closeQuietly(statement);
+            closeQuietly(conn);
         }
     }
 

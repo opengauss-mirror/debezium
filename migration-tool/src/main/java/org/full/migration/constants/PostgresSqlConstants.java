@@ -230,8 +230,9 @@ public final class PostgresSqlConstants {
             "WHERE\n" +
             "  n.nspname = '%s'\n" +
             "  AND i.relkind IN ('i', 'I') \n" +
+            "  AND t.relispartition = false \n" +
             "ORDER BY\n" +
-            "  t.relname, i.relname;";
+            "  t.relname, i.relname";
 
     /**
      * sql for querying cols of index
@@ -274,10 +275,18 @@ public final class PostgresSqlConstants {
             "    AND c.column_name = kcu.column_name\n" +
             "WHERE\n" +
             "    t.table_schema = ?\n" +
+            "    AND NOT EXISTS (\n" +
+            "        SELECT 1\n" +
+            "        FROM pg_class pc\n" +
+            "        JOIN pg_namespace pn ON pc.relnamespace = pn.oid\n" +
+            "        WHERE pc.relname = t.table_name\n" +
+            "          AND pn.nspname = t.table_schema\n" +
+            "          AND pc.relispartition = true\n" +
+            "    )\n" +
             "GROUP BY\n" +
             "    t.table_name, t.table_schema, pk.constraint_name\n" +
             "ORDER BY\n" +
-            "    t.table_name;";
+            "    t.table_name";
 
     /**
      * sql for querying foreign keys
@@ -313,7 +322,16 @@ public final class PostgresSqlConstants {
         + "    AND ref.table_schema = ref_kcu.table_schema\n"
         + "WHERE\n"
         + "    fk.constraint_type = 'FOREIGN KEY'\n"
-        + "    AND fk.table_schema = '%s';\n";
+        + "    AND fk.table_schema = '%s'\n"
+        + "    AND NOT EXISTS (\n"
+        + "        SELECT 1\n"
+        + "        FROM pg_class pc\n"
+        + "        JOIN pg_namespace pn ON pc.relnamespace = pn.oid\n"
+        + "        WHERE pc.relname = tp.table_name\n"
+        + "          AND pn.nspname = tp.table_schema\n"
+        + "          AND pc.relispartition = true\n"
+        + "    )\n"
+        + "    ORDER BY fk.constraint_name";
 
     /**
      * sql for querying unique constraints
@@ -331,10 +349,11 @@ public final class PostgresSqlConstants {
             + "WHERE\n"
             + "    c.contype = 'u'\n"
             + "    AND n.nspname = ?\n"
+            + "    AND t.relispartition = false\n"
             + "GROUP BY\n"
             + "    n.nspname, t.relname, c.conname\n"
             + "ORDER BY\n"
-            + "    schema_name, table_name, constraint_name;";
+            + "    schema_name, table_name, constraint_name";
 
     /**
      * sql for querying check constraints
@@ -347,11 +366,10 @@ public final class PostgresSqlConstants {
             "FROM\n" +
             "    pg_constraint c\n" +
             "    JOIN pg_catalog.pg_class t ON t.oid = c.conrelid\n" +
-            "    JOIN pg_namespace n ON n.oid = t.relnamespace\n" +
-            "WHERE\n" +
-            "    c.contype = 'c'\n" +
-            "    AND n.nspname = ?\n" +
-            "ORDER BY n.nspname, t.relname, c.conname;";
+            "    JOIN pg_namespace n ON n.oid = t.relnamespace\n" + "WHERE\n" + "    c.contype = 'c'\n"
+            + "    AND n.nspname = ?\n"
+            + "    AND t.relispartition = false\n"
+            + "ORDER BY n.nspname, t.relname, c.conname";
 
     /**
      * get all parent tables
@@ -390,7 +408,7 @@ public final class PostgresSqlConstants {
      * sql for querying views
      */
     public static final String QUERY_VIEW_SQL =
-            "SELECT viewname AS name, definition FROM pg_views WHERE schemaname = '%s';";
+            "SELECT viewname AS name, definition FROM pg_views WHERE schemaname = '%s' ORDER BY viewname";
 
     /**
      * sql for querying functions
@@ -400,7 +418,8 @@ public final class PostgresSqlConstants {
             + "FROM pg_proc p "
             + "JOIN pg_namespace n ON p.pronamespace = n.oid "
             + "WHERE n.nspname = '%s' AND p.prokind = 'f' "
-            + "AND n.nspname NOT IN ('pg_catalog', 'information_schema');";
+            + "AND n.nspname NOT IN ('pg_catalog', 'information_schema') "
+            + "ORDER BY p.proname";
 
     /**
      * sql for querying triggers
@@ -412,7 +431,8 @@ public final class PostgresSqlConstants {
             + "JOIN pg_catalog.pg_class c ON t.tgrelid = c.oid "
             + "JOIN pg_namespace n ON c.relnamespace = n.oid "
             + "WHERE n.nspname = '%s' AND NOT t.tgisinternal "
-            + "AND n.nspname NOT IN ('pg_catalog', 'information_schema');";
+            + "AND n.nspname NOT IN ('pg_catalog', 'information_schema') "
+            + "ORDER BY c.relname, t.tgname";
 
     /**
      * sql for querying procedures
@@ -423,7 +443,8 @@ public final class PostgresSqlConstants {
         + "JOIN pg_namespace n ON p.pronamespace = n.oid\n"
         + "WHERE n.nspname = '%s'\n"
         + "  AND p.prokind = 'p'  -- 'p'表示procedure(存储过程)\n"
-        + "  AND n.nspname NOT IN ('pg_catalog', 'information_schema');  ";
+        + "  AND n.nspname NOT IN ('pg_catalog', 'information_schema')\n"
+        + "ORDER BY p.proname";
 
     /**
      * sql for querying sequences
@@ -446,7 +467,8 @@ public final class PostgresSqlConstants {
         + "    pg_namespace n ON c.relnamespace = n.oid\n"
         + "WHERE\n"
         + "    n.nspname = '%s'  -- 模式名称占位符\n"
-        + "    AND c.relkind = 'S';";
+        + "    AND c.relkind = 'S'\n"
+        + "ORDER BY c.relname";
 
     /**
      * postgresql version 9.5.0

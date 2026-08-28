@@ -65,6 +65,8 @@ import java.util.ArrayList;
 import java.util.Locale;
 import java.util.stream.Collectors;
 
+import static org.full.migration.coordinator.QueueManager.TABLE_PRIMARY_KEY_QUEUE;
+
 /**
  * SourceDatabase
  *
@@ -74,6 +76,7 @@ import java.util.stream.Collectors;
 public abstract class SourceDatabase {
     private static final Logger LOGGER = LoggerFactory.getLogger(SourceDatabase.class);
     private static final Integer EMPTY_TABLE_PAGE_ROWS = 100000;
+    private static final int DEFAULT_META_PAGE_SIZE = 100;
 
     /**
      * connection
@@ -309,6 +312,72 @@ public abstract class SourceDatabase {
      * @return sql for querying primary key
      */
     protected abstract String getQueryPkSql();
+
+    /**
+     * getQueryPkPageSql
+     * Return the paginated SQL for querying primary keys, containing "LIMIT ? OFFSET ?" placeholders.
+     * Returning null means the source database does not support pagination and keeps the original
+     * one-shot full query logic.
+     *
+     * @return sql for querying primary keys with pagination, null if not supported
+     */
+    protected String getQueryPkPageSql() {
+        return null;
+    }
+
+    /**
+     * getQueryIndexPageSql
+     * Return the paginated SQL for querying indexes, containing "LIMIT ? OFFSET ?" placeholders.
+     * Returning null means the source database does not support pagination and keeps the original
+     * one-shot full query logic.
+     *
+     * @param schema schema
+     * @return sql for querying indexes with pagination, null if not supported
+     */
+    protected String getQueryIndexPageSql(String schema) {
+        return null;
+    }
+
+    /**
+     * getQueryFkPageSql
+     * Return the paginated SQL for querying foreign keys, containing "LIMIT ? OFFSET ?" placeholders.
+     * Returning null means the source database does not support pagination and keeps the original
+     * one-shot full query logic.
+     *
+     * @param schema schema
+     * @return sql for querying foreign keys with pagination, null if not supported
+     */
+    protected String getQueryFkPageSql(String schema) {
+        return null;
+    }
+
+    /**
+     * getQueryConstraintPageSql
+     * Return the paginated SQL for querying constraints, containing "LIMIT ? OFFSET ?" placeholders.
+     * Returning null means the source database does not support pagination and keeps the original
+     * one-shot full query logic.
+     *
+     * @param constraintType constraint type, e.g. "unique" or "check"
+     * @return sql for querying constraints with pagination, null if not supported
+     */
+    protected String getQueryConstraintPageSql(String constraintType) {
+        return null;
+    }
+
+    /**
+     * getQueryObjectPageSql
+     * Return the paginated SQL for querying database objects (view/function/trigger/procedure/sequence),
+     * containing "LIMIT ? OFFSET ?" placeholders.
+     * Returning null means the source database does not support pagination and keeps the original
+     * one-shot full query logic.
+     *
+     * @param objectType object type, e.g. "view", "function", "trigger", "procedure", "sequence"
+     * @param schema schema
+     * @return sql for querying objects with pagination, null if not supported
+     */
+    protected String getQueryObjectPageSql(String objectType, String schema) {
+        return null;
+    }
 
     /**
      * getQueryFkSql
@@ -770,28 +839,13 @@ public abstract class SourceDatabase {
      * @param schema schema
      */
     public void readObjects(String objectType, String schema) {
-        try (Connection conn = connection.getConnection(sourceConfig.getDbConn());
-            Statement statement = conn.createStatement()) {
-            String querySql = String.format(getQueryObjectSql(objectType.toLowerCase(Locale.ROOT)),
-                    escapeSqlLiteral(schema));
-            ResultSet rs = statement.executeQuery(querySql);
-            while (rs.next()) {
-                DbObject dbObject = new DbObject();
-                String objectName = rs.getString("name");
-                dbObject.setSchema(schema);
-                dbObject.setName(objectName);
-                String definition = convertDefinition(objectType, rs);
-                if (definition != null) {
-                    dbObject.setDefinition(definition);
-                    LOGGER.info("read object, type: {}, object Name:{}", objectType, dbObject.getName());
-                    LOGGER.debug("read object, type: {}, object :{}", objectType, dbObject);
-                    QueueManager.getInstance().putToQueue(QueueManager.OBJECT_QUEUE, dbObject);
-                    if (isDumpJson) {
-                        ProgressTracker.getInstance().putProgressMap(schema, objectName);
-                    }
-                } else {
-                    LOGGER.warn("Object definition is null, skipping object: {}, type: {}", objectName, objectType);
-                }
+        try (Connection conn = connection.getConnection(sourceConfig.getDbConn())) {
+            String lowerType = objectType.toLowerCase(Locale.ROOT);
+            String pageSql = getQueryObjectPageSql(lowerType, schema);
+            if (pageSql != null) {
+                readObjectsByPage(conn, objectType, lowerType, schema, pageSql);
+            } else {
+                readObjectsOnce(conn, objectType, lowerType, schema);
             }
             if (isDumpJson) {
                 ProgressTracker.getInstance().recordObjectProgress(TaskTypeEnum.getTaskTypeEnum(objectType));
@@ -805,29 +859,111 @@ public abstract class SourceDatabase {
     }
 
     /**
+     * readObjectsOnce
+     * Read database objects in a single query, keeping the original logic for databases
+     * that do not support pagination.
+     *
+     * @param conn conn
+     * @param objectType objectType
+     * @param lowerType objectType in lower case
+     * @param schema schema
+     * @throws SQLException SQLException
+     * @throws TranslatorException TranslatorException
+     */
+    private void readObjectsOnce(Connection conn, String objectType, String lowerType, String schema)
+        throws SQLException, TranslatorException {
+        try (Statement statement = conn.createStatement();
+            ResultSet rs = statement.executeQuery(
+                String.format(getQueryObjectSql(lowerType), escapeSqlLiteral(schema)))) {
+            while (rs.next()) {
+                processObjectRow(objectType, schema, rs);
+            }
+        }
+    }
+
+    /**
+     * readObjectsByPage
+     * Read database objects by page to avoid a single huge result set causing a long-running query.
+     *
+     * @param conn conn
+     * @param objectType objectType
+     * @param lowerType objectType in lower case
+     * @param schema schema
+     * @param pageSql pageSql
+     * @throws SQLException SQLException
+     * @throws TranslatorException TranslatorException
+     */
+    private void readObjectsByPage(Connection conn, String objectType, String lowerType, String schema,
+        String pageSql) throws SQLException, TranslatorException {
+        int pageSize = getMetaPageSize();
+        int offset = 0;
+        while (true) {
+            int readCount = 0;
+            try (PreparedStatement pstmt = conn.prepareStatement(pageSql)) {
+                pstmt.setInt(1, pageSize);
+                pstmt.setInt(2, offset);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        processObjectRow(objectType, schema, rs);
+                        readCount++;
+                    }
+                }
+            }
+            LOGGER.info("read {} objects of schema [{}] by page, offset: {}, pageSize: {}, read: {} records",
+                lowerType, schema, offset, pageSize, readCount);
+            if (readCount < pageSize) {
+                break;
+            }
+            offset += pageSize;
+        }
+    }
+
+    /**
+     * processObjectRow
+     * Handle a single object result row and put it into the queue.
+     *
+     * @param objectType objectType
+     * @param schema schema
+     * @param rs rs
+     * @throws SQLException SQLException
+     * @throws TranslatorException TranslatorException
+     */
+    private void processObjectRow(String objectType, String schema, ResultSet rs)
+        throws SQLException, TranslatorException {
+        DbObject dbObject = new DbObject();
+        String objectName = rs.getString("name");
+        dbObject.setSchema(schema);
+        dbObject.setName(objectName);
+        String definition = convertDefinition(objectType, rs);
+        if (definition != null) {
+            dbObject.setDefinition(definition);
+            LOGGER.info("read object, type: {}, object Name:{}", objectType, dbObject.getName());
+            LOGGER.debug("read object, type: {}, object :{}", objectType, dbObject);
+            QueueManager.getInstance().putToQueue(QueueManager.OBJECT_QUEUE, dbObject);
+            if (isDumpJson) {
+                ProgressTracker.getInstance().putProgressMap(schema, objectName);
+            }
+        } else {
+            LOGGER.warn("Object definition is null, skipping object: {}, type: {}", objectName, objectType);
+        }
+    }
+
+    /**
      * readTableIndex
      *
      * @param schemaSet schemaSet
      */
     public void readTableIndex(Set<String> schemaSet) {
-        try (Connection conn = connection.getConnection(sourceConfig.getDbConn());
-            Statement stmt = conn.createStatement()) {
+        try (Connection conn = connection.getConnection(sourceConfig.getDbConn())) {
+            int pageSize = sourceConfig.getMetaPageSize() != null && sourceConfig.getMetaPageSize() > 0
+                ? sourceConfig.getMetaPageSize()
+                : DEFAULT_META_PAGE_SIZE;
             for (String schema : schemaSet) {
-                try (ResultSet rs = stmt.executeQuery(getQueryIndexSql(schema))) {
-                    while (rs.next()) {
-                        TableIndex tableIndex = getTableIndex(conn, rs);
-                        if (isNotNeedMigraTable(schema, tableIndex.getTableName(), conn)) {
-                            continue;
-                        }
-                        confirmUniqueConstraint(conn, schema, tableIndex);
-                        tableIndex.setSchemaName(sourceConfig.getSchemaMappings().get(schema));
-                        if (!tableIndex.isPrimaryKey()) {
-                            QueueManager.getInstance().putToQueue(QueueManager.TABLE_INDEX_QUEUE, tableIndex);
-                        }
-                        if (isDumpJson) {
-                            ProgressTracker.getInstance().putProgressMap(schema, tableIndex.getIndexName());
-                        }
-                    }
+                String pageSql = getQueryIndexPageSql(schema);
+                if (pageSql != null) {
+                    readTableIndexByPage(conn, schema, pageSql, pageSize);
+                } else {
+                    readTableIndexOnce(conn, schema);
                 }
                 if (isDumpJson) {
                     ProgressTracker.getInstance().recordKeyAndIndexProgress(TaskTypeEnum.INDEX);
@@ -843,32 +979,110 @@ public abstract class SourceDatabase {
     }
 
     /**
+     * readTableIndexByPage
+     * Read indexes by page to avoid a single huge result set causing a long-running query.
+     *
+     * @param conn conn
+     * @param schema schema
+     * @param pageSql pageSql
+     * @param pageSize pageSize
+     * @throws Exception Exception
+     */
+    private void readTableIndexByPage(Connection conn, String schema, String pageSql, int pageSize)
+        throws Exception {
+        int offset = 0;
+        while (true) {
+            int readCount = 0;
+            try (PreparedStatement pstmt = conn.prepareStatement(pageSql)) {
+                pstmt.setInt(1, pageSize);
+                pstmt.setInt(2, offset);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        processTableIndexRow(conn, schema, rs);
+                        readCount++;
+                    }
+                }
+            }
+            LOGGER.info("read table indexes of schema [{}] by page, offset: {}, pageSize: {}, read: {} records",
+                schema, offset, pageSize, readCount);
+            if (readCount < pageSize) {
+                break;
+            }
+            offset += pageSize;
+        }
+    }
+
+    /**
+     * readTableIndexOnce
+     * Read indexes in a single query, keeping the original logic for databases
+     * that do not support pagination.
+     *
+     * @param conn conn
+     * @param schema schema
+     * @throws Exception Exception
+     */
+    private void readTableIndexOnce(Connection conn, String schema) throws Exception {
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(getQueryIndexSql(schema))) {
+            while (rs.next()) {
+                processTableIndexRow(conn, schema, rs);
+            }
+        }
+    }
+
+    /**
+     * getMetaPageSize
+     * Return the page size configured for querying metadata objects, falling back to
+     * the default value when not configured or invalid.
+     *
+     * @return page size
+     */
+    private int getMetaPageSize() {
+        return sourceConfig.getMetaPageSize() != null && sourceConfig.getMetaPageSize() > 0
+            ? sourceConfig.getMetaPageSize()
+            : DEFAULT_META_PAGE_SIZE;
+    }
+
+    /**
+     * processTableIndexRow
+     * Handle a single index result row and put it into the queue.
+     *
+     * @param conn conn
+     * @param schema schema
+     * @param rs rs
+     * @throws Exception Exception
+     */
+    private void processTableIndexRow(Connection conn, String schema, ResultSet rs) throws Exception {
+        TableIndex tableIndex = getTableIndex(conn, rs);
+        if (isNotNeedMigraTable(schema, tableIndex.getTableName(), conn)) {
+            return;
+        }
+        confirmUniqueConstraint(conn, schema, tableIndex);
+        tableIndex.setSchemaName(sourceConfig.getSchemaMappings().get(schema));
+        if (!tableIndex.isPrimaryKey()) {
+            QueueManager.getInstance().putToQueue(QueueManager.TABLE_INDEX_QUEUE, tableIndex);
+        }
+        if (isDumpJson) {
+            ProgressTracker.getInstance().putProgressMap(schema, tableIndex.getIndexName());
+        }
+    }
+
+    /**
      * readTablePk
      *
      * @param schemaSet schemaSet
      */
     public void readTablePk(Set<String> schemaSet) {
         try (Connection conn = connection.getConnection(sourceConfig.getDbConn())) {
+            String pageSql = getQueryPkPageSql();
+            int pageSize = sourceConfig.getMetaPageSize() != null && sourceConfig.getMetaPageSize() > 0
+                ? sourceConfig.getMetaPageSize()
+                : DEFAULT_META_PAGE_SIZE;
             for (String schema : schemaSet) {
-                try (PreparedStatement pstmt = conn.prepareStatement(getQueryPkSql())) {
-                    pstmt.setString(1, schema);
-                    try (ResultSet rs = pstmt.executeQuery()) {
-                        while (rs.next()) {
-                            TablePrimaryKey tablePrimaryKey = new TablePrimaryKey();
-                            tablePrimaryKey.setSchemaName(sourceConfig.getSchemaMappings().get(schema));
-                            tablePrimaryKey.setTableName(rs.getString("table_name"));
-                            tablePrimaryKey.setColumnName(rs.getString("pk_columns"));
-                            tablePrimaryKey.setPkName(rs.getString("pk_name"));
-                            if (isNotNeedMigraTable(schema, tablePrimaryKey.getTableName(), conn)) {
-                                continue;
-                            }
-                            QueueManager.getInstance()
-                                .putToQueue(QueueManager.TABLE_PRIMARY_KEY_QUEUE, tablePrimaryKey);
-                            if (isDumpJson) {
-                                ProgressTracker.getInstance().putProgressMap(schema, tablePrimaryKey.getPkName());
-                            }
-                        }
-                    }
+                if (pageSql != null) {
+                    readTablePkByPage(conn, schema, pageSql, pageSize);
+                } else {
+                    readTablePkOnce(conn, schema);
                 }
                 if (isDumpJson) {
                     ProgressTracker.getInstance().recordKeyAndIndexProgress(TaskTypeEnum.PRIMARY_KEY);
@@ -877,8 +1091,87 @@ public abstract class SourceDatabase {
         } catch (SQLException e) {
             LOGGER.error("fail to read table primary keys, errorMsg:{}", e.getMessage());
         }
-        QueueManager.getInstance().setReadFinished(QueueManager.TABLE_PRIMARY_KEY_QUEUE, true);
+        QueueManager.getInstance().setReadFinished(TABLE_PRIMARY_KEY_QUEUE, true);
         LOGGER.info("end to read table primary keys.");
+    }
+
+    /**
+     * readTablePkByPage
+     * Read primary keys by page to avoid a single huge result set causing a long-running query.
+     *
+     * @param conn conn
+     * @param schema schema
+     * @param pageSql pageSql
+     * @param pageSize pageSize
+     * @throws SQLException SQLException
+     */
+    private void readTablePkByPage(Connection conn, String schema, String pageSql, int pageSize)
+        throws SQLException {
+        int offset = 0;
+        while (true) {
+            int readCount = 0;
+            try (PreparedStatement pstmt = conn.prepareStatement(pageSql)) {
+                pstmt.setString(1, schema);
+                pstmt.setInt(2, pageSize);
+                pstmt.setInt(3, offset);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        processTablePkRow(conn, schema, rs);
+                        readCount++;
+                    }
+                }
+            }
+            LOGGER.info("read table primary keys of schema [{}] by page, offset: {}, pageSize: {}, read: {} records",
+                schema, offset, pageSize, readCount);
+            if (readCount < pageSize) {
+                break;
+            }
+            offset += pageSize;
+        }
+    }
+
+    /**
+     * readTablePkOnce
+     * Read primary keys in a single query, keeping the original logic for databases
+     * that do not support pagination.
+     *
+     * @param conn conn
+     * @param schema schema
+     * @throws SQLException SQLException
+     */
+    private void readTablePkOnce(Connection conn, String schema) throws SQLException {
+        try (PreparedStatement pstmt = conn.prepareStatement(getQueryPkSql())) {
+            pstmt.setString(1, schema);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    processTablePkRow(conn, schema, rs);
+                }
+            }
+        }
+    }
+
+    /**
+     * processTablePkRow
+     * Handle a single primary key result row and put it into the queue.
+     *
+     * @param conn conn
+     * @param schema schema
+     * @param rs rs
+     * @throws SQLException SQLException
+     */
+    private void processTablePkRow(Connection conn, String schema, ResultSet rs) throws SQLException {
+        TablePrimaryKey tablePrimaryKey = new TablePrimaryKey();
+        tablePrimaryKey.setSchemaName(sourceConfig.getSchemaMappings().get(schema));
+        tablePrimaryKey.setTableName(rs.getString("table_name"));
+        tablePrimaryKey.setColumnName(rs.getString("pk_columns"));
+        tablePrimaryKey.setPkName(rs.getString("pk_name"));
+        if (isNotNeedMigraTable(schema, tablePrimaryKey.getTableName(), conn)) {
+            return;
+        }
+        QueueManager.getInstance().putToQueue(TABLE_PRIMARY_KEY_QUEUE, tablePrimaryKey);
+        if (isDumpJson) {
+            ProgressTracker.getInstance().putProgressMap(schema, tablePrimaryKey.getPkName());
+        }
     }
 
     /**
@@ -895,17 +1188,13 @@ public abstract class SourceDatabase {
      * @param schemaSet schemaSet
      */
     public void readTableFk(Set<String> schemaSet) {
-        try (Connection conn = connection.getConnection(sourceConfig.getDbConn());
-            Statement stmt = conn.createStatement()) {
+        try (Connection conn = connection.getConnection(sourceConfig.getDbConn())) {
             for (String schema : schemaSet) {
-                ResultSet rs = stmt.executeQuery(getQueryFkSql(schema));
-                while (rs.next()) {
-                    TableForeignKey tableForeignKey = new TableForeignKey(rs);
-                    tableForeignKey.setSchemaName(sourceConfig.getSchemaMappings().get(schema));
-                    QueueManager.getInstance().putToQueue(QueueManager.TABLE_FOREIGN_KEY_QUEUE, tableForeignKey);
-                    if (isDumpJson) {
-                        ProgressTracker.getInstance().putProgressMap(schema, tableForeignKey.getFkName());
-                    }
+                String pageSql = getQueryFkPageSql(schema);
+                if (pageSql != null) {
+                    readTableFkByPage(conn, schema, pageSql);
+                } else {
+                    readTableFkOnce(conn, schema);
                 }
                 if (isDumpJson) {
                     ProgressTracker.getInstance().recordKeyAndIndexProgress(TaskTypeEnum.FOREIGN_KEY);
@@ -916,6 +1205,74 @@ public abstract class SourceDatabase {
         }
         QueueManager.getInstance().setReadFinished(QueueManager.TABLE_FOREIGN_KEY_QUEUE, true);
         LOGGER.info("end to read table foreign keys.");
+    }
+
+    /**
+     * readTableFkOnce
+     * Read foreign keys in a single query, keeping the original logic for databases
+     * that do not support pagination.
+     *
+     * @param conn conn
+     * @param schema schema
+     * @throws SQLException SQLException
+     */
+    private void readTableFkOnce(Connection conn, String schema) throws SQLException {
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(getQueryFkSql(schema))) {
+            while (rs.next()) {
+                processFkRow(schema, rs);
+            }
+        }
+    }
+
+    /**
+     * readTableFkByPage
+     * Read foreign keys by page to avoid a single huge result set causing a long-running query.
+     *
+     * @param conn conn
+     * @param schema schema
+     * @param pageSql pageSql
+     * @throws SQLException SQLException
+     */
+    private void readTableFkByPage(Connection conn, String schema, String pageSql) throws SQLException {
+        int pageSize = getMetaPageSize();
+        int offset = 0;
+        while (true) {
+            int readCount = 0;
+            try (PreparedStatement pstmt = conn.prepareStatement(pageSql)) {
+                pstmt.setInt(1, pageSize);
+                pstmt.setInt(2, offset);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        processFkRow(schema, rs);
+                        readCount++;
+                    }
+                }
+            }
+            LOGGER.info("read table foreign keys of schema [{}] by page, offset: {}, pageSize: {}, read: {} records",
+                schema, offset, pageSize, readCount);
+            if (readCount < pageSize) {
+                break;
+            }
+            offset += pageSize;
+        }
+    }
+
+    /**
+     * processFkRow
+     * Handle a single foreign key result row and put it into the queue.
+     *
+     * @param schema schema
+     * @param rs rs
+     * @throws SQLException SQLException
+     */
+    private void processFkRow(String schema, ResultSet rs) throws SQLException {
+        TableForeignKey tableForeignKey = new TableForeignKey(rs);
+        tableForeignKey.setSchemaName(sourceConfig.getSchemaMappings().get(schema));
+        QueueManager.getInstance().putToQueue(QueueManager.TABLE_FOREIGN_KEY_QUEUE, tableForeignKey);
+        if (isDumpJson) {
+            ProgressTracker.getInstance().putProgressMap(schema, tableForeignKey.getFkName());
+        }
     }
 
     /**
@@ -948,26 +1305,101 @@ public abstract class SourceDatabase {
 
     public void processConstraints(Connection conn, String schema, String query, ConstraintProcessor processor,
         String constraintType) throws SQLException {
+        String pageSql = getQueryConstraintPageSql(constraintType);
+        if (pageSql != null) {
+            processConstraintsByPage(conn, schema, pageSql, processor, constraintType);
+        } else {
+            processConstraintsOnce(conn, schema, query, processor, constraintType);
+        }
+    }
+
+    /**
+     * processConstraintsOnce
+     * Process constraints in a single query, keeping the original logic for databases
+     * that do not support pagination.
+     *
+     * @param conn conn
+     * @param schema schema
+     * @param query query
+     * @param processor processor
+     * @param constraintType constraintType
+     * @throws SQLException SQLException
+     */
+    private void processConstraintsOnce(Connection conn, String schema, String query,
+        ConstraintProcessor processor, String constraintType) throws SQLException {
         try (PreparedStatement pstmt = conn.prepareStatement(query)) {
             pstmt.setString(1, schema);
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
-                    String tableName = rs.getString("table_name");
-                    if (isNotNeedMigraTable(schema, tableName, conn)) {
-                        continue;
-                    }
-                    String constraintName = rs.getString("constraint_name");
-                    String constraintValue = constraintType.equals("unique")
-                        ? rs.getString("columns")
-                        : rs.getString("definition");
-                   try {
-                        String sql = processor.process(tableName, constraintName, constraintValue);
-                        QueueManager.getInstance().putToQueue(QueueManager.TABLE_CONSTRAINT_QUEUE, sql);
-                    } catch (TranslatorException e) {
-                        LOGGER.error("fail to process constraint, errorMsg:{}", e.getMessage(), e);
+                    processConstraintRow(conn, schema, rs, processor, constraintType);
+                }
+            }
+        }
+    }
+
+    /**
+     * processConstraintsByPage
+     * Process constraints by page to avoid a single huge result set causing a long-running query.
+     *
+     * @param conn conn
+     * @param schema schema
+     * @param pageSql pageSql
+     * @param processor processor
+     * @param constraintType constraintType
+     * @throws SQLException SQLException
+     */
+    private void processConstraintsByPage(Connection conn, String schema, String pageSql,
+        ConstraintProcessor processor, String constraintType) throws SQLException {
+        int pageSize = getMetaPageSize();
+        int offset = 0;
+        while (true) {
+            int readCount = 0;
+            try (PreparedStatement pstmt = conn.prepareStatement(pageSql)) {
+                pstmt.setString(1, schema);
+                pstmt.setInt(2, pageSize);
+                pstmt.setInt(3, offset);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        processConstraintRow(conn, schema, rs, processor, constraintType);
+                        readCount++;
                     }
                 }
             }
+            LOGGER.info("read {} constraints of schema [{}] by page, offset: {}, pageSize: {}, read: {} records",
+                constraintType, schema, offset, pageSize, readCount);
+            if (readCount < pageSize) {
+                break;
+            }
+            offset += pageSize;
+        }
+    }
+
+    /**
+     * processConstraintRow
+     * Handle a single constraint result row and put the generated SQL into the queue.
+     *
+     * @param conn conn
+     * @param schema schema
+     * @param rs rs
+     * @param processor processor
+     * @param constraintType constraintType
+     * @throws SQLException SQLException
+     */
+    private void processConstraintRow(Connection conn, String schema, ResultSet rs,
+        ConstraintProcessor processor, String constraintType) throws SQLException {
+        String tableName = rs.getString("table_name");
+        if (isNotNeedMigraTable(schema, tableName, conn)) {
+            return;
+        }
+        String constraintName = rs.getString("constraint_name");
+        String constraintValue = constraintType.equals("unique")
+            ? rs.getString("columns")
+            : rs.getString("definition");
+        try {
+            String sql = processor.process(tableName, constraintName, constraintValue);
+            QueueManager.getInstance().putToQueue(QueueManager.TABLE_CONSTRAINT_QUEUE, sql);
+        } catch (TranslatorException e) {
+            LOGGER.error("fail to process constraint, errorMsg:{}", e.getMessage(), e);
         }
     }
 
