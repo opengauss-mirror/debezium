@@ -92,7 +92,11 @@ public abstract class AbstractTargetDatabase implements ITargetDatabase {
      * @param logPrefix logPrefix
      */
     public void writeKeyOrIndex(Function<Object, Optional<String>> sqlGenerator, String queueName, String logPrefix) {
-        try (Connection conn = connection.getConnection(dbConfig); Statement statement = conn.createStatement()) {
+        Connection conn = null;
+        Statement statement = null;
+        try {
+            conn = connection.getConnection(dbConfig);
+            statement = conn.createStatement();
             while (!QueueManager.getInstance().isQueuePollEnd(queueName)) {
                 Object object = QueueManager.getInstance().pollQueue(queueName);
                 if (object == null) {
@@ -100,15 +104,36 @@ public abstract class AbstractTargetDatabase implements ITargetDatabase {
                         logPrefix);
                     continue;
                 }
-                String sql="";
-                try {
-                    sql = sqlGenerator.apply(object)
-                            .orElseThrow(() -> new SQLException("This object " + object + " is not currently supported."));
-                    statement.executeUpdate(sql);
-                    LOGGER.info("write {}  [{}] success", logPrefix, sql);
-                } catch (SQLException e) {
-                    LOGGER.error("write {} has occurred an exception,  detail: {} {}", logPrefix, sql, e.getMessage());
-                    MigrationErrorLogger.getInstance().logSqlError(logPrefix, object.toString(), sql, e.getMessage() );
+                String sql = "";
+                boolean success = false;
+                boolean reconnected = false;
+                while (!success) {
+                    try {
+                        sql = sqlGenerator.apply(object)
+                                .orElseThrow(() -> new SQLException("This object " + object + " is not currently supported."));
+                        statement.executeUpdate(sql);
+                        LOGGER.info("write {}  [{}] success", logPrefix, sql);
+                        success = true;
+                    } catch (SQLException e) {
+                        LOGGER.error("write {} has occurred an exception,  detail: {} {}", logPrefix, sql, e.getMessage());
+                        MigrationErrorLogger.getInstance().logSqlError(logPrefix, object.toString(), sql, e.getMessage());
+                        if (reconnected || !isConnectionBroken(conn)) {
+                            break;
+                        }
+                        LOGGER.warn("target connection is broken, reconnecting and retrying: {}", sql);
+                        closeQuietly(statement);
+                        closeQuietly(conn);
+                        try {
+                            conn = connection.getConnection(dbConfig);
+                            statement = conn.createStatement();
+                            reconnected = true;
+                        } catch (SQLException reconnectEx) {
+                            LOGGER.error("reconnect to target database failed, detail:{}", reconnectEx.getMessage());
+                            break;
+                        }
+                    }
+                }
+                if (!success) {
                     continue;
                 }
                 LOGGER.info("{} has finished to write {}", Thread.currentThread().getName(), logPrefix);
@@ -131,12 +156,19 @@ public abstract class AbstractTargetDatabase implements ITargetDatabase {
             }
         } catch (SQLException e) {
             LOGGER.warn("Initial connection error while writing {}, detail: {}", logPrefix, e.getMessage());
+        } finally {
+            closeQuietly(statement);
+            closeQuietly(conn);
         }
     }
 
     @Override
     public void writeConstraints() {
-         try (Connection conn = connection.getConnection(dbConfig); Statement statement = conn.createStatement()) {
+        Connection conn = null;
+        Statement statement = null;
+        try {
+            conn = connection.getConnection(dbConfig);
+            statement = conn.createStatement();
             while (!QueueManager.getInstance().isQueuePollEnd(QueueManager.TABLE_CONSTRAINT_QUEUE)) {
                 String alterSql = (String) QueueManager.getInstance().pollQueue(QueueManager.TABLE_CONSTRAINT_QUEUE);
                 if (alterSql == null) {
@@ -144,22 +176,84 @@ public abstract class AbstractTargetDatabase implements ITargetDatabase {
                         Thread.currentThread().getName());
                     continue;
                 }
-                try {
-                    conn.setAutoCommit(false);
-                    statement.execute(alterSql);
-                    conn.commit();
-                } catch (SQLException e) {
-                    conn.rollback();
-                    if (e.getMessage() != null && !e.getMessage().endsWith("already exists")) {
-                        LOGGER.error("write table constraints has occurred an exception,  detail:{}", e.getMessage());
+                boolean success = false;
+                boolean reconnected = false;
+                while (!success) {
+                    try {
+                        conn.setAutoCommit(false);
+                        statement.execute(alterSql);
+                        conn.commit();
+                        success = true;
+                    } catch (SQLException e) {
+                        try {
+                            conn.rollback();
+                        } catch (SQLException rollbackEx) {
+                            LOGGER.debug("rollback table constraints failed, connection may be broken: {}",
+                                rollbackEx.getMessage());
+                        }
+                        if (e.getMessage() != null && !e.getMessage().endsWith("already exists")) {
+                            LOGGER.error("write table constraints has occurred an exception,  detail:{}", e.getMessage());
+                        }
+                        MigrationErrorLogger.getInstance().logSqlError("writeConstraints", "", alterSql, e.getMessage());
+                        if (reconnected || !isConnectionBroken(conn)) {
+                            break;
+                        }
+                        LOGGER.warn("target connection is broken, reconnecting and retrying: {}", alterSql);
+                        closeQuietly(statement);
+                        closeQuietly(conn);
+                        try {
+                            conn = connection.getConnection(dbConfig);
+                            statement = conn.createStatement();
+                            reconnected = true;
+                        } catch (SQLException reconnectEx) {
+                            LOGGER.error("reconnect to target database failed, detail:{}", reconnectEx.getMessage());
+                            break;
+                        }
                     }
-                    MigrationErrorLogger.getInstance().logSqlError("writeConstraints","", alterSql, e.getMessage() );
+                }
+                if (!success) {
                     continue;
                 }
                 LOGGER.info("{} has finished to write table constraints", Thread.currentThread().getName());
             }
         } catch (SQLException e) {
             LOGGER.warn("Initial connection error while writing table constraints, detail: {}", e.getMessage());
+        } finally {
+            closeQuietly(statement);
+            closeQuietly(conn);
+        }
+    }
+    
+    /**
+     * isConnectionBroken
+     * Check whether the connection is still usable. When the target server terminates the backend
+     * (e.g. "FATAL: terminating connection due to administrator command"), the existing connection
+     * is closed and every subsequent write fails, so a new connection must be established.
+     *
+     * @param conn connection
+     * @return true if the connection is broken
+     */
+    protected boolean isConnectionBroken(Connection conn) {
+        try {
+            return conn == null || conn.isClosed() || !conn.isValid(2);
+        } catch (SQLException e) {
+            return true;
+        }
+    }
+
+    /**
+     * closeQuietly
+     * Close the resource without throwing any exception.
+     *
+     * @param closeable closeable
+     */
+    protected void closeQuietly(AutoCloseable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                LOGGER.debug("close resource failed: {}", e.getMessage());
+            }
         }
     }
     

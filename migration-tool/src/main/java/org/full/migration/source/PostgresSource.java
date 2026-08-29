@@ -1069,6 +1069,11 @@ public class PostgresSource extends SourceDatabase {
     }
 
     @Override
+    protected String getQueryIndexPageSql(String schema) {
+        return getQueryIndexSql(schema) + " LIMIT ? OFFSET ?";
+    }
+
+    @Override
     protected TableIndex getTableIndex(Connection conn, ResultSet rs) throws SQLException {
         TableIndex tableIndex = new TableIndex(rs);
         tableIndex.setIndexprs(rs.getString("index_expression"));
@@ -1097,7 +1102,30 @@ public class PostgresSource extends SourceDatabase {
     }
 
     @Override
+    protected String getQueryPkPageSql() {
+        return PostgresSqlConstants.QUERY_PRIMARY_KEY_SQL + " LIMIT ? OFFSET ?";
+    }
+
+    @Override
     protected String getQueryFkSql(String schema) {
         return String.format(PostgresSqlConstants.QUERY_FOREIGN_KEY_SQL, schema);
+    }
+
+    @Override
+    protected String getQueryFkPageSql(String schema) {
+        return getQueryFkSql(schema) + " LIMIT ? OFFSET ?";
+    }
+
+    @Override
+    protected String getQueryConstraintPageSql(String constraintType) {
+        String query = "unique".equalsIgnoreCase(constraintType)
+            ? getQueryUniqueConstraint()
+            : getQueryCheckConstraint();
+        return query + " LIMIT ? OFFSET ?";
+    }
+
+    @Override
+    protected String getQueryObjectPageSql(String objectType, String schema) {
+        return String.format(getQueryObjectSql(objectType), escapeSqlLiteral(schema)) + " LIMIT ? OFFSET ?";
     }
 }
