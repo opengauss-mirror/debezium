@@ -376,7 +376,8 @@ public final class PostgresSqlConstants {
      */
     public static final String GET_PARENT_TABLE = "SELECT p.relname AS parent_table_name FROM pg_catalog.pg_inherits i JOIN "
             + " pg_catalog.pg_class c ON i.inhrelid = c.oid JOIN pg_catalog.pg_class p ON i.inhparent = p.oid "
-            + " JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = '%s' and c.relname = '%s'";
+            + " JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = '%s' and c.relname = '%s'"
+            + " ORDER BY i.inhseqno";
 
     /**
      * if table have partitions

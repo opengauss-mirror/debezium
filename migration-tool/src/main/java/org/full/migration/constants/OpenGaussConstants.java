@@ -419,7 +419,8 @@ public final class OpenGaussConstants {
      */
     public static final String GET_PARENT_TABLE = "SELECT p.relname AS parent_table_name FROM pg_inherits i JOIN "
             + " pg_class c ON i.inhrelid = c.oid JOIN pg_class p ON i.inhparent = p.oid "
-            + " JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = '%s' and c.relname = '%s'";
+            + " JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = '%s' and c.relname = '%s'"
+            + " ORDER BY i.inhseqno";
 
     /**
      * get all child tables

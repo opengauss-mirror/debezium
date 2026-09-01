@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
 
 /**
@@ -47,7 +48,7 @@ public abstract class AbstractTargetDatabase implements ITargetDatabase {
     protected DatabaseConfig dbConfig;
     protected JdbcConnection connection;
     protected Map<String, String> schemaMappings;
-    protected List<String> createdTables = new ArrayList<>();
+    protected List<String> createdTables = new CopyOnWriteArrayList<>();
     protected boolean isJsonDump;
     /**
      * Constructor

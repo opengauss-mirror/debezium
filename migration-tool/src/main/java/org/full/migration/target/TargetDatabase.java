@@ -107,7 +107,6 @@ public class TargetDatabase extends AbstractTargetDatabase{
     private boolean isDeleteCsv;
     private boolean isKeepExistingSchema;
     private Map<String, String> schemaMappings;
-    private List<String> createdTables = new ArrayList<>();
 
     /**
      * Constructor
