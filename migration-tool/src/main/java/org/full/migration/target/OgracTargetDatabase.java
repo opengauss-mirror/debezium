@@ -501,30 +501,21 @@ public class OgracTargetDatabase extends AbstractTargetDatabase {
     
     private void executeCreateTableSql(Statement statement, String createTableSql, Table table) throws SQLException {
         try {
-            if (createTableSql.contains(";")) {
-                String[] sqls = createTableSql.split(";");
-                for (String sql : sqls) {
-                    if (StringUtils.isNotBlank(sql)) {
-                        statement.execute(sql);
-                    }
-                }
-            } else {
-                statement.execute(createTableSql);
+            // Split honoring string literals and quoted identifiers so that a ';' or comment
+            // inside an attacker-controlled value cannot terminate the statement early and
+            // smuggle an extra SQL statement past this single Statement boundary.
+            List<String> sqls = splitSqlStatements(createTableSql);
+            for (String sql : sqls) {
+                statement.execute(sql);
             }
         } catch (SQLException e) {
             if (isTablespaceNotExistError(e)) {
                 LOGGER.warn("Tablespace not found in create table SQL, removing TABLESPACE clauses and retrying: {}", 
                         table.getTableName());
                 String sqlWithoutTablespace = removeTablespaceClause(createTableSql);
-                if (sqlWithoutTablespace.contains(";")) {
-                    String[] sqls = sqlWithoutTablespace.split(";");
-                    for (String sql : sqls) {
-                        if (StringUtils.isNotBlank(sql)) {
-                            statement.execute(sql);
-                        }
-                    }
-                } else {
-                    statement.execute(sqlWithoutTablespace);
+                List<String> sqls = splitSqlStatements(sqlWithoutTablespace);
+                for (String sql : sqls) {
+                    statement.execute(sql);
                 }
                 LOGGER.info("create {}.{} success after removing tablespace", table.getTargetSchemaName(), table.getTableName());
             } else {

@@ -107,10 +107,19 @@ public abstract class AbstractTargetDatabase implements ITargetDatabase {
                 String sql = "";
                 boolean success = false;
                 boolean reconnected = false;
+                boolean rejected = false;
                 while (!success) {
                     try {
                         sql = sqlGenerator.apply(object)
                                 .orElseThrow(() -> new SQLException("This object " + object + " is not currently supported."));
+                        if (!isSafeDdl(sql)) {
+                            LOGGER.error("write {} has been rejected because the SQL contains unsafe content: [{}]",
+                                logPrefix, sql);
+                            MigrationErrorLogger.getInstance().logSqlError(logPrefix, object.toString(), sql,
+                                "rejected: unsafe ddl");
+                            rejected = true;
+                            break;
+                        }
                         statement.executeUpdate(sql);
                         LOGGER.info("write {}  [{}] success", logPrefix, sql);
                         success = true;
@@ -132,6 +141,9 @@ public abstract class AbstractTargetDatabase implements ITargetDatabase {
                             break;
                         }
                     }
+                }
+                if (rejected) {
+                    continue;
                 }
                 if (!success) {
                     continue;
@@ -174,6 +186,13 @@ public abstract class AbstractTargetDatabase implements ITargetDatabase {
                 if (alterSql == null) {
                     LOGGER.debug("{} poll from queue is null, to write table constraints.",
                         Thread.currentThread().getName());
+                    continue;
+                }
+                if (!isSafeDdl(alterSql)) {
+                    LOGGER.error("write table constraints has been rejected because the SQL contains unsafe content: [{}]",
+                        alterSql);
+                    MigrationErrorLogger.getInstance().logSqlError("writeConstraints", "", alterSql,
+                        "rejected: unsafe ddl");
                     continue;
                 }
                 boolean success = false;
@@ -255,6 +274,156 @@ public abstract class AbstractTargetDatabase implements ITargetDatabase {
                 LOGGER.debug("close resource failed: {}", e.getMessage());
             }
         }
+    }
+
+    /**
+     * Check whether a DDL statement is safe to execute. A statement is considered unsafe
+     * when it contains a statement separator ({@code ;}) or comment markers ({@code --},
+     * {@code /*}, {@code *}{@code /}) outside of quoted identifiers and string literals,
+     * because those characters could be used to smuggle additional SQL statements past
+     * the single-Statement execution boundary.
+     *
+     * @param sql the generated DDL to validate
+     * @return true when the statement is safe to execute
+     */
+    protected boolean isSafeDdl(String sql) {
+        if (sql == null) {
+            return false;
+        }
+        boolean inSingleQuote = false;
+        boolean inDoubleQuote = false;
+        for (int i = 0; i < sql.length(); i++) {
+            char c = sql.charAt(i);
+            char next = i + 1 < sql.length() ? sql.charAt(i + 1) : '\0';
+            if (inSingleQuote) {
+                if (c == '\'') {
+                    if (next == '\'') {
+                        i++;
+                    } else {
+                        inSingleQuote = false;
+                    }
+                }
+                continue;
+            }
+            if (inDoubleQuote) {
+                if (c == '"') {
+                    if (next == '"') {
+                        i++;
+                    } else {
+                        inDoubleQuote = false;
+                    }
+                }
+                continue;
+            }
+            if (c == '\'') {
+                inSingleQuote = true;
+            } else if (c == '"') {
+                inDoubleQuote = true;
+            } else if (c == ';') {
+                return false;
+            } else if (c == '-' && next == '-') {
+                return false;
+            } else if (c == '/' && next == '*') {
+                return false;
+            } else if (c == '*' && next == '/') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Split a SQL script into individual statements, honoring quoted identifiers,
+     * string literals and comments. A bare {@code ;} inside a string literal or a quoted
+     * identifier (for example an Oracle DDL with a literal containing an escaped quote)
+     * must not terminate the current statement, otherwise an attacker-controlled value
+     * could be turned into a standalone injected statement.
+     *
+     * @param sql the SQL script to split
+     * @return list of non-blank statements
+     */
+    protected List<String> splitSqlStatements(String sql) {
+        List<String> statements = new ArrayList<>();
+        if (sql == null || sql.isEmpty()) {
+            return statements;
+        }
+        StringBuilder current = new StringBuilder();
+        boolean inSingleQuote = false;
+        boolean inDoubleQuote = false;
+        boolean inLineComment = false;
+        boolean inBlockComment = false;
+        for (int i = 0; i < sql.length(); i++) {
+            char c = sql.charAt(i);
+            char next = i + 1 < sql.length() ? sql.charAt(i + 1) : '\0';
+            if (inLineComment) {
+                current.append(c);
+                if (c == '\n') {
+                    inLineComment = false;
+                }
+                continue;
+            }
+            if (inBlockComment) {
+                current.append(c);
+                if (c == '*' && next == '/') {
+                    current.append('/');
+                    i++;
+                    inBlockComment = false;
+                }
+                continue;
+            }
+            if (inSingleQuote) {
+                current.append(c);
+                if (c == '\'') {
+                    if (next == '\'') {
+                        current.append('\'');
+                        i++;
+                    } else {
+                        inSingleQuote = false;
+                    }
+                }
+                continue;
+            }
+            if (inDoubleQuote) {
+                current.append(c);
+                if (c == '"') {
+                    if (next == '"') {
+                        current.append('"');
+                        i++;
+                    } else {
+                        inDoubleQuote = false;
+                    }
+                }
+                continue;
+            }
+            if (c == '-' && next == '-') {
+                inLineComment = true;
+                current.append(c).append(next);
+                i++;
+            } else if (c == '/' && next == '*') {
+                inBlockComment = true;
+                current.append(c).append(next);
+                i++;
+            } else if (c == '\'') {
+                inSingleQuote = true;
+                current.append(c);
+            } else if (c == '"') {
+                inDoubleQuote = true;
+                current.append(c);
+            } else if (c == ';') {
+                String statement = current.toString().trim();
+                if (!statement.isEmpty()) {
+                    statements.add(statement);
+                }
+                current.setLength(0);
+            } else {
+                current.append(c);
+            }
+        }
+        String last = current.toString().trim();
+        if (!last.isEmpty()) {
+            statements.add(last);
+        }
+        return statements;
     }
     
     /**

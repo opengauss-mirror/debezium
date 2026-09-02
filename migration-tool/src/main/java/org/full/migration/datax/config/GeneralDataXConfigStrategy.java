@@ -180,7 +180,7 @@ public class GeneralDataXConfigStrategy implements DataXConfigStrategy {
         configurePreAndPostSql(writerParam, targetSchemaName, table.getTableName());
         WriterConnection writerConn = new WriterConnection();
         writerConn.setJdbcUrl(commonConfig.getWriterJdbcUrl());
-        writerConn.addTable(table.getTableName());
+        writerConn.addTable(quoteIdent(table.getTableName()));
         writerConn.setSchema(targetSchemaName);
         writerParam.addConnection(writerConn);
     }
@@ -197,11 +197,25 @@ public class GeneralDataXConfigStrategy implements DataXConfigStrategy {
                 int startIdx = col.indexOf("CONTENT") + 7;
                 int endIdx = col.indexOf("AS CLOB");
                 String colName = col.substring(startIdx, endIdx).trim();
-                return colName;
+                return quoteIdent(colName);
             }else{
-                return col;
+                return quoteIdent(col.trim());
             }
         }).map(String::trim).collect(Collectors.toList());
+    }
+
+    /**
+     * Quote a SQL identifier by wrapping it with double quotes and escaping every
+     * internal double quote. Table names and column names coming from source
+     * metadata are embedded into the DataX writer's target SQL templates as
+     * identifiers, so they must be quoted to prevent them from altering the SQL
+     * structure (SQL injection via quoted identifiers).
+     *
+     * @param identifier the raw identifier
+     * @return the quoted identifier
+     */
+    private String quoteIdent(String identifier) {
+        return "\"" + (identifier == null ? "" : identifier.replace("\"", "\"\"")) + "\"";
     }
     /**
      * Configure the pre and post SQL
@@ -222,7 +236,7 @@ public class GeneralDataXConfigStrategy implements DataXConfigStrategy {
      */
     protected void configurePreAndPostSql(WriterParameter writerParam, String targetSchemaName, String tableName) {
         writerParam.addPreSql("ALTER SESSION SET LOCK_WAIT_TIMEOUT = 0");
-        writerParam.addPreSql("TRUNCATE TABLE " + targetSchemaName + "." + tableName);
+        writerParam.addPreSql("TRUNCATE TABLE " + quoteIdent(targetSchemaName) + "." + quoteIdent(tableName));
     }
 
     /**

@@ -18,9 +18,10 @@ public class DatabaseUtils {
         if (name == null) {
             return null;
         }
-        if (name.startsWith("\"") && name.endsWith("\"") && name.length() >= 2) {
-            return name;
-        }
+        // Always treat the input as a single identifier segment: escape every
+        // internal double quote and wrap with outer quotes. Pre-quoted input is
+        // never trusted as-is, otherwise an attacker-controlled name that starts
+        // with '"' could close the identifier and inject extra SQL.
         return "\"" + name.replace("\"", "\"\"") + "\"";
     }
 

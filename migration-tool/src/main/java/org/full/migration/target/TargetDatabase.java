@@ -94,7 +94,7 @@ public class TargetDatabase extends AbstractTargetDatabase{
         = "COPY \"%s\".\"%s\" FROM STDIN WITH NULL 'null' CSV QUOTE '\"' DELIMITER ',' ESCAPE '\"' HEADER";
     private static final String CREATE_PK_SQL = "ALTER TABLE \"%s\".\"%s\" ADD CONSTRAINT \"%s\" PRIMARY KEY (%s)";
     private static final String CREATE_FK_SQL
-        = "ALTER TABLE \"%s\".\"%s\" ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES \"%s\".\"%s\" (\"%s\")";
+        = "ALTER TABLE \"%s\".\"%s\" ADD CONSTRAINT \"%s\" FOREIGN KEY (%s) REFERENCES \"%s\".\"%s\" (%s)";
     private static final String IS_TABLE_EXIST_SQL
         = "SELECT EXISTS (SELECT 1  FROM pg_tables  WHERE LOWER(tablename) = ? AND LOWER(schemaname) = ? )";
 
@@ -506,8 +506,36 @@ public class TargetDatabase extends AbstractTargetDatabase{
     private String buildCopySql(String fullName, String header) {
         return String.format(
                 "COPY %s (%s) FROM STDIN WITH (FORMAT csv, NULL 'null', QUOTE '\"', DELIMITER ',', ESCAPE '\"')",
-                fullName, header
+                fullName, quoteColumnList(header)
         );
+    }
+
+    /**
+     * Build a comma separated list of quoted identifiers from a raw column list. The input
+     * may contain already quoted names or CSV-quoted names (e.g. a column whose name contains
+     * a comma). Each segment is unquoted first, then re-quoted as a single identifier with
+     * every internal double quote escaped. This prevents attacker-controlled column names from
+     * breaking out of the identifier and injecting arbitrary SQL.
+     *
+     * @param columns raw column list (possibly already quoted)
+     * @return comma separated list of quoted identifiers, or the original input if blank
+     */
+    private String quoteColumnList(String columns) {
+        if (columns == null || columns.isEmpty()) {
+            return columns;
+        }
+        String[] parts = CSV_SPLIT_PATTERN.split(columns.trim());
+        StringBuilder builder = new StringBuilder();
+        for (String part : parts) {
+            String col = part.trim();
+            // strip CSV or identifier quoting around the name if present
+            if (col.length() >= 2 && col.startsWith("\"") && col.endsWith("\"")) {
+                col = col.substring(1, col.length() - 1);
+            }
+            builder.append("\"").append(col.replace("\"", "\"\"")).append("\", ");
+        }
+        builder.setLength(builder.length() - 2);
+        return builder.toString();
     }
 
     private boolean parseLine(List<String> rowFields, StringBuilder fieldBuilder, int fieldNum,
@@ -745,14 +773,14 @@ public class TargetDatabase extends AbstractTargetDatabase{
                                 DatabaseUtils.formatObjName(tableIndex.getIndexName()),
                                 DatabaseUtils.formatObjName(tableIndex.getSchemaName()),
                                 DatabaseUtils.formatObjName(tableIndex.getTableName()),
-                                StringUtils.isEmpty(tableIndex.getIndexprs()) ? tableIndex.getColumnName() : tableIndex.getIndexprs()));
+                                StringUtils.isEmpty(tableIndex.getIndexprs()) ? quoteColumnList(tableIndex.getColumnName()) : tableIndex.getIndexprs()));
             } else {
                 builder = new StringBuilder(
                         String.format(indexSqlTempOptional.get(),
                                 DatabaseUtils.formatObjName(tableIndex.getSchemaName()),
                                 DatabaseUtils.formatObjName(tableIndex.getTableName()),
                                 DatabaseUtils.formatObjName(tableIndex.getIndexName()),
-                                StringUtils.isEmpty(tableIndex.getIndexprs()) ? tableIndex.getColumnName() : tableIndex.getIndexprs()));
+                                StringUtils.isEmpty(tableIndex.getIndexprs()) ? quoteColumnList(tableIndex.getColumnName()) : tableIndex.getIndexprs()));
             }
             if (StringUtils.isNotEmpty(tableIndex.getIncludedColumns())) {
                 builder.append(" INCLUDE (").append(tableIndex.getIncludedColumns()).append(")");
@@ -812,9 +840,9 @@ public class TargetDatabase extends AbstractTargetDatabase{
         return Optional.of(
             String.format(CREATE_FK_SQL, quoteIdent(tableForeignKey.getSchemaName()),
                 quoteIdent(tableForeignKey.getParentTable()),
-                quoteIdent(tableForeignKey.getFkName()), tableForeignKey.getParentColumn(),
+                quoteIdent(tableForeignKey.getFkName()), quoteColumnList(tableForeignKey.getParentColumn()),
                 quoteIdent(tableForeignKey.getSchemaName()), quoteIdent(tableForeignKey.getReferencedTable()),
-                tableForeignKey.getReferencedColumn()));
+                quoteColumnList(tableForeignKey.getReferencedColumn())));
     }
 
     /**
