@@ -30,24 +30,9 @@ public interface DataXConfigStrategy {
     String getStrategyName();
     
     /**
-     * Check if this strategy is applicable for the given context
-     *
-     * @param context Configuration context
-     * @return Whether this strategy is applicable
-     */
-    boolean isApplicable(DataXConfigContext context);
-    
-    /**
      * Get the JVM parameters required by this strategy
      * @param rowCount Row count of the table to be migrated
      * @return JVM parameter string
      */
     String getJvmParameters(long rowCount);
-    
-    /**
-     * Get the description of the strategy
-     *
-     * @return Strategy description
-     */
-    String getDescription();
 }

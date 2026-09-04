@@ -104,9 +104,16 @@ public class DataXManager {
         DataXConfigResult configResult = null;
         try {
             configResult = generateDataXConfig(context, migrationTaskName);
+            // Reserve OS memory quota for this DataX process (byte-based semaphore throttling);
+            // blocks while OS free memory minus reserved quota is insufficient
             MemoryUtils.checkMemoryAvailability(configResult.getJvmParameters(), schemaName + "." + tableName);
             dataXListener.onTaskStart(schemaName, tableName);
-            boolean isSuccess = runDataXWithPyScript(configResult, schemaName, tableName, migrationTaskName);
+            boolean isSuccess;
+            try {
+                isSuccess = runDataXWithPyScript(configResult, schemaName, tableName, migrationTaskName);
+            } finally {
+                MemoryUtils.releaseMemory(configResult.getJvmParameters(), schemaName + "." + tableName);
+            }
             LOGGER.info("Full migration for {} completed with status: {}", migrationTaskName, isSuccess);
             dataXListener.onTaskComplete(schemaName, tableName, isSuccess, isSuccess ? null : "Task execution failed");
             return isSuccess;

@@ -24,8 +24,6 @@ import java.util.stream.Collectors;
  */
 public class GeneralDataXConfigStrategy implements DataXConfigStrategy {
     private static final String STRATEGY_NAME = "general_datax_strategy";
-    private static final String STRATEGY_DESCRIPTION = "General DataX configuration strategy for all table types, " +
-            "dynamically adjusts configuration based on table properties";
 
     @Override
     public DataXConfig generateConfig(DataXConfigContext context) throws DataXMigrationException {
@@ -39,7 +37,7 @@ public class GeneralDataXConfigStrategy implements DataXConfigStrategy {
         DataXConfig config = new DataXConfig();
         Job job = config.getJob();
         Setting setting = job.getSetting();
-        setting.getSpeed().setChannel(getChannelCount(table.getEstimatedRowCount()));
+        setting.getSpeed().setChannel(getChannelCount(table.getEstimatedRowCount(), commonConfig));
         setting.getErrorLimit().setRecord(commonConfig.getErrorRecordLimit());
         setting.getErrorLimit().setPercentage(commonConfig.getErrorPercentageLimit());
 
@@ -51,19 +49,8 @@ public class GeneralDataXConfigStrategy implements DataXConfigStrategy {
     }
 
     @Override
-    public boolean isApplicable(DataXConfigContext context) {
-        // General strategy applies to all tables
-        return true;
-    }
-
-    @Override
     public String getStrategyName() {
         return STRATEGY_NAME;
-    }
-
-    @Override
-    public String getDescription() {
-        return STRATEGY_DESCRIPTION;
     }
 
     @Override
@@ -86,11 +73,17 @@ public class GeneralDataXConfigStrategy implements DataXConfigStrategy {
      * @param rowCount Row count
      * @return Number of channels
      */
-    protected int getChannelCount(long rowCount) {
-        if (rowCount <= 10000) return 1; // Less than 10,000
-        if (rowCount <= 100000) return 2; // 10,000 - 100,000
-        if (rowCount <= 1000000) return 4; // 100,000 - 1,000,000
-        return Math.min(8, Runtime.getRuntime().availableProcessors() / 2); // More than 1,000,000
+    protected int getChannelCount(long rowCount, DataXCommonConfig commonConfig) {
+        int baseChannels;
+        if (rowCount <= 10000) baseChannels = 1;
+        else if (rowCount <= 100000) baseChannels = 2;
+        else if (rowCount <= 1000000) baseChannels = 4;
+        else baseChannels = Math.min(8, Runtime.getRuntime().availableProcessors() / 2);
+
+        if (commonConfig != null && commonConfig.getMaxChannels() > 0) {
+            return Math.min(baseChannels, commonConfig.getMaxChannels());
+        }
+        return baseChannels;
     }
 
     /**

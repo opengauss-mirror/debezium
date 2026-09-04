@@ -75,6 +75,8 @@ public class DataxTableMigration extends MigrationStrategy {
         List<PostgresCustomTypeMeta> customTypes = source.queryCustomOrDomainTypes(schemaSet);
         target.createCustomOrDomainTypes(customTypes);
         
+        // Submit all tasks first (producers and consumers run concurrently),
+        // then wait for completion in dependency order — same pattern as TableMigration
         logger.info("Starting metadata reading phase");
         metaReadExecutor.submit(() -> {
             try {
@@ -98,8 +100,6 @@ public class DataxTableMigration extends MigrationStrategy {
             });
         }
         
-        logger.info("Waiting for metadata reading threads to complete");
-        waitThreadsTerminated(metaReadExecutor, QueueManager.SOURCE_TABLE_META_QUEUE, false);
         logger.info("Starting metadata writing phase");
         for (int i = 0; i < metaThreadCount; i++) {
             metaWriteExecutor.submit(() -> {
@@ -113,8 +113,6 @@ public class DataxTableMigration extends MigrationStrategy {
             });
         }
         
-        logger.info("Waiting for metadata writing threads to complete");
-        waitThreadsTerminated(metaWriteExecutor, QueueManager.TARGET_TABLE_META_QUEUE, false);
         logger.info("Starting data migration phase with DataX");
         for (int i = 0; i < dataThreadCount; i++) {
             dataMigrationExecutor.submit(() -> {
@@ -128,6 +126,16 @@ public class DataxTableMigration extends MigrationStrategy {
             });
         }
         
+        // Wait for all phases in dependency order:
+        // 1. metaReadExecutor finishes → SOURCE_TABLE_META_QUEUE.readFinished = true
+        //    → writeTableConstruct() consumers can exit their poll loop
+        // 2. metaWriteExecutor finishes → TARGET_TABLE_META_QUEUE.readFinished = true
+        //    → writeTable() DataX consumers can exit their poll loop
+        // 3. dataMigrationExecutor finishes → migration complete
+        logger.info("Waiting for metadata reading threads to complete");
+        waitThreadsTerminated(metaReadExecutor, QueueManager.SOURCE_TABLE_META_QUEUE, false);
+        logger.info("Waiting for metadata writing threads to complete");
+        waitThreadsTerminated(metaWriteExecutor, QueueManager.TARGET_TABLE_META_QUEUE, false);
         logger.info("Waiting for DataX migration threads to complete");
         waitThreadsTerminated(dataMigrationExecutor, "", true);
         logger.info("DataX-based table migration completed successfully");

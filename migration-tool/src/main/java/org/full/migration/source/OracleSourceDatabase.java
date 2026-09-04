@@ -354,10 +354,14 @@ public class OracleSourceDatabase extends SourceDatabase {
             pstmt.setString(2, column);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
+                    // Oracle LONG column must be read in SELECT column order;
+                    // read EXPRESSION (column 3) before VIRTUAL_COLUMN (column 4)
+                    // to avoid "Stream has already been closed" error
+                    String expression = getColumnLongValue(rs, "EXPRESSION");
                     if (isVirtualNonXmlColumn(rs)) {
                         return Optional.empty();
                     }
-                    GenerateInfo generateInfo = createGenerateInfo(column, rs);
+                    GenerateInfo generateInfo = createGenerateInfo(column, expression);
                     return Optional.of(generateInfo);
                 }
             }
@@ -379,13 +383,11 @@ public class OracleSourceDatabase extends SourceDatabase {
         return (isVirtualColumn && !Objects.equals(dataType, "XMLTYPE"));
     }
 
-    private GenerateInfo createGenerateInfo(String column, ResultSet rs) throws SQLException {
+    private GenerateInfo createGenerateInfo(String column, String expression) {
         GenerateInfo generateInfo = new GenerateInfo();
         generateInfo.setName(column);
         generateInfo.setIsStored(true);
         
-        // 获取表达式并处理可能的null值
-        String expression = getColumnLongValue(rs, "EXPRESSION");
         if (expression == null) {
             LOGGER.warn("get expression empty for column: {}", column);
         }

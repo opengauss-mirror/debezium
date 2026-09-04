@@ -18,6 +18,7 @@ package org.full.migration;
 import org.full.migration.constants.CommonConstants;
 import org.full.migration.coordinator.MigrationEngine;
 import org.full.migration.logger.LogManager;
+import org.full.migration.utils.MemoryUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -50,6 +51,7 @@ public class Starter {
         LogManager.initializeLogFile(logFile);
         String logLevel = commandMap.get("--log-level");
         LogManager.setLogLevel(logLevel);
+        MemoryUtils.warnIfPhysicalMemoryInsufficient();
         
         String taskType = commandMap.get(CommonConstants.TASK_TYPE);
         String sourceDatabase = commandMap.get(CommonConstants.SOURCE_DATABASE);
