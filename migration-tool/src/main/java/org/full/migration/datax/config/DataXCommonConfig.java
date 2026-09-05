@@ -27,6 +27,9 @@ import lombok.Data;
  *   <li>enablePrepareStatement - Whether to use prepared statements (default: true)</li>
  *   <li>retryTimes - Number of retry attempts on failure (default: 3)</li>
  *   <li>retryInterval - Interval between retries in milliseconds (default: 1000)</li>
+ *   <li>minCpuCoresForHighPerformance - Minimum CPU cores for high-performance strategy (default: 8)</li>
+ *   <li>minMemoryForHighPerformance - Minimum physical memory (GB) for high-performance strategy (default: 16)</li>
+ *   <li>maxChannels - Maximum number of channels per DataX job (default: 32)</li>
  * </ul>
  *
  * @since 2025-04-18
@@ -54,4 +57,9 @@ public class DataXCommonConfig {
     private String writerUsername;
     private String writerPassword;
     private String writerJdbcUrl;
+    
+    private int minCpuCoresForHighPerformance = 8;
+    private long minMemoryForHighPerformance = 16L;
+    
+    private int maxChannels = 32;
 }
