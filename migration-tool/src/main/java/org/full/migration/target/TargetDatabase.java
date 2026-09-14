@@ -537,6 +537,62 @@ public class TargetDatabase extends AbstractTargetDatabase{
         return builder.toString();
     }
 
+    /**
+     * Builds a comma separated list of quoted identifiers from a raw index column list,
+     * keeping the sort option suffix (e.g. DESC, NULLS FIRST) outside the quotes. The
+     * input is produced by the source side as `"col2" DESC,"col3"`, where each segment
+     * is a quoted column name optionally followed by a sort option suffix.
+     *
+     * @param columns raw index column list
+     * @return comma separated list of quoted columns with sort option kept outside
+     */
+    private String quoteIndexColumnList(String columns) {
+        if (columns == null || columns.isEmpty()) {
+            return columns;
+        }
+        String[] parts = CSV_SPLIT_PATTERN.split(columns.trim());
+        StringBuilder builder = new StringBuilder();
+        for (String part : parts) {
+            String col = part.trim();
+            int closingQuote = findClosingQuote(col);
+            if (closingQuote < 0) {
+                builder.append("\"").append(col.replace("\"", "\"\"")).append("\", ");
+                continue;
+            }
+            String quotedName = col.substring(0, closingQuote + 1);
+            String sortOption = col.substring(closingQuote + 1);
+            // strip the outer quotes, then re-quote with internal quotes escaped
+            String name = quotedName.substring(1, quotedName.length() - 1);
+            builder.append("\"").append(name.replace("\"", "\"\"")).append("\"")
+                    .append(sortOption).append(", ");
+        }
+        builder.setLength(builder.length() - 2);
+        return builder.toString();
+    }
+
+    /**
+     * Finds the position of the closing quote of an identifier starting with a quote,
+     * skipping escaped double quotes inside the identifier.
+     *
+     * @param col segment that may start with a quoted identifier
+     * @return index of the closing quote, or -1 when the segment has no opening quote
+     */
+    private int findClosingQuote(String col) {
+        if (col.isEmpty() || col.charAt(0) != '"') {
+            return -1;
+        }
+        for (int i = 1; i < col.length(); i++) {
+            if (col.charAt(i) == '"') {
+                if (i + 1 < col.length() && col.charAt(i + 1) == '"') {
+                    i++;
+                } else {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
     private boolean parseLine(List<String> rowFields, StringBuilder fieldBuilder, int fieldNum,
                               String line, AtomicBoolean atomicInQuotes) {
         String endCRLF = getEndCRLF(line);
@@ -766,20 +822,21 @@ public class TargetDatabase extends AbstractTargetDatabase{
         Optional<String> indexSqlTempOptional = getIndexSqlTemp(tableIndex);
         if (indexSqlTempOptional.isPresent()) {
             StringBuilder builder;
+            String columnList = StringUtils.isEmpty(tableIndex.getIndexprs()) ? quoteIndexColumnList(tableIndex.getColumnName()) : tableIndex.getIndexprs();
             if (!tableIndex.isConstraint()) {
                 builder = new StringBuilder(
                         String.format(indexSqlTempOptional.get(),
                                 DatabaseUtils.formatObjName(tableIndex.getIndexName()),
                                 DatabaseUtils.formatObjName(tableIndex.getSchemaName()),
                                 DatabaseUtils.formatObjName(tableIndex.getTableName()),
-                                StringUtils.isEmpty(tableIndex.getIndexprs()) ? quoteColumnList(tableIndex.getColumnName()) : tableIndex.getIndexprs()));
+                                columnList));
             } else {
                 builder = new StringBuilder(
                         String.format(indexSqlTempOptional.get(),
                                 DatabaseUtils.formatObjName(tableIndex.getSchemaName()),
                                 DatabaseUtils.formatObjName(tableIndex.getTableName()),
                                 DatabaseUtils.formatObjName(tableIndex.getIndexName()),
-                                StringUtils.isEmpty(tableIndex.getIndexprs()) ? quoteColumnList(tableIndex.getColumnName()) : tableIndex.getIndexprs()));
+                                columnList));
             }
             if (StringUtils.isNotEmpty(tableIndex.getIncludedColumns())) {
                 builder.append(" INCLUDE (").append(tableIndex.getIncludedColumns()).append(")");
