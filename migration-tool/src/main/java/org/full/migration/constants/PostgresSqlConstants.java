@@ -237,7 +237,8 @@ public final class PostgresSqlConstants {
     /**
      * sql for querying cols of index
      */
-    public static final String QUERY_INDEX_COL_SQL = "SELECT a.attname AS column_name\n" +
+    public static final String QUERY_INDEX_COL_SQL =
+            "SELECT a.attname AS column_name, i.indoption[s.idx_order] AS ind_option\n" +
             "FROM pg_index i\n" +
             "JOIN pg_class c ON c.oid = i.indrelid\n" +
             "JOIN pg_class idx ON idx.oid = i.indexrelid\n" +

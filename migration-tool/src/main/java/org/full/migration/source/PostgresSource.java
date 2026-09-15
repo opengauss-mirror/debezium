@@ -1084,11 +1084,35 @@ public class PostgresSource extends SourceDatabase {
                      String.format(PostgresSqlConstants.QUERY_INDEX_COL_SQL, objectId,
                              tableIndex.getIndexName()))) {
             while (colRs.next()) {
-                indexCols.add(DatabaseUtils.formatObjName(colRs.getString("column_name")));
+                String columnName = colRs.getString("column_name");
+                int indOption = colRs.getInt("ind_option");
+                String formattedColumn = DatabaseUtils.formatObjName(columnName)
+                        + buildIndexColSortOption(indOption);
+                indexCols.add(formattedColumn);
             }
             tableIndex.setColumnName(String.join(CommonConstants.DELIMITER, indexCols));
         }
         return tableIndex;
+    }
+
+    /**
+     * Builds the sort option suffix of an index column from pg_index.indoption,
+     * where bit 0 marks DESC and bit 1 marks NULLS FIRST
+     *
+     * @param indOption per-column flags of pg_index.indoption
+     * @return sort option suffix, empty when the default ordering is used
+     */
+    private String buildIndexColSortOption(int indOption) {
+        switch (indOption) {
+            case 3:
+                return " DESC";
+            case 2:
+                return " NULLS FIRST";
+            case 1:
+                return " DESC NULLS LAST";
+            default:
+                return "";
+        }
     }
 
     @Override
