@@ -77,6 +77,9 @@ openGauss-FullReplicate是一个用Java编写的数据迁移工具。该工具�
 
 ```bash
 wget https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/openGauss-FullReplicate-7.0.0.tar.gz
+
+datax组件下载
+wget https://gitcode.com/opengauss/debezium/blob/master/migration-tool/openGauss-oracle2ograc-datax-tool.zip
 ```
 
 ## 2.3 安装包解压
@@ -85,6 +88,10 @@ wget https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/openGauss-F
 
 ```
 tar -zxvf openGauss-FullReplicate-7.0.0.tar.gz
+## 进入解压目录 
+cd openGauss-FullReplicate
+## 下载datax组件，并解压到openGauss-FullReplicate目录下根目录
+unzip openGauss-oracle2ograc-datax-tool.zip
 ```
 
 解压后参考目录如下：
@@ -95,6 +102,7 @@ openGauss-FullReplicate/config/
 openGauss-FullReplicate/config/config.yml
 openGauss-FullReplicate/build_commit_id.log
 openGauss-FullReplicate/openGauss-FullReplicate-7.0.0.jar
+openGauss-FullReplicate/datax/
 ```
 
 其中openGauss-FullReplicate-7.0.0.jar为工具的主程序，config文件夹下为配置文件模板。
