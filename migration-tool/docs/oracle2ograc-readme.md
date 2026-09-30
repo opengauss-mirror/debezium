@@ -77,6 +77,9 @@ openGauss-FullReplicate是一个用Java编写的数据迁移工具。该工具�
 
 ```bash
 wget https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/tools/openGauss-FullReplicate-7.0.0.tar.gz
+
+datax组件下载
+wget https://gitcode.com/opengauss/debezium/blob/master/migration-tool/openGauss-oracle2ograc-datax-tool.zip
 ```
 
 ## 2.3 安装包解压
