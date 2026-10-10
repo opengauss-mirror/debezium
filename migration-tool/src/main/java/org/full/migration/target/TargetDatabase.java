@@ -369,6 +369,9 @@ public class TargetDatabase extends AbstractTargetDatabase{
             connection.commit();
             FileUtils.clearCsvFile(path, isDeleteCsv);
             sliceInfo = tableTask.getSliceInfo();
+            if (isJsonDump) {
+                ProgressTracker.recordLoadRows(sliceInfo.getRow());
+            }
             progressInfo.setData(calculateProgressData(sliceInfo));
             progressInfo.setRecord(sliceInfo.getRow());
             if (sliceInfo.isLast()) {
@@ -403,6 +406,8 @@ public class TargetDatabase extends AbstractTargetDatabase{
                 progressInfo.setPercent(ProgressStatus.MIGRATED_FAILURE.getCode());
                 progressInfo.setError(e.getMessage());
                 LOGGER.error("failed to copy data of {}.{}, error message:{}", schemaName, tableName, e.getMessage());
+            } else if (isJsonDump) {
+                ProgressTracker.recordLoadRows(sliceInfo.getRow());
             }
         } finally {
             try {
