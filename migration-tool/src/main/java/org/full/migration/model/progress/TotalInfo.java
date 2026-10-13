@@ -32,4 +32,7 @@ public class TotalInfo {
     private double data;
     private int time;
     private double speed;
+    private long extractSpeed;
+    private long csvSpeed;
+    private long loadSpeed;
 }

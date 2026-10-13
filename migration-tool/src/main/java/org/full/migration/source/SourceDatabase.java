@@ -705,8 +705,14 @@ public abstract class SourceDatabase {
                 writer.write(line);
                 writer.newLine();
                 if (rowCount % pageRows == 0) {
+                    if (isDumpJson) {
+                        ProgressTracker.recordExtractRows(pageRows);
+                    }
                     writer.flush();
                     writer.close();
+                    if (isDumpJson) {
+                        ProgressTracker.recordCsvRows(pageRows);
+                    }
                     SliceInfo sliceInfo = new SliceInfo(fileIndex, totalSlice, pageRows, false);
                     TableData tableData = new TableData(table,
                             FileUtils.getCurrentFilePath(table, tableCsvPath, fileIndex), snapshotPoint, sliceInfo);
@@ -716,10 +722,16 @@ public abstract class SourceDatabase {
                     rowCount = 0;
                 }
             }
+            if (isDumpJson) {
+                ProgressTracker.recordExtractRows(rowCount);
+            }
             TableData tableData = new TableData(table, FileUtils.getCurrentFilePath(table, tableCsvPath, fileIndex),
                     snapshotPoint, new SliceInfo(fileIndex, totalSlice, rowCount, true));
             writer.flush();
             writer.close();
+            if (isDumpJson) {
+                ProgressTracker.recordCsvRows(rowCount);
+            }
             updateTableDataQueue(tableData);
         } catch (IOException e) {
             LOGGER.error("write csv file has occurred an IOException, error message:{}", e.getMessage());

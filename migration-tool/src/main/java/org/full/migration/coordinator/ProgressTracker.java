@@ -37,6 +37,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * ProgressTracker
@@ -56,6 +57,17 @@ public class ProgressTracker {
     private final ScheduledExecutorService fullProgressReportService;
     private final String path;
     private final File file;
+
+    private final AtomicLong extractRows = new AtomicLong(0L);
+    private final AtomicLong csvRows = new AtomicLong(0L);
+    private final AtomicLong loadRows = new AtomicLong(0L);
+    private long lastExtractRows;
+    private long lastCsvRows;
+    private long lastLoadRows;
+    private long lastStageTime;
+    private long extractSpeed;
+    private long csvSpeed;
+    private long loadSpeed;
 
     private ProgressTracker(String path, String taskType) {
         this.progressMap = new ConcurrentHashMap<>();
@@ -160,6 +172,7 @@ public class ProgressTracker {
     }
 
     private void reportTableProgress() {
+        updateStageSpeeds();
         doReportTableProgress();
         if (isTaskStop.get()) {
             fullProgressReportService.shutdown();
@@ -187,8 +200,68 @@ public class ProgressTracker {
         BigDecimal speed = new BigDecimal(totalData / (timeInterval * MEMORY_UNIT));
         migrationProgressInfo.setTotal(
                 new TotalInfo(totalRecord, getFormatDouble(new BigDecimal(totalData / MEMORY_UNIT ), 2),
-                        timeInterval, getFormatDouble(speed, 2)));
+                        timeInterval, getFormatDouble(speed, 2),
+                        extractSpeed, csvSpeed, loadSpeed));
         FileUtils.writeToFile(file, JSON.toJSONString(migrationProgressInfo));
+    }
+
+    /**
+     * updateStageSpeeds
+     * Calculate per-stage speed over the window since the last refresh and keep
+     * the result in fields, so the final report reuses the last values instead
+     * of computing a near-zero-width window.
+     */
+    private void updateStageSpeeds() {
+        long curExtractRows = extractRows.get();
+        long curCsvRows = csvRows.get();
+        long curLoadRows = loadRows.get();
+        long currentTime = System.currentTimeMillis();
+        if (lastStageTime > 0 && currentTime > lastStageTime) {
+            double seconds = (currentTime - lastStageTime) / (double) TIME_UNIT;
+            extractSpeed = Math.round((curExtractRows - lastExtractRows) / seconds);
+            csvSpeed = Math.round((curCsvRows - lastCsvRows) / seconds);
+            loadSpeed = Math.round((curLoadRows - lastLoadRows) / seconds);
+        }
+        lastExtractRows = curExtractRows;
+        lastCsvRows = curCsvRows;
+        lastLoadRows = curLoadRows;
+        lastStageTime = currentTime;
+    }
+
+    /**
+     * recordExtractRows
+     *
+     * @param rows rows
+     */
+    public static void recordExtractRows(long rows) {
+        ProgressTracker tracker = instance;
+        if (tracker != null) {
+            tracker.extractRows.addAndGet(rows);
+        }
+    }
+
+    /**
+     * recordCsvRows
+     *
+     * @param rows rows
+     */
+    public static void recordCsvRows(long rows) {
+        ProgressTracker tracker = instance;
+        if (tracker != null) {
+            tracker.csvRows.addAndGet(rows);
+        }
+    }
+
+    /**
+     * recordLoadRows
+     *
+     * @param rows rows
+     */
+    public static void recordLoadRows(long rows) {
+        ProgressTracker tracker = instance;
+        if (tracker != null) {
+            tracker.loadRows.addAndGet(rows);
+        }
     }
 
     private double getFormatDouble(BigDecimal decimal, int precision) {
