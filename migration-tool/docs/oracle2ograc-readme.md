@@ -88,6 +88,11 @@ wget https://gitcode.com/opengauss/debezium/blob/master/migration-tool/openGauss
 
 ```
 tar -zxvf openGauss-FullReplicate-7.0.0.tar.gz
+unzip openGauss-oracle2ograc-datax-tool.zip
+
+## 解压完成后，将 datax 插件移动到 openGauss-FullReplicate 目录即可
+mv datax openGauss-FullReplicate
+
 ```
 
 解压后参考目录如下：
@@ -98,6 +103,7 @@ openGauss-FullReplicate/config/
 openGauss-FullReplicate/config/config.yml
 openGauss-FullReplicate/build_commit_id.log
 openGauss-FullReplicate/openGauss-FullReplicate-7.0.0.jar
+openGauss-FullReplicate/datax/
 ```
 
 其中openGauss-FullReplicate-7.0.0.jar为工具的主程序，config文件夹下为配置文件模板。
@@ -297,7 +303,7 @@ java -jar openGauss-FullReplicate-7.0.0.jar --start sequence --source oracle --c
 | INTERVAL DAY(n) TO SECOND(m) | INTERVAL DAY(n) TO SECOND(m) | 当长度<=6且精度<=6时保持原类型                         |
 | INTERVAL DAY(n) TO SECOND(m) | INTERVAL DAY(6) TO SECOND(6) | 当长度>6或精度>6时转换为INTERVAL DAY(6) TO SECOND(6) |
 | **特殊类型**     |                                |                                            |
-| XMLTYPE          |                                | 转换为Clob                                    |
+| XMLTYPE          |CLOB                            | 转换为CLOB                                    |
 | JSON             |                                | 不兼容，抛出异常                                   |
 | ANYDATA          |                                | 不兼容，抛出异常                                   |
 
