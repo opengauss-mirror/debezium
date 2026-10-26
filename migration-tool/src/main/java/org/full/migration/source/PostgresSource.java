@@ -570,10 +570,10 @@ public class PostgresSource extends SourceDatabase {
         }
 
         if (column.isGenerated()) {
-            builder.append("GENERATED ALWAYS AS (")
+            builder.append(" GENERATED ALWAYS AS (")
                     .append(column.getGenerateInfo().getDefine())
                     .append(")")
-                    .append(column.getGenerateInfo().getIsStored() ? " STORED " : "VIRTUAL");
+                    .append(column.getGenerateInfo().getIsStored() ? " STORED" : " VIRTUAL");
         } else if (!PostgresColumnType.isSerialTypes(typeName)
                 && column.getDefaultValueExpression() != null) {
             builder.append(" default " + column.getDefaultValueExpression());
@@ -1043,6 +1043,9 @@ public class PostgresSource extends SourceDatabase {
             return originDefinition.replace("LANGUAGE plpgsql", "")
                     .replaceAll("AS\\s*\\$.*?\\$\\s*BEGIN", "AS BEGIN")
                     .replaceAll("END;\\s*\\$.*?\\$", "END;");
+        } else if (TaskTypeEnum.TRIGGER.getTaskType().equalsIgnoreCase(objectType)) {
+            String originDefinition = rs.getString("definition");
+            return originDefinition.replaceAll("(?i)EXECUTE\\s+FUNCTION", "EXECUTE PROCEDURE");
         }
         return rs.getString("definition");
     }
