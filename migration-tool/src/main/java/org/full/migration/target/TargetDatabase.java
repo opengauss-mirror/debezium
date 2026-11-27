@@ -1,16 +1,17 @@
 /*
- * Copyright (c) 2025-2025 Huawei Technologies Co.,Ltd.
+ * Copyright 2025 Huawei Technologies Co., Ltd.
  *
- * openGauss is licensed under Mulan PSL v2.
- * You can use this software according to the terms and conditions of the Mulan PSL v2.
- * You may obtain a copy of Mulan PSL v2 at:
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *           http://license.coscl.org.cn/MulanPSL2
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
- * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
- * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
- * See the Mulan PSL v2 for more details.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.full.migration.target;
@@ -23,15 +24,12 @@ import org.full.migration.constants.CommonConstants;
 import org.full.migration.coordinator.ProgressTracker;
 import org.full.migration.coordinator.QueueManager;
 import org.full.migration.enums.SqlCompatibilityEnum;
-import org.full.migration.exception.DatabaseConnectionException;
-import org.full.migration.exception.ErrorCode;
-import org.full.migration.jdbc.JdbcConnection;
 import org.full.migration.jdbc.OpenGaussConnection;
-import org.full.migration.model.object.DbObject;
 import org.full.migration.model.FullName;
 import org.full.migration.model.PostgresCustomTypeMeta;
 import org.full.migration.model.config.DatabaseConfig;
 import org.full.migration.model.config.GlobalConfig;
+import org.full.migration.model.object.DbObject;
 import org.full.migration.model.progress.ProgressInfo;
 import org.full.migration.model.progress.ProgressStatus;
 import org.full.migration.model.table.SliceInfo;
@@ -67,15 +65,14 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.Arrays;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Function;
 import java.util.regex.Pattern;
 
 /**
